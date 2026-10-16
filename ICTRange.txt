@@ -1,0 +1,356 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © franjballest
+
+// Draw quadrants and proyections on a given range to determine ICT relevant levels.
+
+//@version=6
+indicator("ICTRange", overlay=true, 
+    max_lines_count    = 500,
+    max_labels_count = 500,
+    max_bars_back=5000)
+
+getstyle(s) =>
+    switch s
+        "solid" => line.style_solid
+        "dashed" => line.style_dashed
+        "dotted" => line.style_dotted
+
+
+// Line/Box style
+type Sty
+    string sty  // solid/dotted/dashed
+    int wid     // width
+    color col   // color
+    color col2    // background or secondary color if any
+
+
+var G_RANGE = "Ranges"
+var draw1 = input.bool(false, "draw the last one only", group=G_RANGE)
+var autorg = input.bool(true, "Use default ranges. Otherwise use these ones:", group = G_RANGE)
+var dorg1 = input.bool(true, "", group = G_RANGE, inline = "rg1")
+var rg1 = input.session("0700-0900", "Opening Range 1", group=G_RANGE, inline="rg1")
+// NB: 7-7:30 is the OR for the NY open KZ
+var dorg2 = input.bool(true, "", group = G_RANGE, inline = "rg2")
+var rg2 = input.session("0930-1000", "Opening Range 2", group=G_RANGE, inline="rg2")
+var dorg3 = input.bool(true, "", group = G_RANGE, inline = "rg3")
+var rg3 = input.session("1330-1400", "Opening Range 3", group=G_RANGE, inline="rg3")
+var dorg4 = input.bool(false, "", group = G_RANGE, inline = "rg4")
+var rg4 = input.session("0130-0200", "Opening Range 4", group=G_RANGE, inline="rg4")
+var dorg5 = input.bool(false, "", group = G_RANGE, inline = "rg5")
+var rg5 = input.session("0000-0030", "Opening Range 5", group=G_RANGE, inline="rg5")
+var dorg6 = input.bool(false, "", group = G_RANGE, inline = "rg6")
+var rg6 = input.session("0800-0830", "Opening Range 6", group=G_RANGE, inline="rg6")
+
+var tfok = timeframe.isminutes and timeframe.multiplier <=60
+
+
+var G_MAIN = "Main settings"
+
+var TZ = input.string("Auto", "Zone: US/EU/AUto", group = G_MAIN, 
+    tooltip = "Use the times and TZ for the specified TZ: US for NQ, EU for Dax, Auto to select Dax or NQ")
+
+var nq = input.int(4, "Number of levels (1, 2, 4, 8)", options=[1, 2,4,8], group = G_MAIN, 
+     tooltip = "whole, just C.E., quadrants, or octants")
+var auto = input.bool(true, "Proyect the range as price moves outside (auto)", group = G_MAIN)
+var po3up = input.int(3, "Number of proyections above",  minval=0, maxval=50, 
+     group = G_MAIN, tooltip = "number of std.dev. lines to be drawn above the range unless auto")
+var po3down = input.int(3, "Number of proyectos below", group = G_MAIN, minval=0, maxval=50,
+     tooltip = "number of std.dev. lines to be drawn below the range unless auto")
+var USTZ = "America/New_York"
+var EUTZ = "Europe/Madrid"
+var dorect = input.bool(false, "Draw rectangle", group = G_MAIN, inline = "rect")
+var rcol = input.color(color.new(color.blue,90), "", group = G_MAIN, inline = "rect")
+var xlnsty = getstyle(input.string("solid", "line style", 
+    options=["solid", "dashed", "dotted"], group = G_MAIN, inline="dayln"))
+var lnwid = input.int(2, "", options = [1, 2, 3], group = G_MAIN, inline = "dayln")
+var lncol = input.color(color.blue, "", group = G_MAIN, inline = "dayln")
+var lnsty = Sty.new(xlnsty, lnwid, lncol, rcol)
+var dovline = input.bool(true, "Draw time lines", group=G_MAIN, inline = "vln")
+var vxlnsty = getstyle(input.string("solid", "line style", 
+    options=["solid", "dashed", "dotted"], group = G_MAIN, inline="vln"))
+var vlnwid = input.int(1, "", options = [1, 2, 3], group = G_MAIN, inline = "vln")
+var vlncol = input.color(color.black, "", group = G_MAIN, inline = "vln")
+var vlnsty = Sty.new(vxlnsty, vlnwid, vlncol)
+
+var ndays = input.int(12, "Number of ranges to keep (unless draw last only)", minval=1, group = G_MAIN)
+
+
+// Timezones =========================
+
+// Heuristic: check if this is a symbol from the US or from the EU
+// this could be adjusted for things like gold and the like.
+// For dax/nq, this is more than enough
+isUS() =>
+    r = true
+    if TZ == "Auto"
+        if str.contains(syminfo.ticker, "DAX") or str.contains(syminfo.ticker, "FDX")
+            r := false
+        else
+            r := true
+    else
+        r := (TZ == "US")
+    r
+string tz = ""
+if tz == ""
+    if isUS()
+        tz := USTZ
+    else
+        tz := EUTZ
+
+// Default ranges for dax/nq 
+if autorg
+    if isUS()
+        dorg1 := true
+        rg1 := "0700-0900"
+        dorg2 := true
+        rg2 := "0930-1000"
+        dorg3 := true
+        dorg4 := false
+        rg3 := "1330-1400"
+        dorg5 := false
+        dorg6 := false
+    else
+        dorg1 := true
+        rg1 := "0700-0730"
+        dorg2 := true
+        rg2 := "0930-1000"
+        dorg3 := true
+        rg3 := "0800-0830"
+        dorg4 := false
+        dorg5 := false
+        dorg6 := false
+
+
+
+// Definition of a range
+type  RangeInfo
+    string tz // eg UTC-4
+    int starth  // start hour
+    int startm  // min
+    int endh    // end hour
+    int endm    // min
+    Sty sty = na // style
+
+
+// Instance of a range
+type Range
+    int startidx = na //  barindex when starts
+    int endidx = na // end done
+    float hi 
+    float lo
+    int hiidx = na
+    int loidx = na
+    int extendidx = na // end for lines that extend another zone
+    box rect = na // rectangle drawn if any
+    array<line> qs =  na // array of cuadrants and PO3s
+    bool drawrect = false
+    RangeInfo ri = na // for  range instances
+    Sty sty = na// line style
+    float minprj = na   // price for min stddev
+    float maxprj = na   // price for max stddev
+    float wid = na // sep between lines
+    line vline0 = na
+    line vline1 = na
+     
+
+
+
+hmParse(string s) =>
+    hs = str.substring(s, 0, 2)
+    ms = str.substring(s, 2, 4)
+    [int(str.tonumber(hs)), int(str.tonumber(ms))]
+
+sesParse(string s) =>
+    vals = str.split(s, '-')
+    st = vals.size() > 0 ? vals.get(0) : "0000"
+    end = vals.size() > 1 ? vals.get(1) : st
+    [sth, stm] = hmParse(st)
+    [endh, endm] = hmParse(end)
+    [sth, stm, endh, endm]
+
+mkRangeInfo(string ival, string tz, Sty sty = na) =>
+    RangeInfo zi = na
+    [sth, stm, eh, em] = sesParse(ival)
+    zi := RangeInfo.new(tz, sth, stm, eh, em)
+    zi.sty := sty
+    zi
+
+method starts(RangeInfo zn) =>
+    hour(time,zn.tz) == zn.starth and minute(time,zn.tz) == zn.startm
+ 
+method starting(RangeInfo zn) =>
+    h = hour(time,zn.tz)
+    m = minute(time,zn.tz)
+    hm = h*60+m
+    sthm = zn.starth*60 + zn.startm
+    hm + 15 >= sthm and hm <= sthm
+
+method ends(RangeInfo zn) =>
+    hour(time,zn.tz) == zn.endh and minute(time,zn.tz) == zn.endm
+
+
+mkRange(RangeInfo zi = na) =>
+    zz = Range.new(bar_index, na, high, low, bar_index, bar_index)
+    zz.ri := zi
+    zz
+
+method mkline(Range zn, float p, bool isx = false) =>
+    i = (isx?zn.endidx:zn.startidx)
+    ln = line.new(i, p, last_bar_index, p, color = zn.ri.sty.col,
+        extend = extend.right,
+        width = zn.ri.sty.wid, style=zn.ri.sty.sty)
+    zn.qs.push(ln)
+   
+method mklines(Range zn) =>
+    zn.mkline(zn.hi)
+    zn.mkline(zn.lo)
+    rg = math.abs(zn.hi-zn.lo)
+    zn.wid := rg/nq
+    xnq = nq
+    while zn.wid < 30 and xnq > 1
+        xnq -= 1
+        zn.wid := rg/xnq
+    p = zn.lo
+    zn.minprj := zn.lo
+    zn.maxprj := zn.hi
+    for i = 0 to nq-1
+        p += zn.wid 
+        zn.mkline(p)
+    p := zn.hi
+    for i = 0 to po3up-1
+        if po3up <= 0
+            break
+        p += zn.wid 
+        zn.mkline(p, isx=true)
+        zn.maxprj := p
+    for i = 1 to po3down-1
+        if po3down <= 0
+            break
+        p -= zn.wid 
+        zn.mkline(p, isx = true)
+        zn.minprj := p
+
+
+
+    
+method update(Range zn, bool islast = false) =>
+    if na(zn.endidx)
+        if high >= zn.hi 
+            zn.hiidx := bar_index
+            zn.hi := high
+        if low <= zn.lo
+            zn.loidx := bar_index
+            zn.lo := low
+    if not na(zn.extendidx) and not na(zn.qs)
+        for q in zn.qs
+            q.set_extend(extend.none)
+            q.set_x2(zn.extendidx)
+    if not na(zn.endidx) and na(zn.extendidx) and auto
+        if low < zn.minprj
+            zn.minprj := zn.minprj - zn.wid
+            zn.mkline(zn.minprj, isx = true)
+        if high > zn.maxprj
+            zn.maxprj := zn.maxprj + zn.wid
+            zn.mkline(zn.maxprj, isx = true)
+    true
+method ended(Range zn) =>
+    if na(zn.endidx)
+        zn.endidx := bar_index-1
+    if last_bar_index - zn.startidx < 5000
+        if na(zn.rect) and dorect
+            zn.rect := box.new(zn.startidx, zn.lo, zn.endidx, zn.hi,  border_color = zn.ri.sty.col, bgcolor = zn.ri.sty.col2)
+        if na(zn.qs)
+            zn.qs := array.new<line>()
+        if zn.qs.size() == 0
+            zn.mklines()
+        if na(zn.vline0)
+            zn.vline0 := line.new(zn.startidx, high, zn.startidx, low, color = vlnsty.col,
+                extend = extend.both,
+                width = vlnsty.wid, style=vlnsty.sty)
+        if na(zn.vline1)
+            zn.vline1 := line.new(zn.endidx+1, high, zn.endidx+1, low, color = vlnsty.col,
+                extend = extend.both,
+                width = vlnsty.wid, style=vlnsty.sty)
+ 
+method limit(Range zn, int limit) => 
+    if na(zn.extendidx)
+        zn.extendidx := limit
+        if not na(zn.qs)
+            for q in zn.qs
+                q.set_extend(extend.none)
+                q.set_x2(zn.extendidx)
+
+
+
+
+method kill(Range zn) =>
+    if not na(zn.rect)
+        zn.rect.delete()
+        zn.rect := na
+    if not na(zn.qs)
+        while zn.qs.size() > 0
+            line.delete(zn.qs.shift())
+        zn.qs.clear()
+        zn.qs := na
+    if not na(zn.vline0)
+        zn.vline0.delete()
+        zn.vline0 := na
+    if not na(zn.vline1)
+        zn.vline1.delete()
+        zn.vline1 := na
+
+limitolds(array<Range> ranges) =>
+    Range rg = ranges.size() > 1 ? ranges.get(ranges.size()-1) : na
+    if not na(rg) and not na(rg.endidx)
+        for i = 0 to ranges.size() - 2
+            x = ranges.get(i)
+            x.limit(bar_index-1)
+
+var defs = array.new<RangeInfo>()
+if defs.size() == 0 and tfok
+    if dorg1
+        ri = mkRangeInfo(rg1, tz, lnsty)
+        defs.push(ri)
+    if dorg2
+        ri = mkRangeInfo(rg2, tz, lnsty)
+        defs.push(ri)
+    if dorg3
+        ri = mkRangeInfo(rg3, tz, lnsty)
+        defs.push(ri)
+    if dorg4 
+        ri = mkRangeInfo(rg4, tz, lnsty)
+        defs.push(ri)
+    if dorg5
+        ri = mkRangeInfo(rg5, tz, lnsty)
+        defs.push(ri)
+    if dorg6
+        ri = mkRangeInfo(rg6, tz, lnsty)
+        defs.push(ri)
+
+var array<Range> ranges = array.new<Range>()
+
+for rd in defs
+    if tfok and rd.starts()
+        rg = mkRange(rd)
+        ranges.push(rg)
+ 
+for [i, rg] in ranges
+    if not tfok
+        break
+    if rg.ri.ends()
+        rg.ended()
+    rg.update(i == ranges.size()-1)
+if tfok
+    limitolds(ranges)
+while tfok and ranges.size() > ndays and ranges.size() > 1
+    x = ranges.shift()
+    x.kill()
+    x := na
+if draw1 and ranges.size() > 1
+    Range lr = na
+    for [i,x] in ranges
+        if not na(x.endidx) and not na(lr)
+            lr.kill()
+            ranges.remove(i-1)
+            break
+        lr := x

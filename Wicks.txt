@@ -1,0 +1,50 @@
+//@version=5
+indicator("Wicks", overlay=true, max_lines_count=500)
+
+
+// NB: copied from the Thick Wick indicator width
+// added stuff to draw the last wick CEs.
+
+// Inputs
+wick_width = input.int(2, "Wick Width", minval=1, maxval=10)
+wick_color = input.color(color.gray, "Wick Color")
+var dowick = input.bool(false,"draw wick  CE", inline="wick")
+var minwick = input.float(20, "sz", inline = "wick")
+var wickdx = input.int(1, "wid",  inline = "wick")
+
+body_top = math.max(open, close)
+body_bottom = math.min(open, close)
+
+wdx() =>
+    r = wickdx
+    if r == 0 and timeframe.in_seconds()/60 < 15
+        r := 4
+    else if r == 0
+        r := 1
+    r
+var wicks = array.new<line>()
+if dowick
+    bodyh = math.max(open[1],close[1])
+    bodyl = math.min(open[1],close[1])
+    wh = high[1]-bodyh
+    wl = bodyl-low[1]
+    
+    if wh > minwick
+        ce = math.avg(high[1],bodyh)
+        ln = line.new(bar_index-1, ce, bar_index-1+wdx(), ce)
+        wicks.push(ln)
+    if wl > minwick
+        ce = math.avg(low[1],bodyl)
+        ln = line.new(bar_index-1, ce, bar_index-1+wdx(), ce)
+        wicks.push(ln)
+    if wicks.size() > 30
+        w = wicks.shift()
+        w.delete()
+
+// Draw upper wick
+if high > body_top
+    line.new(bar_index, high, bar_index, body_top, color=wick_color, width=wick_width)
+
+// Draw lower wick  
+if low < body_bottom
+    line.new(bar_index, low, bar_index, body_bottom, color=wick_color, width=wick_width)

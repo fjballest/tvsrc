@@ -1,0 +1,406 @@
+//@version=6
+indicator("MTFVGs", overlay=true, max_boxes_count=500)
+
+// Inputs
+
+string FG = "Multi-TF FVGs"
+
+var transparent = color.new(color.white,100)
+
+getstyle(s) =>
+    switch s
+        "solid" => line.style_solid
+        "dashed" => line.style_dashed
+        "dotted" => line.style_dotted
+
+
+var visible = input.bool(false, "compute for historic data use", group=FG,
+    tooltip="When disabled computes and keeps always the last FVGs for use in real time. " +
+         " This permits scrolling back/forward and keeps FVGs always as they are, but discards very old FVGs. "+
+         "When enabled computes FVGs up to the rightmost visible time. " +
+         "Good for use in historic data but worse when scrolling forward as it takes time to recompute and redraw.")
+
+auto = input.bool(true, "auto select timeframes", group=FG)
+nobox = input.bool(true, "borders only", group=FG)
+do15 = input.bool(true, "m15", group=FG, inline="15")
+lcol15 = input.color(color.new(#8c8c8c, 87), "bull", group=FG, inline="15")
+scol15 = input.color(color.new(#8c8c8c, 80), "bear", group=FG, inline="15")
+border15 = input.int(1, "border sz", [0,1,2,3], group=FG, inline="15b")
+lcol15b = input.color(color.rgb(224, 55, 55, 4), "bull", group=FG, inline="15b")
+scol15b = input.color(color.rgb(224, 55, 55, 4), "bear", group=FG, inline="15b")
+doh1 = input.bool(true, "H1", group=FG, inline="h1")
+lcolh1 = input.color(color.new(#8c8c8c, 80), "bull", group=FG, inline="h1")
+scolh1 = input.color(color.new(#8c8c8c, 80), "bear", group=FG, inline="h1")
+borderh1 = input.int(1, "border", [0,1,2,3], group=FG, inline="h1b")
+lcolh1b = input.color(color.new(#388e3c, 20), "bull", group=FG, inline="h1b")
+scolh1b = input.color(color.new(#388e3c, 20), "bear", group=FG, inline="h1b")
+
+doh4 = input.bool(true, "H4", group=FG, inline="h4")
+lcolh4 = input.color(color.new(#388e3c, 90), "bull", group=FG, inline="h4")
+scolh4 = input.color(color.new(#388e3c, 90), "bear", group=FG, inline="h4")
+borderh4 = input.int(3, "border", [0,1,2,3], group=FG, inline="h4b")
+lcolh4b = input.color(color.new(#3b2284, 29), "bull", group=FG, inline="h4b")
+scolh4b = input.color(color.new(#3b2284, 29), "bear", group=FG, inline="h4b")
+
+dod = input.bool(true, "D", group=FG, inline="d")
+lcold = input.color(color.new(#b22833, 95), "bull", group=FG, inline="d")
+scold = input.color(color.new(#b22833, 95), "bear", group=FG, inline="d")
+borderd = input.int(3, "border", [0,1,2,3], group=FG, inline="db")
+lcoldb = input.color(color.new(#4aea15, 9), "bull", group=FG, inline="db")
+scoldb = input.color(color.new(#4aea15, 20), "bear", group=FG, inline="db")
+
+dow = input.bool(true, "W", group=FG, inline="w")
+lcolw = input.color(color.new(#006064, 95), "bull", group=FG, inline="w")
+scolw = input.color(color.new(#006064, 95), "bear", group=FG, inline="w")
+borderw = input.int(2, "border", [0,1,2,3], group=FG, inline="wb")
+lcolwb = input.color(color.new(#006064, 50), "bull", group=FG, inline="wb")
+scolwb = input.color(color.new(#006064, 50), "bear", group=FG, inline="wb")
+
+dom = input.bool(true, "M", group=FG, inline="m")
+lcolm = input.color(color.new(#311b92, 95), "bull", group=FG, inline="m")
+scolm = input.color(color.new(#311b92, 95), "bear", group=FG, inline="m")
+borderm = input.int(2, "border", [0,1,2,3], group=FG, inline="mb")
+lcolmb = input.color(color.new(#311b92, 50), "bull", group=FG, inline="mb")
+scolmb = input.color(color.new(#311b92, 50), "bear", group=FG, inline="mb")
+
+ST="Settings"
+
+nfvgs = input.int(6, "Nb. of FVGs per timeframe", minval=1, maxval=30, group=ST)
+dolabel = input.bool(true, "labels", group=ST, inline="label")
+labelcol = input.color(color.white, "default", group = ST, inline="label",
+    tooltip="default label color if the border color used for labels matches the background color")
+tsz = input.string(size.large, "size", 
+     [size.tiny, size.small, size.normal, size.large, size.huge], group=ST, inline="label")
+txalgn = input.string(text.align_right, "label align", 
+    options=[text.align_center, text.align_left, text.align_right],
+    group=ST)
+
+bordersty = getstyle(input.string("solid", "border", ["solid", "dashed","dotted"], group=ST))
+doce = input.bool(true, "draw C.E. on FVGS", group=ST, inline="ce")
+var mince = input.int(20, "min size", minval = 10, maxval = 1000,
+    group = ST, inline="ce", tooltip="draw C.E. for FVGS with at least a min size in points")
+cesty = getstyle(input.string("solid", "style", ["solid", "dashed","dotted"], group=ST))
+cewidth = input.int(-1, "C.E. line width", [-1, 0,1,2,3, 4, 5], group=ST,
+    tooltip="FVG C.E. line width. Use -1 to use the border width as set for the FVG TF.")
+
+var tfsecs = timeframe.in_seconds()
+if  auto
+    auto := false
+    do15 := false
+    doh1 := false
+    doh4 := false
+    dod := false
+    dow := false
+    dom := false
+    if tfsecs <= 180
+        do15 := true
+        doh1 := true
+        doh4 := true
+    else if tfsecs <= 300
+        doh1 := true
+        doh4 := true
+        dod := true
+    else if tfsecs <= 15*60
+        doh4 := true
+        dod := true
+    else if tfsecs < 240*60
+        dod := true
+        dow := true
+    else if tfsecs <= timeframe.in_seconds("D")
+        dow := true
+        dom := true
+
+eqcol(color color1, color color2) =>
+    r1 = color.r(color1)
+    g1 = color.g(color1)
+    b1 = color.b(color1)
+    a1 = color.t(color1) 
+    
+    r2 = color.r(color2)
+    g2 = color.g(color2)
+    b2 = color.b(color2)
+    a2 = color.t(color2)
+    
+    r1 == r2 and g1 == g2 and b1 == b2 and math.abs(a1-a2) <= 10
+
+istransp(color col) =>
+    color.t(col) >= 100
+
+type FVG
+    string tf
+    bool islong
+    int start   // time
+    int end     // time
+    float hi
+    float lo
+    float ce
+    box rect = na
+    line celine = na
+    bool done = false
+    color col = na
+    color bcol = na
+    color cecol = na
+    color txcol = na
+    int bwid = na
+
+dofn(tf) =>
+    r = do15
+    if tf == "m15"
+        r := do15
+    else if tf == "H1"
+        r := doh1
+    else if tf == "H4"
+        r := doh4
+    else if tf == "D"
+        r := dod
+    else if tf == "W"
+        r := dow
+    else if tf == "M"
+        r := dom
+    r
+
+borderfn(tf) =>
+    r = border15
+    if tf == "H1"
+        r := borderh1
+    else if tf == "H4"
+        r := borderh4
+    else if tf == "D"
+        r := borderd
+    else if tf == "W"
+        r := borderw
+    else if tf == "M"
+        r := borderm
+    r
+
+lcolfn(tf) =>
+    r = lcol15
+    if tf == "H1"
+        r := lcolh1
+    else if tf == "H4"
+        r := lcolh4
+    else if tf == "D"
+        r := lcold
+    else if tf == "W"
+        r := lcolw
+    else if tf == "M"
+        r := lcolm
+    r
+
+scolfn(tf) =>
+    r = scol15
+    if tf == "H1"
+        r := scolh1
+    else if tf == "H4"
+        r := scolh4
+    else if tf == "D"
+        r := scold
+    else if tf == "W"
+        r := scolw
+    else if tf == "M"
+        r := scolm
+    r
+
+lcolbfn(tf) =>
+    r = lcol15b
+    if tf == "H1"
+        r := lcolh1b
+    else if tf == "H4"
+        r := lcolh4b
+    else if tf == "D"
+        r := lcoldb
+    else if tf == "W"
+        r := lcolwb
+    else if tf == "M"
+        r := lcolmb
+    r
+
+scolbfn(tf) =>
+    r = scol15b
+    if tf == "H1"
+        r := scolh1b
+    else if tf == "H4"
+        r := scolh4b
+    else if tf == "D"
+        r := scoldb
+    else if tf == "W"
+        r := scolwb
+    else if tf == "M"
+        r := scolmb
+    
+    r
+
+
+// given a name like H4, return a timeframe str
+tfstr(string tf) =>
+    s = tf 
+    if tf == "m15"
+        s := "15"
+    else if tf == "H1"
+        s := "60"
+    else if tf == "H4"
+        s := "240"
+    else if tf == "D" or tf == "W" or tf == "M"
+        s := tf
+    s
+
+
+
+
+tfOK(string tf) =>
+    tfsecs < timeframe.in_seconds(tfstr(tf))
+
+sLongFVG(l1,h3) =>
+    l1 > h3
+longFVGHL(o1,c1,h1,l1,o2,c2,h2,l2,o3,c3,h3,l3) =>
+    hi = l1
+    lo = h3
+    blow1 = math.min(o1,c1)
+    bhi2 = math.max(o2,c2)
+    blow2 = math.min(o2,c2)
+    bhi3 = math.max(o3,c3)
+    // include suspension blocks
+    fhi = hi
+    flo = lo
+    if bhi3 < blow2
+        lo := bhi3
+    if blow1 > bhi2
+        hi := blow1
+    [hi,lo, fhi, flo]
+
+isShortFVG(h1,l3) =>
+    h1 < l3
+shortFVGHL(o1,c1,h1,l1,o2,c2,h2,l2,o3,c3,h3,l3) =>
+    hi = l3
+    lo = h1
+    blow3 = math.min(o3,c3)
+    bhi2 = math.max(o2,c2)
+    blow2 = math.min(o2,c2)
+    bhi1 = math.max(o1,c1)
+    // include suspension blocks
+    fhi = hi
+    flo = lo
+    if blow3 > bhi2
+        hi := blow3
+    if bhi1 < blow2
+        lo := bhi1
+    [hi, lo, fhi, flo]
+
+method kill(FVG f) =>
+    if not na(f) and not na(f.rect)
+        f.rect.delete()
+        f.rect := na
+    if not na(f) and not na(f.celine)
+        f.celine.delete()
+        f.celine := na
+
+method setup(FVG f) =>
+    f.col := f.islong ? lcolfn(f.tf) : scolfn(f.tf)
+    f.bcol := f.islong ? lcolbfn(f.tf) : scolbfn(f.tf)
+    f.cecol := f.bcol
+    f.bwid := borderfn(f.tf)
+    f.txcol := f.bcol
+    if eqcol(f.bcol, f.col) or istransp(f.bcol)
+        f.txcol := labelcol
+    if f.bwid == 0
+        f.bcol := transparent
+
+
+timeoff(n) =>
+    time_close + tfsecs * n
+
+method update(FVG f) =>
+    if f.islong and high < f.lo 
+        f.done := true
+        f.end := timeoff(0)
+    else if not f.islong and low > f.hi 
+        f.done := true
+        f.end := timeoff(0)
+    if na(f.rect)
+        f.rect := box.new(f.start, f.hi, timeoff(2), f.lo, f.bcol, f.bwid, bordersty,
+            xloc = xloc.bar_time,
+            bgcolor = nobox?transparent:f.col, text = dolabel ?f.tf:"", text_size = tsz,
+            text_color = f.txcol,
+            text_halign = txalgn)
+    else if not f.done
+        f.rect.set_right(timeoff(2))
+    if na(f.celine) and doce
+        f.celine := line.new(f.start, f.ce, timeoff(2), f.ce, 
+            xloc = xloc.bar_time, color = f.cecol, style=cesty,width =cewidth<0?f.bwid:cewidth)
+    else if doce and not f.done
+        f.celine.set_x2(timeoff(2))
+    f.done
+
+var FVG[] fvgs15 = array.new<FVG>()
+var FVG[] fvgsh1 = array.new<FVG>()
+var FVG[] fvgsh4 = array.new<FVG>()
+var FVG[] fvgsd = array.new<FVG>()
+var FVG[] fvgsw = array.new<FVG>()
+var FVG[] fvgsm = array.new<FVG>()
+
+getbars(string tf) => 
+    x = tfstr(tf)
+    request.security(syminfo.tickerid, x,
+        [open[1],close[1],high[1],low[1],open[2],close[2],high[2],low[2],open[3],close[3],high[3],low[3], time[2]],
+        lookahead = barmerge.lookahead_on)
+
+
+isdup(FVG[] fvgs, float hi, float lo) =>
+    d = false
+    for f in fvgs
+        if f.hi == hi and f.lo == lo
+            d := true
+            break
+    d
+
+
+mkFVGS(string tf, FVG[] fvgs) =>
+    [o1,c1,h1,l1,o2,c2,h2,l2,o3,c3,h3,l3,t2] = getbars(tf)
+    [h, l, fh, fl] = longFVGHL(o1,c1,h1,l1,o2,c2,h2,l2,o3,c3,h3,l3)
+    FVG f = na
+    if fh > fl+5 and not isdup(fvgs, h, l)
+        f := FVG.new(tf, true, t2, na, h, l, math.avg(h,l))
+    if na(f)
+        [sh,sl, fsh, fsl] = shortFVGHL(o1,c1,h1,l1,o2,c2,h2,l2,o3,c3,h3,l3)
+        if fsh > fsl+5 and not isdup(fvgs, sh, sl)
+            f := FVG.new(tf, false, t2, na, sh, sl, math.avg(sh,sl))
+        // short FVG found
+    if not na(f)
+        f.setup()
+        fvgs.push(f)
+    if fvgs.size() > nfvgs
+        x = fvgs.shift()
+        x.kill()
+        x := na
+
+var recompute = true
+if visible
+    recompute := time <= chart.right_visible_bar_time
+
+if recompute and barstate.isconfirmed
+    if do15 and tfOK("m15")
+        mkFVGS("m15", fvgs15)
+    if doh1 and tfOK("H1")
+        mkFVGS("H1", fvgsh1)
+    if doh4 and tfOK("H4")
+        mkFVGS("H4", fvgsh4)
+    if dod and tfOK("D")
+        mkFVGS("D", fvgsd)
+    if dow and tfOK("W")
+        mkFVGS("W", fvgsw)
+    if dom and tfOK("M")
+        mkFVGS("M", fvgsm)
+
+    for f in fvgs15
+        f.update()
+    for f in fvgsh1
+        f.update()
+    for f in fvgsh4
+        f.update()
+    for f in fvgsd
+        f.update()
+    for f in fvgsw
+        f.update()
+    for f in fvgsm
+        f.update()
+

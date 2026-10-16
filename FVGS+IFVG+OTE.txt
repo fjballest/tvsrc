@@ -1,0 +1,1193 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © franjballest
+// [OTE] modified: IFVGs can now be filtered/flagged by ICT OTE (0.62 - 0.79 retracement of the leg)
+
+// draw fvgs of the current timeframe including volume gaps
+// when using m5,4,3,2,1, track last 1PFVGs
+
+//@version=6
+indicator("FVGs+IFVG+OTE5", 
+    overlay=true, 
+    max_lines_count    = 500,
+    max_boxes_count    = 500,
+    max_bars_back      = 5000)
+
+
+getstyle(s) =>
+    switch s
+        "solid" => line.style_solid
+        "dashed" => line.style_dashed
+        "dotted" => line.style_dotted
+
+getsize(s) =>
+    switch(s) 
+        "auto" => size.auto
+        "tiny" => size.tiny
+        "small" => size.small
+        "normal" => size.normal
+        "large" => size.large
+        "huge" => size.huge
+
+
+gethalign(s) =>
+    switch s
+        "left" => text.align_left
+        "right" => text.align_right
+        => text.align_center
+
+getvalign(s) =>
+    switch s
+        "top" => text.align_top
+        "bottom" => text.align_bottom
+        => text.align_center
+
+
+// FVGS =================================================
+// INPUTS ====================================================
+// Sections: Enable / Draw only | FVG Settings | 1st Presented FVGs | Wick Settings |
+//           IFVG Settings (Experimental) | IFVG + OTE
+// Inputs sharing an `inline` id are shown on a single line in the settings dialog.
+
+// Enable / Draw only ========================================
+GRP_EN = "Enable / Draw only"
+
+var dofp = input.bool(true, "1PFVGs", group = GRP_EN, inline = "en",
+    tooltip = "Track and draw the 1st presented FVGs (see section '1st Presented FVGs').")
+doifvg = input.bool(true, "IFVGs", group = GRP_EN, inline = "en",
+    tooltip="Detect interesting IFVGs. Mostly for alarms: try to spot IFVGs of interest to operate IFVGs. "+
+        "Draws rectangles for them and fires up alarms when relevant.")
+var dowick = input.bool(true, "Wick C.E.", group = GRP_EN, inline = "en",
+    tooltip = "Draw the C.E. of candle wicks (see section 'Wick Settings').")
+
+var fponly = input.bool(false, "Only 1PFVGs", group = GRP_EN, inline = "only",
+    tooltip = "Draw ONLY 1PFVGs and no other FVG.")
+ifvgOnly = input.bool(false, "Only IFVGs", group = GRP_EN, inline = "only",
+    tooltip="When checked, nothing is drawn except the candidate/confirmed IFVG boxes and the OTE bands. "+
+        "Regular FVGs, C.E. lines, wick C.E. lines, 1PFVGs, swing labels and signal markers are hidden "+
+        "(alerts keep working). Requires 'IFVGs' to be enabled.")
+
+// FVG Settings ==============================================
+GRP_MAIN    = "FVG Settings"
+
+var visible = input.bool(false, "compute for historic data use", group=GRP_MAIN,
+    tooltip="When disabled computes and keeps always the last FVGs for use in real time. " +
+         " This permits scrolling back/forward and keeps FVGs always as they are, but discards very old FVGs. "+
+         "When enabled computes FVGs up to the rightmost visible time. " +
+         "Good for use in historic data but worse when scrolling forward as it takes time to recompute and redraw.")
+
+var dofvgalert = input.bool(false, "alerts for FVG bounces", group=GRP_MAIN)
+
+var minfvg = input.float(3, "Size: min", minval = 1, maxval = 1000,
+    group = GRP_MAIN, inline = "sz",
+    tooltip = "Minimum size (in points) to consider a fvg as valid. ")
+var maxfvg = input.float(10000, "max", minval=100,
+    group = GRP_MAIN, inline = "sz",
+    tooltip = "Ignore FVGs larger than this. To skip buggy data with huge gaps.")
+var maxfvgs = input.int(200, "keep", minval = 2, maxval = 500,
+    group = GRP_MAIN, inline = "sz",
+    tooltip = "Number of FVGs to keep")
+
+var mince = input.int(20, "C.E.: min height", minval = 10, maxval = 1000,
+    group = GRP_MAIN, inline = "ce",
+    tooltip = "Min FVG height to draw the C.E.")
+var celnwid = input.int(2, "width", minval=1, maxval=3, group = GRP_MAIN, inline = "ce",
+    tooltip = "CE width")
+var cesty = getstyle(input.string("dotted", "style", 
+    options=["solid", "dashed", "dotted"], group = GRP_MAIN, inline = "ce"))
+
+var lcol = input.color( color.new(#FF6D00, 90), "Long FVG color", group = GRP_MAIN, inline = "lfvg")
+var lnlcol = input.color( color.new(#FF6D00, 20), "border", group = GRP_MAIN, inline = "lfvg")
+
+var scol = input.color( color.new(#f7525f, 90), "Short FVG color", group = GRP_MAIN, inline = "sfvg")
+var lnscol = input.color( color.new(#f7525f, 20), "border", group = GRP_MAIN, inline = "sfvg")
+
+// 1st Presented FVGs ========================================
+GRP_F1 = "1st Presented FVGs"
+
+var fpfvgtime = input.string("0930", "Time", group = GRP_F1, inline = "fp")
+var tz = input.string("Auto", "TZ", group = GRP_F1, inline = "fp",
+    tooltip="Auto: 9 in EU for DAX 9:30 in NY for NQ")
+var nfp = input.int(6, "Keep", group = GRP_F1, inline = "fp",
+    tooltip="Nb of 1st presented FVGs kept")
+
+var fpcol = input.color( color.new(#00fbff, 90), "Day 1PFVG", group = GRP_F1, inline = "fp1")
+var lnfpcol = input.color( color.new(#0097a7, 20), "border", group = GRP_F1, inline = "fp1")
+var wfpcol = input.color( color.new(#2962ff, 90), "Week 1PFVG", group = GRP_F1, inline = "wfp")
+var lnwfpcol = input.color( color.new(#2962ff, 20), "border", group = GRP_F1, inline = "wfp")
+var doifp = input.bool(false, "1PFVG inverse", group=GRP_F1, inline = "ifp1")
+var ifpcol = input.color( color.new(#880e4f, 80), "color", group = GRP_F1, inline = "ifp1")
+var ilnfpcol = input.color( color.new(#880e4f, 20), "border", group = GRP_F1, inline = "ifp1")
+
+// Wick Settings =============================================
+GRP_W = "Wick Settings"
+
+var nwicks =  input.int(30, "Keep", group=GRP_W, inline = "w1",
+    tooltip = "Keep these many wicks drawn")
+var minwick = input.float(20, "Min size", group=GRP_W, inline = "w1",
+    tooltip = "Min wick size to draw the C.E.")
+var wickdx = input.int(0, "Segment width",  group=GRP_W, inline = "w1",
+    tooltip = "0 for auto or nb. of candles")
+var wicksty = getstyle(input.string("solid", "C.E. line style", 
+    options=["solid", "dashed", "dotted"], group = GRP_W, inline="wick"))
+var wickcol = input.color( color.black, "", group = GRP_W,  inline = "wick")
+var dowickalert = input.bool(false, "alerts on wick C.E. bounces", group = GRP_W)
+
+// IFVG Settings (Experimental) ==============================
+G_IFVG = "IFVG Settings (Experimental)"
+
+var doifvgalert = input.bool(true, "Alerts on IFVGs", group = G_IFVG, inline = "ial")
+showSignals = input.bool(false, "Show IFVG signals", group = G_IFVG, inline = "ial",
+    tooltip="debug mostly: show where alarms are triggered.")
+
+ifvgswings = input.bool(false, "Use swings to detect interesting IFVGs (else just closes)", 
+    group = G_IFVG,
+    tooltip="If true, keep a single IFVG under watch, and use swings to locate the IFVG. "+
+        "If false, keep the last bull/bear pair of fvgs and confirm them as IFVGs when closes make them so.")
+useSwingFilter = input.bool(true, "Require significant swing", group = G_IFVG, inline = "sw")
+showSwing = input.bool(false, "Show swing labels", group = G_IFVG, inline = "sw",
+    tooltip="only avail if using swings.")
+pivL = input.int(10, "Pivot left / right", minval = 1, group = G_IFVG, inline = "piv")
+pivR = input.int(3, "", minval = 1, group = G_IFVG, inline = "piv")
+atrLen = input.int(14, "ATR length / min swing (ATR)", minval = 1, group = G_IFVG, inline = "atr",
+    tooltip = "ATR length, and minimum swing displacement measured in ATRs.")
+minATR = input.float(4.0, "", minval = 0.0, step = 0.1, group = G_IFVG, inline = "atr")
+
+bearIFVGColor = input.color(color.aqua, "Bullish / Bearish IFVG colors", group = G_IFVG, inline = "icol")
+bullIFVGColor = input.color(color.orange, "", group = G_IFVG, inline = "icol")
+ifvgTrans = input.int(80, "Transparency: fill / border", minval = 0, maxval = 100, group = G_IFVG, inline = "itr")
+borderTrans = input.int(20, "", minval = 0, maxval = 100, group = G_IFVG, inline = "itr")
+ifvgtsz = getsize(input.string("normal", "Text size / align H, V", 
+    options=["auto", "tiny", "small", "normal", "huge"], group=G_IFVG, inline = "itx"))
+ifvgha = gethalign(input.string("center", "",
+    options=["left", "center", "right"], group=G_IFVG, inline = "itx"))
+ifvgva = getvalign(input.string("center", "",
+    options=["top", "center", "bottom"], group=G_IFVG, inline = "itx"))
+
+// IFVG + OTE (ICT Optimal Trade Entry) ======================
+G_OTE = "IFVG + OTE (ICT Optimal Trade Entry)"
+
+useOTE = input.bool(true, "Detect OTE IFVGs", group = G_OTE, inline = "o1",
+    tooltip="Requires 'IFVGs' to be enabled. "+
+        "Once an IFVG is confirmed, the impulse leg that created it is measured and its retracement "+
+        "band (OTE) is computed. When price retraces into the IFVG and the IFVG matches the OTE band, "+
+        "it is flagged as an OTE IFVG.")
+oteOnly = input.bool(false, "Alert ONLY on OTE IFVGs", group = G_OTE, inline = "o1",
+    tooltip="Suppresses the regular IFVG alerts; only OTE IFVG alerts fire.")
+
+oteMin = input.float(0.62, "OTE retracement: lower", minval = 0.0, maxval = 1.0, step = 0.01, group = G_OTE, inline = "lvl")
+oteMax = input.float(0.79, "upper", minval = 0.0, maxval = 1.0, step = 0.01, group = G_OTE, inline = "lvl")
+oteMode = input.string("Overlap", "Match mode", options = ["Overlap", "Fully inside", "C.E. inside"], group = G_OTE,
+    tooltip="Overlap: any overlap between the IFVG and the OTE band.\n"+
+        "Fully inside: the whole IFVG lies within the OTE band.\n"+
+        "C.E. inside: the IFVG's midpoint (C.E.) lies within the OTE band.")
+
+oteRej = input.bool(true, "Prior-leg rejection", group = G_OTE, inline = "rej",
+    tooltip="The leg that came BEFORE the FVG (pivot high -> low for a bearish IFVG, pivot low -> high for a bullish one) "+
+        "is measured. If the candle that closes through the FVG (creating the IFVG) wicks into that leg's 0.62-0.79 band "+
+        "and closes back away from it, the IFVG is flagged as an OTE IFVG at confirmation. "+
+        "The IFVG itself does NOT need to sit inside the band.")
+oteRejAny = input.bool(false, "any candle", group = G_OTE, inline = "rej",
+    tooltip="Also count a wick from ANY candle between the FVG and the confirming candle, not just the confirming one.")
+oteRejCap = input.bool(false, "cap wick", group = G_OTE, inline = "rej",
+    tooltip="When on, a rejection only counts if the wick stays inside the band: it may reach the lower OTE level "+
+        "but must not pass the upper one (0.79 by default). When off, the wick may go deeper as long as it does not "+
+        "take out the origin of the prior leg.")
+
+oteHtf1 = input.bool(true, "Next higher TF", group = G_OTE, inline = "htf",
+    tooltip="Same OTE tracking (prior-leg rejection + retrace) run on higher-timeframe swings. "+
+        "A confirmed OTE on the chart OR on any enabled higher timeframe flags the IFVG as an OTE IFVG.\n"+
+        "Ladder: 3m (or lower) -> 5m -> 15m -> 1h -> 4h -> D. The chart sits on the highest rung <= its timeframe "+
+        "and the next two rungs are used (4h chart: only D; D chart: none).")
+oteHtf2 = input.bool(true, "2nd higher TF", group = G_OTE, inline = "htf")
+oteHtfL = input.int(5, "HTF pivot left / right", minval = 1, group = G_OTE, inline = "hpiv",
+    tooltip="Pivot lengths (in HTF bars) used to find swings on the higher timeframes.")
+oteHtfR = input.int(2, "", minval = 1, group = G_OTE, inline = "hpiv")
+oteLegL = input.int(10, "Prior-leg pivot left / right", minval = 1, group = G_OTE, inline = "lpiv",
+    tooltip="Pivot lengths used to find the leg that preceded the FVG. Larger values ignore smaller internal swings.")
+oteLegR = input.int(3, "", minval = 1, group = G_OTE, inline = "lpiv")
+
+showOTEband = input.bool(true, "Draw OTE band", group = G_OTE, inline = "dr")
+showOTEsig = input.bool(false, "Show OTE signals", group = G_OTE, inline = "dr")
+oteOffset = input.int(5, "Band start / width (candles)", minval = 0, maxval = 200, group = G_OTE, inline = "pos",
+    tooltip="OTE bands are drawn in the empty space to the right of the last candle: they start this many candles "+
+        "after it (so they never overlay the candles) and are as many candles wide as the second value.")
+oteWidth = input.int(8, "", minval = 1, maxval = 100, group = G_OTE, inline = "pos")
+oteBandCol = input.color(color.new(color.yellow, 85), "Colors: band", group = G_OTE, inline = "oc",
+    tooltip="Band fill (when matching), IFVG highlight / border, and band text.")
+oteHighlight = input.color(color.yellow, "border", group = G_OTE, inline = "oc")
+oteTextCol = input.color(color.black, "text", group = G_OTE, inline = "oc")
+
+bounces(p) =>
+    (math.abs(p-low) < 2 and close > low+10) or (math.abs(p-high)<2 and close < high-10)
+
+var debug=false
+var tfsecs = timeframe.in_seconds()
+// Wicks ===================================================
+wdx() =>
+    r = wickdx
+    if r == 0 and tfsecs/60 < 15
+        r := 4
+    else if r == 0
+        r := 1
+    r
+var wicks = array.new<line>()
+if dowick
+    bodyh = math.max(open[1],close[1])
+    bodyl = math.min(open[1],close[1])
+    wh = high[1]-bodyh
+    wl = bodyl-low[1]
+    
+    if wh > minwick
+        ce = math.avg(high[1],bodyh)
+        ln = line.new(bar_index-1, ce, bar_index-1+wdx(), ce, style = wicksty, color = ifvgOnly ? color.new(wickcol, 100) : wickcol)
+        wicks.push(ln)
+    if wl > minwick
+        ce = math.avg(low[1],bodyl)
+        ln = line.new(bar_index-1, ce, bar_index-1+wdx(), ce, style = wicksty, color = ifvgOnly ? color.new(wickcol, 100) : wickcol)
+        wicks.push(ln)
+    if wicks.size() > nwicks
+        w = wicks.shift()
+        w.delete()
+    if dowickalert
+        for w in wicks
+            p = w.get_y1()
+            if bounces(p)
+                if debug
+                    line.new(bar_index,low,bar_index,high,extend = extend.both)
+                alert("bounce on wick C.E.", alert.freq_once_per_bar)
+
+// FVGs ======================================================
+
+if tz == "Auto"
+    if str.contains(syminfo.description, "DAX") or str.contains(syminfo.ticker, "DAX") or str.contains(syminfo.description, "Germany") or str.contains(syminfo.ticker, "FDX")
+        fpfvgtime := "0900"
+        tz := "Europe/Madrid"
+    else
+        tz := "America/New_York"
+
+hmParse(string s) =>
+    hs = str.substring(s, 0, 2)
+    ms = str.substring(s, 2, 4)
+    [int(str.tonumber(hs)), int(str.tonumber(ms))]
+
+var fph = 0
+var fpm = 0
+
+if dofp
+    [xh, xm] = hmParse(fpfvgtime)
+    fph := xh
+    fpm := xm
+
+// FVG data type, one per handled fvg.
+type FVG
+    float hi // max value
+    float lo // min value
+    float ce // C.E.
+    bool islong // bullish?
+    int start  // time for start
+    int end = na// time when mitigated
+    box rect = na // box drawn
+    line celine = na // CE line
+    bool isfp = false // is first presented FVG
+    bool iswfp = false // is week first presented FVG
+    bool isifp = false // is first presented FVG inverse
+    int sbar = na // [OTE] bar index where the FVG starts
+
+
+method kill(FVG f) =>
+    if not na(f)
+        if not na(f.rect)
+            f.rect.delete()
+        if not na(f.celine)
+            f.celine.delete()
+        f.rect := na
+        f.celine := na
+method alerts(FVG f) =>
+    a = false
+    if not na(f.hi) and bounces(f.hi)
+        alert("bounce on FVG hi", alert.freq_once_per_bar)
+        a := true
+    else if not na(f.lo) and bounces(f.lo)
+        alert("bounce on fvg lo", alert.freq_once_per_bar)
+        a := true
+    else if not na(f.ce) and bounces(f.ce)
+        alert("bounce on CE", alert.freq_once_per_bar)
+        a := true
+    if a and debug
+        line.new(bar_index,low,bar_index,high,extend = extend.both)
+    a
+
+
+// known  fvgs: long and short
+var array<FVG> lfvgs = array.new<FVG>()
+var array<FVG> sfvgs = array.new<FVG>()
+var array<FVG> fpfvgs = array.new<FVG>()
+
+// FVG functions =========
+
+//[o1,c1,h1,l1,o2,c2,h2,l2,o3,c3,h3,l3,t2] = request.security(syminfo.tickerid, tf, 
+//  [open[1], close[1], high[1], low[1], open[2], close[2], high[2], low[2],
+//  open[3],close[3],high[3],low[3],time[2]], lookahead=barmerge.lookahead_on)
+
+
+clearlastfp(array<FVG> fpfvgs) =>
+    while fpfvgs.size() > nfp
+        f = fpfvgs.shift()
+        if not na(f) and f.isfp
+            if not na(f.rect)
+                f.rect.set_extend(extend.none)
+            if not na(f.celine)
+                f.celine.set_extend(extend.none)
+            f.isfp := false
+            f.kill()
+
+isLongFVG(l1,h3) =>
+    l1 > h3
+longFVGHL(o1,c1,h1,l1,o2,c2,h2,l2,o3,c3,h3,l3) =>
+    hi = l1
+    lo = h3
+    blow1 = math.min(o1,c1)
+    bhi2 = math.max(o2,c2)
+    blow2 = math.min(o2,c2)
+    bhi3 = math.max(o3,c3)
+    // include suspension blocks
+    fhi = hi
+    flo = lo
+    if bhi3 < blow2
+        lo := bhi3
+    if blow1 > bhi2
+        hi := blow1
+    [hi,lo, fhi, flo]
+
+isShortFVG(h1,l3) =>
+    h1 < l3
+shortFVGHL(o1,c1,h1,l1,o2,c2,h2,l2,o3,c3,h3,l3) =>
+    hi = l3
+    lo = h1
+    blow3 = math.min(o3,c3)
+    bhi2 = math.max(o2,c2)
+    blow2 = math.min(o2,c2)
+    bhi1 = math.max(o1,c1)
+    // include suspension blocks
+    fhi = hi
+    flo = lo
+    if blow3 > bhi2
+        hi := blow3
+    if bhi1 < blow2
+        lo := bhi1
+    [hi, lo, fhi, flo]
+
+isFPFVG() =>
+    r = dofp
+    if r
+        h = hour(time,tz)
+        m = minute(time,tz)
+        nmin = 2
+        if timeframe.isminutes
+            nmin := tfsecs/60 * 2
+        r := h == fph and m > fpm+nmin and timeframe.isminutes and tfsecs/60 <=3
+    r
+if bar_index == 0
+    log.info("fpfvg h {0} fpfvgm {1}", fph, fpm)
+
+eqFVG(a,b) =>
+    a.hi == b.hi and a.lo == b.lo and a.idx == b.idx
+
+method endsAt(FVG f) =>
+    na(f.end) ? time : f.end
+
+method isDone(FVG f, o, c) =>
+    f.islong ? (c < f.lo or o < f.lo) : (c>f.hi or o > f.hi)
+
+method bgColor(FVG f) =>
+    c = f.islong ? lcol : scol
+    if f.isfp
+        c := fpcol
+        if f.iswfp
+            c := wfpcol
+    if f.isifp
+        c := ifpcol
+    ifvgOnly ? color.new(c, 100) : c
+    
+
+method lnColor(FVG f) =>
+    c = f.islong ? lnlcol : lnscol
+    if f.isfp
+        c := lnfpcol
+        if f.iswfp
+            c := lnwfpcol
+    if f.isifp
+        c := ilnfpcol
+    ifvgOnly ? color.new(c, 100) : c
+
+var hasfp = false
+var hasifp = false
+if hour(time,tz) != fph
+    hasfp := false
+    hasifp := false
+timeat(int n) =>
+    time[-n]
+FVG lastlongfvg = na
+FVG lastshortfvg = na
+if true
+    [hi, lo, fhi, flo] = longFVGHL(open[1],close[1],high[1],low[1],
+         open[2],close[2],high[2],low[2],
+         open[3],close[3],high[3],low[3])
+    if fhi - flo > minfvg and fhi-flo < maxfvg
+        f = FVG.new(hi,lo,math.avg(hi,lo),true,timeat(-3))
+        f.sbar := bar_index - 3 // [OTE]
+        lastlongfvg := f
+        if not hasifp and hasfp and doifp
+            fp = fpfvgs.last()
+            if fp.islong != f.islong
+                f.isifp := true
+                hasifp := true
+                fpfvgs.push(f)
+        if not hasfp and isFPFVG() and not f.isifp
+            f.isfp := true
+            hasfp := f.isfp
+            fpfvgs.push(f)
+            clearlastfp(fpfvgs)
+        else if not fponly and not f.isifp
+            lfvgs.push(f)
+        else
+            f.kill()
+if true
+    [hi, lo, fhi, flo] = shortFVGHL(open[1],close[1],high[1],low[1],
+         open[2],close[2],high[2],low[2],
+         open[3],close[3],high[3],low[3])
+    if fhi - flo > minfvg and fhi - flo < maxfvg
+        f = FVG.new(hi,lo,math.avg(hi,lo),false,timeat(-3))
+        f.sbar := bar_index - 3 // [OTE]
+        lastshortfvg := f
+        if not hasifp and hasfp and doifp
+            fp = fpfvgs.last()
+            if fp.islong != f.islong
+                f.isifp := true
+                hasifp := true
+                fpfvgs.push(f)
+        if not hasfp and isFPFVG() and not f.isifp
+            f.isfp := true
+            f.iswfp := dayofweek == dayofweek.monday
+            hasfp := f.isfp
+            fpfvgs.push(f)
+            clearlastfp(fpfvgs)
+        else if not fponly and not  f.isifp
+            sfvgs.push(f)
+        else 
+            f.kill()
+
+updfvgs(array<FVG> fvgs) =>
+    if fvgs.size() > 0
+        for i = 0 to fvgs.size()-1
+            f = fvgs.get(i)
+            isdone = not na(f.end)
+            // check if filled
+            if not isdone and f.isDone(open,close)
+                f.end := f.endsAt()
+            et = f.endsAt()
+            if na(f.rect)
+                f.rect := box.new(f.start, f.hi, et, f.lo,
+                    bgcolor = f.bgColor(),
+                    border_color = f.lnColor(),
+                    border_width = 1,
+                    xloc = xloc.bar_time,
+                    extend = (f.isifp or f.isfp) ? extend.right : extend.none,
+                    border_style = line.style_solid)
+            if na(f.celine) and f.hi-f.lo > mince
+                f.celine := line.new(f.start,f.ce,et,f.ce,
+                    color = f.lnColor(),
+                    style = cesty,
+                    xloc = xloc.bar_time,
+                    width = celnwid)
+                if f.isfp
+                    f.celine.set_extend(extend.right)
+            if na(f.end)
+                f.rect.set_right(et)
+                if not na(f.celine)
+                    f.celine.set_x2(et)
+            if dofvgalert and na(f.end)
+                f.alerts()
+        if fvgs.size() >= maxfvgs  and fvgs.size() > 0
+            df = fvgs.shift()
+            df.kill()
+
+if not visible and barstate.isnew
+    updfvgs(lfvgs)
+    updfvgs(sfvgs)
+    updfvgs(fpfvgs)
+else if true
+    if time < chart.right_visible_bar_time + (chart.right_visible_bar_time-chart.left_visible_bar_time)
+        updfvgs(lfvgs)
+        updfvgs(sfvgs)
+        updfvgs(fpfvgs)
+
+// [OTE] prior leg detection =====================================
+// Pivot sets: one for the chart timeframe and one for each of the next two higher timeframes.
+// HTF pivots come from request.security (non-repainting: confirmed HTF bars only) and are
+// stored with the CHART bar index they map to, so legs can be measured on chart candles.
+
+tfName(string s) =>
+    float m = str.tonumber(s)
+    string r = s
+    if not na(m)
+        r := m >= 60 and m % 60 == 0 ? str.tostring(m / 60, "#") + "h" : str.tostring(m, "#") + "m"
+    else if s == "1D"
+        r := "D"
+    r
+
+type PivSet
+    array<int> hb       // pivot-high chart bar index
+    array<float> hp     // pivot-high price
+    array<int> lb       // pivot-low chart bar index
+    array<float> lp     // pivot-low price
+    string tag = ""     // timeframe label
+    bool htf = false    // higher timeframe set?
+
+method addHigh(PivSet ps, int b, float p) =>
+    ps.hb.push(b)
+    ps.hp.push(p)
+    if ps.hb.size() > 60
+        ps.hb.shift()
+        ps.hp.shift()
+
+method addLow(PivSet ps, int b, float p) =>
+    ps.lb.push(b)
+    ps.lp.push(p)
+    if ps.lb.size() > 60
+        ps.lb.shift()
+        ps.lp.shift()
+
+method lastHigh(PivSet ps) =>
+    ps.hp.size() > 0 ? ps.hp.last() : na
+
+method lastLow(PivSet ps) =>
+    ps.lp.size() > 0 ? ps.lp.last() : na
+
+var PivSet pv0 = PivSet.new(array.new<int>(), array.new<float>(), array.new<int>(), array.new<float>(), "", false)
+var PivSet pv1 = PivSet.new(array.new<int>(), array.new<float>(), array.new<int>(), array.new<float>(), "", true)
+var PivSet pv2 = PivSet.new(array.new<int>(), array.new<float>(), array.new<int>(), array.new<float>(), "", true)
+
+// --- chart timeframe pivots
+float oph = ta.pivothigh(high, oteLegL, oteLegR)
+float opl = ta.pivotlow(low, oteLegL, oteLegR)
+pv0.tag := tfName(timeframe.period)
+if not na(oph)
+    pv0.addHigh(bar_index - oteLegR, oph)
+if not na(opl)
+    pv0.addLow(bar_index - oteLegR, opl)
+
+// --- higher timeframe ladder: 3m(or lower) -> 5m -> 15m -> 1h -> 4h -> D
+// The chart is placed on the highest rung that is <= the chart timeframe, and the next two rungs are used.
+float tfmin = tfsecs / 60
+var array<int> ladMin = array.from(3, 5, 15, 60, 240, 1440)
+var array<string> ladTf = array.from("3", "5", "15", "60", "240", "D")
+int ladIdx = 0
+for i = 0 to 5
+    if ladMin.get(i) <= tfmin
+        ladIdx := i
+string htf1 = ladIdx + 1 <= 5 ? ladTf.get(ladIdx + 1) : ""
+string htf2 = ladIdx + 2 <= 5 ? ladTf.get(ladIdx + 2) : ""
+bool hasH1 = oteHtf1 and htf1 != ""
+bool hasH2 = oteHtf2 and htf2 != ""
+pv1.tag := hasH1 ? tfName(htf1) : ""
+pv2.tag := hasH2 ? tfName(htf2) : ""
+
+string rq1 = hasH1 ? htf1 : timeframe.period
+string rq2 = hasH2 ? htf2 : timeframe.period
+[h1ph, h1pl, h1pt] = request.security(syminfo.tickerid, rq1,
+    [ta.pivothigh(high, oteHtfL, oteHtfR)[1], ta.pivotlow(low, oteHtfL, oteHtfR)[1], time[oteHtfR + 1]],
+    lookahead = barmerge.lookahead_on)
+[h2ph, h2pl, h2pt] = request.security(syminfo.tickerid, rq2,
+    [ta.pivothigh(high, oteHtfL, oteHtfR)[1], ta.pivotlow(low, oteHtfL, oteHtfR)[1], time[oteHtfR + 1]],
+    lookahead = barmerge.lookahead_on)
+h1chg = ta.change(h1pt)
+h2chg = ta.change(h2pt)
+
+// chart bar index of the chart candle that opens at (or right before) time t
+barOfTime(int t) =>
+    int r = na
+    int mx = math.min(bar_index, 4900)
+    for k = 0 to mx
+        if time[k] <= t
+            r := bar_index - k
+            break
+    r
+
+// a new HTF pivot is registered once, on the first chart bar after its HTF bar closed
+feedHtf(PivSet ps, float ph, float pl, int pt, bool evt) =>
+    if evt and (not na(ph) or not na(pl))
+        int b = barOfTime(pt)
+        if not na(b)
+            if not na(ph)
+                ps.addHigh(b, ph)
+            if not na(pl)
+                ps.addLow(b, pl)
+
+if doifvg and useOTE
+    feedHtf(pv1, h1ph, h1pl, h1pt, hasH1 and not na(h1chg) and h1chg != 0)
+    feedHtf(pv2, h2ph, h2pl, h2pt, hasH2 and not na(h2chg) and h2chg != 0)
+
+// Returns [legHigh, legLow] of the leg that precedes the FVG starting at bar sbar.
+//   dir = -1 (bearish IFVG, from a bullish FVG): prior DOWN leg = last pivot high before sbar -> lowest low up to sbar
+//   dir = +1 (bullish IFVG, from a bearish FVG): prior UP leg   = last pivot low before sbar  -> highest high up to sbar
+priorLeg(int dir, int sbar, PivSet ps) =>
+    float h = na
+    float l = na
+    if dir == -1
+        int n = ps.hb.size()
+        if n > 0
+            for i = n - 1 to 0
+                int hb = ps.hb.get(i)
+                if hb < sbar and bar_index - hb < 4000
+                    float lo = low[bar_index - hb]
+                    for k = hb to sbar
+                        lo := math.min(lo, low[bar_index - k])
+                    h := ps.hp.get(i)
+                    l := lo
+                    break
+    else
+        int n = ps.lb.size()
+        if n > 0
+            for i = n - 1 to 0
+                int lb = ps.lb.get(i)
+                if lb < sbar and bar_index - lb < 4000
+                    float hi = high[bar_index - lb]
+                    for k = lb to sbar
+                        hi := math.max(hi, high[bar_index - k])
+                    l := ps.lp.get(i)
+                    h := hi
+                    break
+    [h, l]
+
+// [OTE] tracker =================================================
+// One tracker follows one IFVG under watch, against the pivots of ONE timeframe (chart, HTF1 or HTF2).
+//   dir = -1 : bearish IFVG (bullish FVG closed through to the downside).
+//   dir = +1 : bullish IFVG (bearish FVG closed through to the upside).
+// Two OTE checks, both done per timeframe:
+//   (1) rejection: the confirming candle wicks into the 0.62-0.79 band of the PRIOR leg (before the FVG)
+//   (2) retrace  : after the inversion, price retraces into the IFVG while the IFVG matches the OTE band of
+//                  the leg swing -> lowest low (bearish) / swing -> highest high (bullish) since confirmation.
+//                  On higher timeframes the swing origin is the latest HTF pivot (if beyond the retrace extreme).
+type OteTrack
+    int dir = 0
+    float zlo = na      // IFVG low
+    float zhi = na      // IFVG high
+    float legHi = na
+    float legLo = na
+    float rext = na     // running retrace extreme since the FVG (high for dir -1, low for dir +1)
+    bool armed = false  // IFVG confirmed by a close through it
+    bool fired = false  // OTE signal already fired for this confirmation
+    int ctime = na      // confirmation time
+    int cbar = na       // confirmation bar index
+    box band = na       // OTE band drawn (leg created after the inversion)
+    float pHi = na      // prior leg high (leg before the FVG)
+    float pLo = na      // prior leg low
+    int sbar = na       // bar index where the FVG starts
+    bool rejHit = false // confirming candle rejected the OTE of the prior leg
+    box rej = na        // prior-leg OTE band drawn
+    string tag = ""     // timeframe label
+
+// new IFVG candidate under watch (not yet confirmed). origin = retrace extreme since the FVG
+method oteStart(OteTrack t, int dir, float zlo, float zhi, float origin, int sbar, PivSet ps) =>
+    box.delete(t.band)
+    t.band := na
+    box.delete(t.rej)
+    t.rej := na
+    t.rejHit := false
+    t.sbar := sbar
+    t.tag := ps.tag
+    [pgh, pgl] = priorLeg(dir, sbar, ps)
+    t.pHi := pgh
+    t.pLo := pgl
+    float o = origin
+    if ps.htf
+        float adj = dir == -1 ? ps.lastHigh() : ps.lastLow()
+        if not na(adj)
+            o := dir == -1 ? math.max(origin, adj) : math.min(origin, adj)
+    t.dir := dir
+    t.zlo := zlo
+    t.zhi := zhi
+    t.armed := false
+    t.fired := false
+    t.ctime := na
+    t.rext := origin
+    t.legHi := dir == -1 ? o : na
+    t.legLo := dir == 1 ? o : na
+
+// close through the FVG: the IFVG is confirmed, the leg starts being measured
+method oteConfirm(OteTrack t) =>
+    if t.dir != 0 and not t.armed
+        // rejection of the OTE of the PRIOR leg by the confirming candle
+        if useOTE and oteRej and not na(t.pHi) and not na(t.pLo) and t.pHi > t.pLo
+            float pr = t.pHi - t.pLo
+            float ext = na
+            float rLo = na
+            float rHi = na
+            bool hit = false
+            if t.dir == -1
+                // prior down leg: OTE band is above the leg low; wick must reach up into it
+                ext := oteRejAny ? math.max(t.rext, high) : high
+                rLo := t.pLo + oteMin * pr
+                rHi := t.pLo + oteMax * pr
+                hit := ext >= rLo and ext <= (oteRejCap ? rHi : t.pHi) and close <= rHi
+            else
+                // prior up leg: OTE band is below the leg high; wick must reach down into it
+                ext := oteRejAny ? math.min(t.rext, low) : low
+                rLo := t.pHi - oteMax * pr
+                rHi := t.pHi - oteMin * pr
+                hit := ext <= rHi and ext >= (oteRejCap ? rLo : t.pLo) and close >= rLo
+            if hit
+                t.rejHit := true
+                if showOTEband
+                    t.rej := box.new(bar_index + oteOffset, rHi, bar_index + oteOffset + oteWidth, rLo,
+                        xloc = xloc.bar_index,
+                        bgcolor = oteBandCol,
+                        border_color = oteHighlight,
+                        border_style = line.style_dashed,
+                        border_width = 1,
+                        text = t.tag + " OTE",
+                        text_size = size.small,
+                        text_color = oteTextCol,
+                        text_halign = text.align_center)
+        t.armed := true
+        t.fired := t.rejHit // one OTE signal per IFVG
+        t.ctime := time
+        t.cbar := bar_index
+        if t.dir == -1
+            t.legHi := math.max(t.legHi, high)
+            t.legLo := low
+        else
+            t.legLo := math.min(t.legLo, low)
+            t.legHi := high
+
+// IFVG invalidated (closed back through it)
+method oteCancel(OteTrack t) =>
+    box.delete(t.band)
+    t.band := na
+    box.delete(t.rej)
+    t.rej := na
+    t.rejHit := false
+    t.armed := false
+    if t.dir == -1
+        t.legLo := na
+    else
+        t.legHi := na
+
+// call once per bar. Returns the direction (-1 / 1) on the bar the OTE is matched, else 0
+method oteStep(OteTrack t) =>
+    int s = 0
+    if useOTE and t.dir != 0
+        if not t.armed
+            // before confirmation keep extending the origin of the leg
+            if t.dir == -1
+                t.legHi := math.max(t.legHi, high)
+                t.rext := math.max(t.rext, high)
+            else
+                t.legLo := math.min(t.legLo, low)
+                t.rext := math.min(t.rext, low)
+        else
+            if not na(t.rej)
+                t.rej.set_left(bar_index + oteOffset)
+                t.rej.set_right(bar_index + oteOffset + oteWidth)
+            // rejection of the prior-leg OTE flagged on the confirming candle
+            if t.rejHit
+                s := t.dir
+                t.rejHit := false
+            float r = t.legHi - t.legLo
+            if r > 0
+                float bLo = na
+                float bHi = na
+                if t.dir == -1
+                    bLo := t.legLo + oteMin * r
+                    bHi := t.legLo + oteMax * r
+                else
+                    bLo := t.legHi - oteMax * r
+                    bHi := t.legHi - oteMin * r
+                float mid = math.avg(t.zlo, t.zhi)
+                bool m = false
+                if oteMode == "Overlap"
+                    m := t.zhi >= bLo and t.zlo <= bHi
+                else if oteMode == "Fully inside"
+                    m := t.zlo >= bLo and t.zhi <= bHi
+                else
+                    m := mid >= bLo and mid <= bHi
+                if showOTEband
+                    color bg = m ? oteBandCol : color.new(color.gray, 92)
+                    color bd = m ? oteHighlight : color.new(color.gray, 60)
+                    if na(t.band)
+                        t.band := box.new(bar_index + oteOffset, bHi, bar_index + oteOffset + oteWidth, bLo,
+                            xloc = xloc.bar_index,
+                            bgcolor = bg,
+                            border_color = bd,
+                            border_style = line.style_dashed,
+                            border_width = 1,
+                            text = t.tag,
+                            text_size = size.tiny,
+                            text_color = oteTextCol,
+                            text_halign = text.align_left)
+                    else
+                        t.band.set_top(bHi)
+                        t.band.set_bottom(bLo)
+                        t.band.set_left(bar_index + oteOffset)
+                        t.band.set_right(bar_index + oteOffset + oteWidth)
+                        t.band.set_bgcolor(bg)
+                        t.band.set_border_color(bd)
+                // price retraces back into the IFVG while it matches the OTE band
+                bool tap = t.dir == -1 ? high >= t.zlo : low <= t.zhi
+                if m and tap and not t.fired and time != t.ctime
+                    t.fired := true
+                    s := t.dir
+            // keep extending the leg AFTER evaluating this bar
+            if t.dir == -1
+                t.legLo := math.min(t.legLo, low)
+            else
+                t.legHi := math.max(t.legHi, high)
+    s
+
+// A group runs the three trackers (chart, next TF, second TF) on the same IFVG.
+// A confirmed OTE on ANY of them is enough to flag the IFVG as an OTE IFVG (once per IFVG).
+type OteGroup
+    OteTrack t0
+    OteTrack t1
+    OteTrack t2
+    bool flagged = false
+    string tags = ""    // timeframes that matched, e.g. "5m+15m"
+
+method gStart(OteGroup g, int dir, float zlo, float zhi, float origin, int sbar) =>
+    g.flagged := false
+    g.tags := ""
+    g.t0.oteStart(dir, zlo, zhi, origin, sbar, pv0)
+    if hasH1
+        g.t1.oteStart(dir, zlo, zhi, origin, sbar, pv1)
+    if hasH2
+        g.t2.oteStart(dir, zlo, zhi, origin, sbar, pv2)
+
+method gConfirm(OteGroup g) =>
+    g.t0.oteConfirm()
+    g.t1.oteConfirm()
+    g.t2.oteConfirm()
+
+method gCancel(OteGroup g) =>
+    g.flagged := false
+    g.tags := ""
+    g.t0.oteCancel()
+    g.t1.oteCancel()
+    g.t2.oteCancel()
+
+method gStep(OteGroup g) =>
+    int s0 = g.t0.oteStep()
+    int s1 = g.t1.oteStep()
+    int s2 = g.t2.oteStep()
+    int s = 0
+    if not g.flagged and (s0 != 0 or s1 != 0 or s2 != 0)
+        g.flagged := true
+        s := s0 != 0 ? s0 : (s1 != 0 ? s1 : s2)
+        string tg = ""
+        if s0 != 0
+            tg += g.t0.tag
+        if s1 != 0
+            tg += (tg == "" ? "" : "+") + g.t1.tag
+        if s2 != 0
+            tg += (tg == "" ? "" : "+") + g.t2.tag
+        g.tags := tg
+    s
+
+var OteGroup gBear = OteGroup.new(OteTrack.new(), OteTrack.new(), OteTrack.new())  // non-swing mode, bearish IFVG (from last long FVG)
+var OteGroup gBull = OteGroup.new(OteTrack.new(), OteTrack.new(), OteTrack.new())  // non-swing mode, bullish IFVG (from last short FVG)
+var OteGroup gSw   = OteGroup.new(OteTrack.new(), OteTrack.new(), OteTrack.new())  // swing mode, single IFVG under watch
+
+// highest/lowest of the 4 bars spanning the FVG (3 candles + current bar)
+h4 = ta.highest(high, 4)
+l4 = ta.lowest(low, 4)
+
+// Close above/below IFVG setups =================================
+
+var box ifvgBox = na // IFVG used when using swings or bullifvg (bear fvg) when not using swings
+var box ifvgBoxb = na // when not using swings, bearifvg
+var FVG bullifvg = na
+var FVG bearifvg = na
+var int bullconfirm = na
+var int bearconfirm = na
+if doifvg and not ifvgswings and not na(lastlongfvg)
+    bearifvg := lastlongfvg
+    bearconfirm := na
+    gBear.gStart(-1, bearifvg.lo, bearifvg.hi, h4, bearifvg.sbar) // [OTE]
+    box.delete(ifvgBoxb)
+    ifvgBoxb := box.new(bearifvg.start, bearifvg.hi, time, bearifvg.lo,
+        border_color = color.new(bearIFVGColor, borderTrans), 
+        //text = "IFVG-?",
+        text_color = color.black,
+        text_size = ifvgtsz,
+        text_halign = ifvgha,
+        text_valign = ifvgva,
+        border_width = 2, xloc = xloc.bar_time, bgcolor = color.new(bearIFVGColor, ifvgTrans))
+if doifvg and not ifvgswings and not na(lastshortfvg)
+    bullifvg := lastshortfvg
+    bullconfirm := na
+    gBull.gStart(1, bullifvg.lo, bullifvg.hi, l4, bullifvg.sbar) // [OTE]
+    box.delete(ifvgBox)
+    ifvgBox := box.new(bullifvg.start, bullifvg.hi, time, bullifvg.lo,
+        border_color = color.new(bullIFVGColor, borderTrans), 
+        text_color = color.black,
+        text_size = ifvgtsz,
+        text_halign = ifvgha,
+        text_valign = ifvgva,
+        //text = "IFVG+?",
+        border_width = 2, xloc = xloc.bar_time, bgcolor = color.new(bullIFVGColor, ifvgTrans))
+if not na(ifvgBox) and barstate.isnew
+    ifvgBox.set_right(time)
+if not na(ifvgBoxb) and barstate.isnew
+    ifvgBoxb.set_right(time)
+
+// Swing high/low IFVG setups =================================
+
+
+findFVG(int sTime, array<FVG> fvgs) =>
+    var FVG rf = na
+    int sz = array.size(fvgs)
+    if sz > 0
+        for i = sz - 1 to 0
+            rf := fvgs.get(i)
+            if rf.start < sTime
+                break
+    rf
+
+// --- swings
+atr = 0.0
+float pivHi = na
+float pivLo = na
+if doifvg and ifvgswings
+    atr := ta.atr(atrLen)
+    pivHi := ta.pivothigh(high, pivL, pivR)
+    pivLo := ta.pivotlow(low, pivL, pivR)
+
+hiBar = bar_index - pivR
+loBar = bar_index - pivR
+hiTime = time[pivR]
+loTime = time[pivR]
+
+var int swingTime = na
+var int swingBar = na
+var float lastHi = na
+var int lastHiBar = na
+var int lastHiTime = na
+
+var float lastLo = na
+var int lastLoBar = na
+var int lastLoTime = na
+
+if doifvg and ifvgswings
+    if not na(pivHi)
+        lastHi := pivHi
+        lastHiBar := hiBar
+        lastHiTime := hiTime
+
+    if not na(pivLo)
+        lastLo := pivLo
+        lastLoBar := loBar
+        lastLoTime := loTime
+newHi = not na(pivHi)
+newLo = not na(pivLo)
+
+
+// Possible IFVGs for IFVG setups
+var int ifstime = na // current IFVG setup time for the ifvg
+var float ifshi = na // fvg hi
+var float ifslo = na // fvg lo
+var int ifsdir = 0  // -1 IFVG in swing high to trade short; 1 IFVG in swing lo to trade long
+var int ifsconfirm = na // did close above/below the IFVG confirming it is an IFVG? If so, the time, else na
+
+if newHi and doifvg and ifvgswings
+    float swingPrice = pivHi
+    float refLo = lastLo
+
+    bool sig = not useSwingFilter or na(refLo) or swingPrice - refLo >= atr[pivR] * minATR
+
+    if sig
+        swingTime := hiTime
+        swingBar := hiBar
+        if showSwing and not ifvgOnly
+            label.new(hiTime, swingPrice, "SWING HIGH", xloc = xloc.bar_time, style = label.style_label_down, 
+                color = color.blue, textcolor = color.white, size = size.tiny)
+        ifvg = findFVG(swingTime, lfvgs)
+        if not na(ifvg) 
+            ifstime := ifvg.start
+            ifshi := ifvg.hi
+            ifslo := ifvg.lo
+            ifsdir := -1
+            ifsconfirm := na
+            gSw.gStart(-1, ifvg.lo, ifvg.hi, swingPrice, ifvg.sbar) // [OTE] leg origin = the swing high
+            box.delete(ifvgBox)
+            ifvgBox := box.new(ifvg.start, ifvg.hi, time, ifvg.lo,
+                border_color = color.new(bearIFVGColor, borderTrans), 
+                text_color = color.black,
+                text_size = ifvgtsz,
+                text_halign = ifvgha,
+                text_valign = ifvgva,
+                border_width = 2, xloc = xloc.bar_time, bgcolor = color.new(bearIFVGColor, ifvgTrans))
+
+
+if newLo and doifvg and ifvgswings
+    float swingPrice = pivLo
+    float refHi = lastHi
+
+    bool sig = not useSwingFilter or na(refHi) or refHi - swingPrice >= atr[pivR] * minATR
+
+    if sig
+        swingTime := loTime
+        swingBar := loBar
+
+        if showSwing and not ifvgOnly
+            label.new(loTime, swingPrice, "SWING LOW", xloc = xloc.bar_time, style = label.style_label_up, 
+                color = color.blue, textcolor = color.white, size = size.tiny)
+        ifvg = findFVG(swingTime, sfvgs)
+        if not na(ifvg) 
+            ifstime := ifvg.start
+            ifshi := ifvg.hi
+            ifslo := ifvg.lo
+            ifsdir := 1
+            ifsconfirm := na
+            gSw.gStart(1, ifvg.lo, ifvg.hi, swingPrice, ifvg.sbar) // [OTE] leg origin = the swing low
+            box.delete(ifvgBox)
+            ifvgBox := box.new(ifvg.start, ifvg.hi, time, ifvg.lo,
+                border_color = color.new(bullIFVGColor, borderTrans), 
+                text_color = color.black,
+                text_size = ifvgtsz,
+                text_halign = ifvgha,
+                text_valign = ifvgva,
+                border_width = 2, xloc = xloc.bar_time, bgcolor = color.new(bullIFVGColor, ifvgTrans))
+
+// [OTE] NOTE: the two blocks below were nested inside "if newLo ..." in the original,
+// so IFVG confirmation was only evaluated on pivot-low bars. Moved to top level so
+// it is evaluated on every bar.
+if not na(ifvgBox) and barstate.isnew
+    ifvgBox.set_right(time)
+
+if not na(ifstime) and barstate.isconfirmed
+    if ifsdir == -1 and close < ifslo and na(ifsconfirm)
+        ifsconfirm := time
+        gSw.gConfirm() // [OTE]
+        ifvgBox.set_text("IFVG-")
+    else if ifsdir == 1 and close > ifshi and na(ifsconfirm)
+        ifsconfirm := time
+        gSw.gConfirm() // [OTE]
+        ifvgBox.set_text("IFVG+")
+    if ifsdir == -1 and not na(ifsconfirm) and close > ifshi
+        ifsconfirm := na
+        gSw.gCancel() // [OTE]
+        ifvgBox.set_text(na)
+    else if ifsdir == 1 and not na(ifsconfirm) and close < ifslo
+        ifsconfirm := na
+        gSw.gCancel() // [OTE]
+        ifvgBox.set_text(na)
+
+// IFVG signals
+sig = 0
+if doifvg and ifvgswings
+    if not na(ifsconfirm) and time != ifsconfirm and sig[1] == 0 
+        if ifsdir == -1 and high >= ifslo and high < ifshi
+            sig := -1
+        else if ifsdir == 1 and low <= ifshi and low >= ifslo
+            sig := 1
+if doifvg and not ifvgswings
+    if not na(bullifvg) and not na(bullconfirm) and close < bullifvg.lo
+        bullconfirm := na
+        gBull.gCancel() // [OTE]
+        ifvgBox.set_text(na)
+    if not na(bullifvg) and barstate.isconfirmed and close > bullifvg.hi and na(bullconfirm)
+        bullconfirm := time
+        gBull.gConfirm() // [OTE]
+        ifvgBox.set_text("IFVG+")
+        sig := 1
+    if not na(bearifvg) and not na(bearconfirm) and close > bearifvg.hi
+        bearconfirm := na
+        gBear.gCancel() // [OTE]
+        ifvgBoxb.set_text(na)
+    if not na(bearifvg) and barstate.isconfirmed and close < bearifvg.lo and na(bearconfirm)
+        ifvgBoxb.set_text("IFVG-")
+        bearconfirm := time
+        gBear.gConfirm() // [OTE]
+        sig := -1
+
+// [OTE] signals: IFVG retraced into and matches the OTE band =================
+int bearOteSig = gBear.gStep()
+int bullOteSig = gBull.gStep()
+int swOteSig = gSw.gStep()
+
+int oteSig = 0
+if bearOteSig != 0
+    oteSig := -1
+else if bullOteSig != 0
+    oteSig := 1
+else if swOteSig != 0
+    oteSig := swOteSig
+
+if doifvg and useOTE
+    if bearOteSig != 0 and not na(ifvgBoxb)
+        ifvgBoxb.set_text("IFVG- OTE " + gBear.tags)
+        ifvgBoxb.set_border_color(oteHighlight)
+    if bullOteSig != 0 and not na(ifvgBox)
+        ifvgBox.set_text("IFVG+ OTE " + gBull.tags)
+        ifvgBox.set_border_color(oteHighlight)
+    if swOteSig != 0 and not na(ifvgBox)
+        ifvgBox.set_text((swOteSig < 0 ? "IFVG- OTE " : "IFVG+ OTE ") + gSw.tags)
+        ifvgBox.set_border_color(oteHighlight)
+
+plotshape(showSignals and not ifvgOnly and sig == -1 and sig[1] == 0, 
+    title = "SHORT", style = shape.triangledown, 
+        location = location.abovebar, color = bearIFVGColor, size = size.small, text = "SHORT")
+
+plotshape(showSignals and not ifvgOnly and sig == 1 and sig[1] == 0, 
+    title = "LONG", style = shape.triangleup, 
+        location = location.belowbar, color = bullIFVGColor, size = size.small, text = "LONG")
+
+plotshape(showOTEsig and not ifvgOnly and oteSig == -1, 
+    title = "SHORT OTE", style = shape.diamond, 
+        location = location.abovebar, color = oteHighlight, size = size.small, text = "OTE")
+
+plotshape(showOTEsig and not ifvgOnly and oteSig == 1, 
+    title = "LONG OTE", style = shape.diamond, 
+        location = location.belowbar, color = oteHighlight, size = size.small, text = "OTE")
+
+//──────────────────────────────────────────────────────────────────────────────
+// ALERTS
+//──────────────────────────────────────────────────────────────────────────────
+tfstr() =>
+    string tf = timeframe.period
+    if timeframe.isseconds
+        str.replace(tf, "S", "s")
+    else if timeframe.isminutes
+        if tf == "60"
+            "1h"
+        else if tf == "120"
+            "2h"
+        else if tf == "180"
+            "3h"
+        else if tf == "240"
+            "4h"
+        else
+            tf + "m"
+    else if timeframe.isdaily
+        // If it's exactly 1 day ("1D"), UI just shows "D"
+        tf == "1D" ? "D" : str.replace(tf, "D", "D") 
+    else if timeframe.isweekly
+        tf == "1W" ? "W" : str.replace(tf, "W", "W")
+    else if timeframe.ismonthly
+        tf == "1M" ? "M" : str.replace(tf, "M", "M")
+    else
+        tf
+
+
+if doifvgalert and sig != 0 and not (useOTE and oteOnly) // [OTE] plain IFVG alerts can be suppressed
+    if sig > 0
+        alert("LONG IFVG "+tfstr(), alert.freq_once_per_bar)
+    else
+        alert("SHORT IFVG "+tfstr(), alert.freq_once_per_bar)
+
+// [OTE] alerts
+if doifvgalert and useOTE and oteSig != 0
+    if oteSig > 0
+        alert("LONG IFVG+OTE "+tfstr(), alert.freq_once_per_bar)
+    else
+        alert("SHORT IFVG+OTE "+tfstr(), alert.freq_once_per_bar)

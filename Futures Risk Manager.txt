@@ -1,0 +1,230 @@
+//@version=5
+indicator("Futures Risk Manager", overlay=true)
+
+// This is joint work.
+// Written by @nunitomiguel and @franjballest
+
+// ========================================
+// INPUTS
+// ========================================
+
+
+getstyle(s) =>
+    switch s
+        "solid" => line.style_solid
+        "dashed" => line.style_dashed
+        "dotted" => line.style_dotted
+
+
+getsize(s) =>
+    switch(s) 
+        "auto" => size.auto
+        "tiny" => size.tiny
+        "small" => size.small
+        "normal" => size.normal
+        "large" => size.large
+        "huge" => size.huge
+
+const color transparent = #ffffff00
+
+auto = input.bool(true, "automatic value per point and currency", group="CONTRACT")
+tick_value = input.float(2.0, "💵 Value per point ($)", minval=0.01, step=0.5, group="CONTRACT",
+     tooltip="MNQ=2 | NQ=20 | MES=1.25 | ES=12.5 | CL=10 | GC=10")
+contracts  = input.int(1, "📦 Number of contracts", minval=1, group="CONTRACT")
+
+entry_price = input.price(0, "🎯 Entry",       group="LEVELS", confirm=true)
+tp_price    = input.price(0, "🟢 Take Profit", group="LEVELS", confirm=true)
+sl_price    = input.price(0, "🔴 Stop Loss",   group="LEVELS", confirm=true)
+
+showpts= input.bool(true, "show points", group="LEVELS", inline="show")
+showmoney = input.bool(true, "money", group="LEVELS", inline = "show")
+
+show_table = input.bool(true, "📊 Show table", group="TABLE", inline="table")
+var table_pos = input.string(position.top_right, "",
+     options= [position.top_left, position.top_center, position.top_right,
+         position.bottom_left, position.bottom_center, position.bottom_right, 
+         position.middle_left, position.middle_right],
+     group="TABLE", inline="table")
+var table_bg=input.color(color.white, "background", group="TABLE")
+var table_fg=input.color(color.black, "general text", group="TABLE")
+var table_tsz = getsize(input.string("normal", "text size", options = ["tiny","small","normal","large","huge"],
+     group="TABLE"))
+
+xoff = input.int(5, "line offset", group="SETTINGS", inline="ln")
+lnlen = input.int(30, "length", group="SETTINGS", inline="ln")
+var lnsty = getstyle(input.string("dashed", "line style",
+     options=["solid", "dashed", "dotted"], group = "SETTINGS", inline="dayln"))
+var lnwid=  input.int(2, "wid", group = "SETTINGS", inline="dayln")
+var tsz = getsize(input.string("normal", "text size", options = ["tiny","small","normal","large","huge"],
+     group="SETTINGS"))
+var stop_col=input.color(#f43f5e, "stop", group="SETTINGS", inline="stop")
+var stop_bg=input.color(#f43f5e, "label", group="SETTINGS", inline="stop")
+var stop_tx=input.color(color.white, "txt", group="SETTINGS", inline="stop")
+var entry_col=input.color(#00d4ff, "entry", group="SETTINGS", inline="entry")
+var entry_bg=input.color(#00d4ff, "label", group="SETTINGS", inline="entry")
+var entry_tx=input.color(color.white, "txt", group="SETTINGS", inline="entry")
+var tp_col=input.color(#10b981, "tp", group="SETTINGS", inline="tp")
+var tp_bg=input.color(#10b981, "label", group="SETTINGS", inline="tp")
+var tp_tx=input.color(color.white, "txt", group="SETTINGS", inline="tp")
+
+
+debug = input.bool(false, "log symbol information for debugging", group = "SETTINGS")
+
+
+if debug and bar_index == 0
+    x = syminfo.currency
+    y = syminfo.description
+    z = syminfo.ticker
+    v = syminfo.tickerid
+    w = syminfo.prefix
+    zz = syminfo.pointvalue
+    log.info("\ncur {0}\ndesc {1}\nticker {2}\nid {3}\npref={4}\nval={5}", x, y, z, v, w, zz)
+
+var cur = "$"
+if auto
+    tick_value := syminfo.pointvalue
+    if syminfo.currency == "EUR"
+        cur:="€"
+
+// ========================================
+// CALCULATIONS
+// ========================================
+valid      = entry_price != 0 and tp_price != 0 and sl_price != 0
+long_trade = tp_price > entry_price
+
+tp_pts = math.abs(tp_price - entry_price)
+sl_pts = math.abs(sl_price - entry_price)
+tp_usd = tp_pts * tick_value * contracts
+sl_usd = sl_pts * tick_value * contracts
+rr     = sl_pts != 0 ? tp_pts / sl_pts : 0.0
+
+
+// ========================================
+// LINES
+// ========================================
+var line ln_entry = na
+var line ln_tp    = na
+var line ln_sl    = na
+var float current = 0
+
+if not valid
+    current := 0
+if valid and barstate.islast
+ 
+    if na(ln_entry)
+        ln_entry := line.new(bar_index - lnlen, entry_price, 
+             bar_index + xoff, entry_price, xloc=xloc.bar_index, color=entry_col, width=lnwid, style=lnsty)
+        ln_tp    := line.new(bar_index - lnlen, tp_price,
+             bar_index + xoff, tp_price,    xloc=xloc.bar_index, color=tp_col, width=lnwid, style=lnsty)
+        ln_sl    := line.new(bar_index - lnlen, sl_price,
+             bar_index + xoff, sl_price,    xloc=xloc.bar_index, color=stop_col, width=lnwid, style=lnsty)
+    else
+        ln_entry.set_x1(bar_index-lnlen)
+        ln_entry.set_x2(bar_index+xoff)
+        ln_tp.set_x1(bar_index-lnlen)
+        ln_tp.set_x2(bar_index+xoff)
+        ln_sl.set_x1(bar_index-lnlen)
+        ln_sl.set_x2(bar_index+xoff)
+// ========================================
+// INLINE LABELS
+// ========================================
+var label lbl_entry = na
+var label lbl_tp    = na
+var label lbl_sl    = na
+
+tostr(x) =>
+    s = " "
+    if x < 0
+        s := "-"
+    v = s + "$" + str.tostring(math.abs(x), "#.##")
+    if cur != "USD" and cur != "$"
+        v := s + str.tostring(math.abs(x), "#.##") + "€"
+    v
+
+if valid and barstate.islast
+    if na(lbl_entry)
+        x = bar_index + xoff
+        t = "ENTRY\t" + str.tostring(entry_price, "#.##")
+        lbl_entry := label.new(x, entry_price, t, 
+             text_font_family = font.family_monospace,
+             color=entry_bg, textcolor=entry_tx, style=label.style_label_left, size=tsz)
+        t := "TP"
+        if showpts
+            t += " pts: " + str.tostring(tp_pts, " #.##") 
+        if showmoney
+            t += " win: "+tostr(tp_usd)
+        lbl_tp    := label.new(x, tp_price,    t,
+             color=tp_bg, textcolor=tp_tx, style=label.style_label_left, size=tsz)
+        t := "SL"
+        if showpts
+            t += " pts: "+ str.tostring(sl_pts, " #.##") 
+        if showmoney
+            t += " loss: "+tostr(sl_usd)
+        lbl_sl    := label.new(x, sl_price,    t,
+             color=stop_bg, textcolor=stop_tx, style=label.style_label_left, size=tsz)
+    else
+        lbl_entry.set_x(bar_index+xoff)
+        lbl_tp.set_x(bar_index+xoff)
+        lbl_sl.set_x(bar_index+xoff)
+    if close <= math.max(tp_price, sl_price) and close >= math.min(tp_price,sl_price)
+        if long_trade
+            current := (close - entry_price) * tick_value * contracts
+        else
+            current := (entry_price - close) * tick_value * contracts
+    if not na(lbl_entry) and showmoney
+        t = "ENTRY"
+        if showpts
+            t += " " + str.tostring(entry_price, "#.##")
+        lbl_entry.set_text(t + tostr(current))
+// ========================================
+// SUMMARY TABLE
+// ========================================
+var table t = table.new(table_pos, 2, 7, bgcolor=table_bg, border_width=2, border_color=color.new(#00d4ff, 30))
+
+if barstate.islast
+    if valid and show_table
+        dir_str   = long_trade ? "▲ LONG" : "▼ SHORT"
+        dir_color = long_trade ? color.new(#10b981, 0) : color.new(#f43f5e, 0)
+        rr_color  = rr >= 1.5 ? color.new(#10b981, 0) : rr >= 1.0 ? color.new(#fbbf24, 0) : color.new(#f43f5e, 0)
+
+        table.merge_cells(t, 0, 0, 1, 0)
+        table.cell(t, 0, 0, "FUTURES RISK MANAGER", text_color=color.white, bgcolor=color.new(#6366f1, 0), 
+             text_size=table_tsz, text_halign=text.align_center)
+
+        table.cell(t, 0, 1, "Direction",    text_color=table_fg, text_size=table_tsz)
+        table.cell(t, 1, 1, dir_str,        text_color=dir_color,             text_size=table_tsz)
+
+        table.cell(t, 0, 2, "Value/pt",     text_color=table_fg, text_size=table_tsz)
+        tt= tostr(tick_value)
+        if contracts != 1
+            tt += " X " + str.tostring(contracts) + " ctrs."
+        table.cell(t, 1, 2, tt,
+             text_color=table_fg, text_size=table_tsz)
+
+        table.cell(t, 0, 3, "TP",           text_color=table_fg, text_size=table_tsz)
+        tt := ""
+        if showpts or not showmoney
+            tt += str.tostring(tp_pts, "#.##") + " pts  "
+        if showmoney or not showpts
+            tt += tostr(tp_usd)
+        table.cell(t, 1, 3, tt, text_color=color.new(#10b981, 0), text_size=table_tsz)
+
+        table.cell(t, 0, 4, "SL",           text_color=table_fg, text_size=table_tsz)
+        tt := ""
+        if showpts or not showmoney
+            tt += str.tostring(sl_pts, "#.##") + " pts  "
+        if showmoney or not showpts
+            tt += tostr(sl_usd)
+        table.cell(t, 1, 4, tt, text_color=color.new(#f43f5e, 0), text_size=table_tsz)
+
+        table.cell(t, 0, 5, "R:R",          text_color=table_fg, text_size=table_tsz)
+        table.cell(t, 1, 5, "1 : " + str.tostring(math.round(rr, 2), "#.##"), 
+             text_color=rr_color, text_size=table_tsz)
+
+        table.merge_cells(t, 0, 6, 1, 6)
+        viable = rr >= 1.0
+        table.cell(t, 0, 6, viable ? "✅ VIABLE" : "❌ LOW R:R", text_color=color.white, 
+             bgcolor=viable ? color.new(#10b981, 30) : color.new(#f43f5e, 30),
+             text_size=table_tsz, text_halign=text.align_center)
+    else
+        table.clear(t, 0, 0, 1, 6)

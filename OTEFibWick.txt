@@ -1,0 +1,349 @@
+//@version=6
+indicator("OTEFibWick", overlay=true, max_boxes_count=500, max_lines_count=500)
+
+// Misc tools combined.
+
+// NB: copied from the Thick Wick indicator width
+// added stuff to draw the last wick CEs.
+
+GW = "Wicks"
+GS = "Settings"
+var visible = input.bool(false, "compute for historic data use", group=GS,
+    tooltip="When disabled computes and keeps always the last objects for use in real time. " +
+         " This permits scrolling back/forward and keeps them always as they are, but discards very old ones. "+
+         "When enabled computes them up to the rightmost visible time. " +
+         "Good for use in historic data but worse when scrolling forward as it takes time to recompute and redraw.")
+
+wick_width = input.int(2, "Wick Width", group = GW, minval=1, maxval=10, inline="w")
+wick_color = input.color(color.gray, "color", group = GW, inline = "w")
+var dowick = input.bool(true,"draw wick  CE", inline="wick", group = GW)
+var minwick = input.float(20, "sz", inline = "wick", group = GW)
+var wickdx = input.int(1, "bars",  inline = "wick", group=GW, 
+     tooltip="0 for auto or number of bars for segment width")
+
+GF = "Fib"
+var dofib = input.bool(true, "mark fib retracements for OTE", group=GF)
+var fibswing = input.bool(true, "use swings to locate 0/100", group=GF, tooltip="retrace in swing highs/lows")
+var oteswingleft=input.int(10, "bars left for swing", group=GF)
+var oteswingright=input.int(3, "bars right for swing", group=GF)
+var autofib = input.bool(true, "use default period if not using swings (else manual period)", group=GF)
+var fiblen = input.int(50, "default lookback period in bars", group=GF)
+
+var ltime = input.time(timestamp("2026-01-01 00:00"), "start of lookback period", group=GF,
+     tooltip="when not using swings and not using a default period this is the start time to locate the high/low")
+var usetime = ltime != timestamp("2026-01-01 00:00")
+var fiboff = input.int(0, "fib line offset", group=GF, tooltip="added to last bar index to start lines", inline="fo")
+var fibwid = input.int(7, "width", group=GF, tooltip="fib line width in bars", inline="fo")
+var do0100 = input.bool(true, "mark levels 0 and 1", group=GF)
+var do1 = input.bool(true, "fib level #1", group=GF, inline="f1")
+var fib1 = input.float(0.5, "at", group=GF, inline="f1", tooltip = "eg, 0.79")
+var do2 = input.bool(true, "fib level #2", group=GF, inline="f2")
+var fib2 = input.float(0.62, "at", group=GF, inline="f2")
+var do3 = input.bool(true, "fib level #3", group=GF, inline="f3")
+var fib3 = input.float(0.705, "at", group = GF, inline="f3")
+var do4 = input.bool(true, "fib level #4", group=GF, inline="f4")
+var fib4 = input.float(0.79, "at", group=GF, inline="f4")
+var fibcol = input.color(color.rgb(120, 123, 134, 80), "color", group=GF)
+var textcol = input.color(color.blue, "text color", group=GF)
+
+GH="HTF OTE"
+var hotelvl0 = input.float(0.62, "from", group = GH, inline="otel")
+var hotelvl1 = input.float(0.79, "to", group=GH, inline="otel")
+var notes = input.int(2, "nb. of kept OTEs (0 to draw no boxes)", group=GH)
+var domarginotes = input.bool(true, "draw margin box to reflect OTEs", group=GH)
+var moteoff = input.int(6, "margin box offset", group=GH, tooltip="added to last bar index to start it", inline="mfo")
+var motewid = input.int(12, "width", group=GH, tooltip="margix box width in bars", inline="mfo")
+autootetf = input.bool(true, "use predefined TFs", group = GH, 
+     tooltip="set predefined HTF values and use the configured ones just as defaults")
+var dohote = input.bool(true, "compute HTF OTE zone #1", group = GH, inline = "h1")
+var hotetf = input.timeframe("D", "for", group=GH, inline = "h1")
+var dohote2 = input.bool(true, "compute HTF OTE zone #2", group = GH, inline = "h2")
+var hotetf2 = input.timeframe("240", "for", group=GH, inline = "h2")
+var hotecolu = input.color(color.new(#ffb300, 80), "rect color bull", group=GH, inline="ocol")
+var hotecold = input.color(color.new(#ff00aa, 81), "bear", group=GH, inline="ocol")
+
+
+if autootetf
+    autootetf := false
+    if timeframe.in_seconds() < 180
+        dohote := true
+        hotetf := "30"
+        dohote2 := true
+        hotetf2 := "120"
+    else if timeframe.isminutes and timeframe.in_seconds() < 5*60
+        dohote := true
+        hotetf := "60"
+        dohote2 := true
+        hotetf2 := "240"
+    else if timeframe.isminutes and timeframe.in_seconds() <= 60*15
+        dohote := true
+        hotetf := "D"
+        dohote2 := true
+        hotetf2 := "240"
+    else if timeframe.isminutes and timeframe.in_seconds() <= 240*60
+        dohote := true
+        hotetf := "D"
+        dohote2 := true
+        hotetf2 := "W"
+    else if timeframe.in_seconds() <= timeframe.in_seconds("D")
+        dohote := true
+        hotetf := "W"
+        dohote2 := true
+        hotetf2 := "M"
+    else
+        dohote := false
+        dohote2 := false
+
+
+
+
+type Fib
+    float level = 0.5
+    line seg = na
+    label lbl = na
+
+
+var compute = true
+if visible
+    compute := time >= chart.left_visible_bar_time and time <= chart.right_visible_bar_time
+
+var lookival = fiblen
+if usetime and not autofib
+    lookival := ta.barssince(time <= ltime)
+    if na(lookival) or lookival < 1
+        lookival := fiblen
+
+wdx() =>
+    r = wickdx
+    if r == 0 and timeframe.in_seconds()/60 < 15
+        r := 4
+    else if r == 0
+        r := 1
+    r
+
+ 
+var wickces = array.new<line>()
+var wicks = array.new<line>()
+var line ln5 = na
+var label lb5 = na
+var line ln70 = na
+var tfsecs = timeframe.in_seconds()
+
+// Calcular el rango total de la vela (High - Low)
+rng = high - low
+
+// Show whole range in the status line
+plot(rng, title="range", display=display.status_line)
+
+if dowick and compute and barstate.isconfirmed
+    bodyh = math.max(open[1],close[1])
+    bodyl = math.min(open[1],close[1])
+    wh = high[1]-bodyh
+    wl = bodyl-low[1]
+    
+    if wh > minwick
+        ce = math.avg(high[1],bodyh)
+        ln = line.new(bar_index-1, ce, bar_index-1+wdx(), ce)
+        wickces.push(ln)
+    if wl > minwick
+        ce = math.avg(low[1],bodyl)
+        ln = line.new(bar_index-1, ce, bar_index-1+wdx(), ce)
+        wickces.push(ln)
+    if wickces.size() > 250
+        w = wickces.shift()
+        w.delete()
+
+if compute 
+    body_top = math.max(open, close)
+    body_bottom = math.min(open, close)
+
+    if wicks.size() > 250
+        w = wicks.shift()
+        w.delete()
+    if high > body_top
+        ln = line.new(bar_index, high, bar_index, body_top, color=wick_color, width=wick_width)
+        wicks.push(ln)
+
+    if wicks.size() > 250
+        w = wicks.shift()
+        w.delete()
+    if compute and low < body_bottom
+        ln = line.new(bar_index, low, bar_index, body_bottom, color=wick_color, width=wick_width)
+        wicks.push(ln)
+    
+
+mkfib(float lvl) =>
+    f = Fib.new(lvl)
+var f0 = mkfib(0)
+var f100 = mkfib(1)
+
+var f1 = (not do1) ? na : mkfib(fib1)
+var f2 = (not do2) ? na : mkfib(fib2)
+var f3 = (not do3)? na : mkfib(fib3)
+var f4 = (not do4) ? na : mkfib(fib4)
+
+method txt(Fib f) =>
+    str.tostring(100.0 * f.level) + "%"
+
+// higher high, lowest low, and nb of bars ago for each one 
+method update(Fib f, float hh, float ll, int hi, int li) =>
+    ival = hh-ll
+    lvl = hh - ival * f.level
+    if hi < li
+        lvl := hh - ival * (1.0-f.level)
+    if na(f.seg)
+        f.seg := line.new(last_bar_index+fiboff, lvl, last_bar_index+fiboff+fibwid, lvl, width = 2, color = fibcol)
+    else
+        f.seg.set_y1(lvl)
+        f.seg.set_y2(lvl)
+        if barstate.isnew
+            f.seg.set_x1(last_bar_index+fiboff)
+            f.seg.set_x2(last_bar_index+fiboff+fibwid)
+    if na(f.lbl)
+        f.lbl := label.new(last_bar_index+fiboff+fibwid, lvl, 
+             f.txt(), style=label.style_label_left, yloc = yloc.price,
+             color = fibcol, textcolor = textcol, textalign = text.align_right)
+    else
+        f.lbl.set_y(lvl)
+        if barstate.isnew
+            f.lbl.set_x(last_bar_index+fiboff+fibwid)
+    true
+
+updatefibs(float hh, float ll, int hi, int li) =>
+    if not na(f1)
+        f1.update(hh,ll, hi, li)
+    if not na(f2)
+        f2.update(hh,ll, hi, li)
+    if not na(f3)
+        f3.update(hh,ll, hi, li)
+    if not na(f4)
+        f4.update(hh,ll, hi, li)
+    if do0100
+        f0.update(hh,ll,hi,li)
+        f100.update(hh,ll,hi,li)
+
+
+var float swlo = na
+var float swhi = na
+var debug = false
+var int swhit = na
+var int swlot = na
+if compute and dofib and fibswing
+    float xswlo  = ta.pivotlow(oteswingleft, oteswingright)
+    float xswhi = ta.pivothigh(oteswingleft, oteswingright)
+    chg = false
+    if not  na(xswlo)
+        swlo := xswlo
+        swlot := bar_index[oteswingright]
+        chg := true
+    else if not na(xswhi)
+        swhi := xswhi
+        swhit := bar_index[oteswingright]
+        chg := true
+    else if not na(swhi) and high > swhi
+        swhi := high
+        swhit := bar_index
+        chg := true
+    else if not na(swlo) and low < swlo
+        swlo := low
+        swlot := bar_index
+        chg := true
+
+    if chg
+        //log.info("hi {0} li {1}", swhit, swlot)
+        if not na(swlot) and not na(swhit)
+            updatefibs(swhi, swlo, swhit, swlot)
+        if debug
+            line.new(swlot, swlo, swlot, swlo+1, extend = extend.both)
+else if compute and dofib and barstate.isnew and bar_index > lookival
+    hi = math.abs(ta.highestbars(high, lookival))
+    hh = high[hi]
+    li = math.abs(ta.lowestbars(low, lookival))
+    ll = low[li]
+    updatefibs(hh, ll, bar_index[hi], bar_index[li])
+ 
+type OTE
+    string tf // timeframe
+    box otebox = na
+    box oterect = na
+    array<box> otes = na    // old ones
+    int start = na // HTF start time
+    bool isshort = false
+    float hi = na
+    float lo = na
+
+
+method starts(OTE ote) =>
+    timeframe.change(ote.tf)
+
+method isok(OTE ote) =>
+    timeframe.in_seconds(ote.tf) > timeframe.in_seconds()
+
+method started(OTE ote) =>
+    if not na(ote.otebox)
+        ote.otes.push(ote.otebox)
+        ote.otebox := na
+    ote.start := time
+    [o, c, h, l] = request.security(syminfo.tickerid, ote.tf,
+        [open[1], close[1], high[1], low[1]], lookahead = barmerge.lookahead_on)
+    oteh = 0.0
+    otel = 0.0
+    ote.isshort := c < o
+    if c > o
+        oteh := h - (h-l) * 0.79
+        otel := h - (h-l) * 0.62
+    else
+        oteh := h - (h-l) * (1-0.79)
+        otel := h - (h-l) * (1-0.62)
+    ote.hi := oteh
+    ote.lo := otel
+    if ote.otes.size() > 1 and ote.otes.size() >= notes
+        b = ote.otes.shift()
+        b.delete()
+
+method updatebox(OTE ote) =>
+    if  not na(ote.start) and na(ote.otebox)
+        ote.otebox := box.new(ote.start, ote.hi, time, ote.lo, text = "OTE "+ote.tf,
+            bgcolor = hotecolu, xloc=xloc.bar_time)
+        if ote.isshort
+            ote.otebox.set_bgcolor(hotecold)
+    else if not na(ote.otebox)
+        ote.otebox.set_right(time)
+ 
+method updatemargin(OTE ote) =>
+    if not na(ote.start) and na(ote.oterect) 
+        ote.oterect := box.new(last_bar_index+moteoff, ote.hi, last_bar_index+moteoff+motewid, ote.lo,
+            text = "OTE\n"+ote.tf, bgcolor = hotecolu, border_color = na)
+        if ote.isshort
+            ote.oterect.set_bgcolor(hotecold)
+    else if timeframe.change(ote.tf)
+        ote.oterect.set_top(ote.hi)
+        ote.oterect.set_bottom(ote.lo)
+        if ote.isshort
+            ote.oterect.set_bgcolor(hotecold)
+        else
+            ote.oterect.set_bgcolor(hotecolu)
+    else if barstate.isnew and not na(ote.oterect)
+        ote.oterect.set_left(last_bar_index+moteoff)
+        ote.oterect.set_right(last_bar_index+moteoff+motewid)
+method updateote(OTE ote) =>
+    if na(ote.otes)
+        ote.otes := array.new<box>()
+    if ote.starts()
+        ote.started()
+    if notes > 0
+        ote.updatebox()
+    if domarginotes
+        ote.updatemargin()
+
+var OTE theote = OTE.new(hotetf)
+var OTE theote2 = OTE.new(hotetf2)
+if compute and dohote and theote.isok() and theote.starts()
+    theote.started()
+if compute and dohote and theote.isok()
+    theote.updateote()
+if compute and dohote2 and theote2.isok() and theote2.starts()
+    theote2.started()
+if compute and dohote2 and theote2.isok()
+    theote2.updateote()
+ 
