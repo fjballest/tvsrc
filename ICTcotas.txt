@@ -1,0 +1,362 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at
+// https://mozilla.org/MPL/2.0/
+// © franjballest
+// ICTcotas: daily and weekly Fair Value Gaps, Volume Imbalances and wick CE levels.
+// Each FVG / volume imbalance is drawn with high, low and CE (midpoint). Wicks are grouped
+// (consecutive candles with a wick on the same side) and the CE of the longest wick of the
+// group (or of a single wick) is drawn. Levels are removed when mitigated.
+
+//@version=6
+indicator("ICTcotas", overlay = true, max_lines_count = 500, max_boxes_count = 500,
+     max_labels_count = 500, max_bars_back = 5000)
+
+const color transparent = #ffffff00
+
+getstyle(string s) =>
+    switch s
+        "dashed" => line.style_dashed
+        "dotted" => line.style_dotted
+        => line.style_solid
+
+getsize(string s) =>
+    switch s
+        "tiny" => size.tiny
+        "small" => size.small
+        "large" => size.large
+        "huge" => size.huge
+        => size.normal
+
+// ============================================================ inputs
+const string G_GEN = "General"
+bool dodaily = input.bool(true, "Daily", group = G_GEN, inline = "tf",
+     tooltip = "Levels from daily candles (chart timeframe must be 1D or lower)")
+bool doweekly = input.bool(true, "Weekly", group = G_GEN, inline = "tf",
+     tooltip = "Levels from weekly candles (chart timeframe must be 1W or lower)")
+int wextra = input.int(1, "weekly extra width", minval = 0, maxval = 3, group = G_GEN,
+     inline = "tf", tooltip = "Added to the line width of weekly levels so they stand "
+     + "out from daily ones")
+string mitig = input.string("Fully filled (wick)", "remove when",
+     options = ["Never", "CE touched", "Fully filled (wick)",
+     "Fully filled (close)"], group = G_GEN, inline = "mit", tooltip = "When a level is considered mitigated and removed. Fully "
+     + "filled means price crossed the far edge: the low of a "
+     + "bullish level, the high of a bearish one (by wick or by close).")
+
+const string G_LBL = "Labels"
+bool dolbl = input.bool(true, "Show labels", group = G_LBL, inline = "l1")
+bool lblbold = input.bool(true, "bold", group = G_LBL, inline = "l1")
+bool lbldir = input.bool(false, "direction (+/-)", group = G_LBL, inline = "l1",
+     tooltip = "Append + (bullish) or - (bearish) to FVG and VI labels")
+string lblsize = input.string("normal", "size", options = ["tiny", "small", "normal", "large",
+     "huge"], group = G_LBL, inline = "l2")
+int xoff = input.int(2, "offset", minval = 1, group = G_LBL, inline = "l2",
+     tooltip = "Bars between the last bar and the labels")
+string txtd = input.string("D", "text: daily", group = G_LBL, inline = "l3")
+string txtw = input.string("W", "weekly", group = G_LBL, inline = "l3")
+string ptxthi = input.string("hi", "parts: high", group = G_LBL, inline = "l4")
+string ptxtlo = input.string("lo", "low", group = G_LBL, inline = "l4")
+string ptxtce = input.string("CE", "CE", group = G_LBL, inline = "l4")
+
+const string G_FVG = "Fair Value Gaps"
+bool dofvg = input.bool(true, "Draw FVGs", group = G_FVG, inline = "f1",
+     tooltip = "Three candle gap: the low of the third candle is above "
+     + "the high of the first (bullish), or the high of the "
+     + "third is below the low of the first (bearish).")
+int nfvg = input.int(8, "keep", minval = 1, maxval = 20, group = G_FVG, inline = "f1",
+     tooltip = "Max FVGs kept per timeframe")
+float fvgmin = input.float(0.0, "min size", minval = 0.0, group = G_FVG, inline = "f1",
+     tooltip = "Min gap size in price points")
+color fvgbull = input.color(color.green, "bull", group = G_FVG, inline = "f2")
+color fvgbear = input.color(color.red, "bear", group = G_FVG, inline = "f2")
+string fvgsty = getstyle(input.string("solid", "hi/lo", options = ["solid", "dashed", "dotted"],
+     group = G_FVG, inline = "f3"))
+int fvgwid = input.int(1, "", options = [1, 2, 3], group = G_FVG, inline = "f3")
+string fvgcesty = getstyle(input.string("dotted", "CE", options = ["solid", "dashed", "dotted"],
+     group = G_FVG, inline = "f3"))
+bool fvgshi = input.bool(true, "show: hi", group = G_FVG, inline = "f4")
+bool fvgslo = input.bool(true, "lo", group = G_FVG, inline = "f4")
+bool fvgsce = input.bool(true, "CE", group = G_FVG, inline = "f4")
+bool fvgfill = input.bool(true, "fill", group = G_FVG, inline = "f5")
+int fvgtr = input.int(100, "transp", minval = 0, maxval = 100, group = G_FVG, inline = "f5")
+string txtfvg = input.string("FVG", "label", group = G_FVG, inline = "f5")
+
+const string G_VI = "Volume Imbalances"
+bool dovi = input.bool(true, "Draw VIs", group = G_VI, inline = "v1",
+     tooltip = "Gap between the bodies of two consecutive candles while "
+     + "their wicks still overlap (no full gap).")
+int nvi = input.int(8, "keep", minval = 1, maxval = 20, group = G_VI, inline = "v1",
+     tooltip = "Max volume imbalances kept per timeframe")
+float vimin = input.float(0.0, "min size", minval = 0.0, group = G_VI, inline = "v1",
+     tooltip = "Min gap size in price points")
+color vibull = input.color(color.teal, "bull", group = G_VI, inline = "v2")
+color vibear = input.color(color.orange, "bear", group = G_VI, inline = "v2")
+string visty = getstyle(input.string("solid", "hi/lo", options = ["solid", "dashed", "dotted"],
+     group = G_VI, inline = "v3"))
+int viwid = input.int(1, "", options = [1, 2, 3], group = G_VI, inline = "v3")
+string vicesty = getstyle(input.string("dotted", "CE", options = ["solid", "dashed", "dotted"],
+     group = G_VI, inline = "v3"))
+bool vishi = input.bool(true, "show: hi", group = G_VI, inline = "v4")
+bool vislo = input.bool(true, "lo", group = G_VI, inline = "v4")
+bool visce = input.bool(true, "CE", group = G_VI, inline = "v4")
+bool vifill = input.bool(true, "fill", group = G_VI, inline = "v5")
+int vitr = input.int(95, "transp", minval = 0, maxval = 100, group = G_VI, inline = "v5")
+string txtvi = input.string("VI", "label", group = G_VI, inline = "v5")
+
+const string G_WK = "Wick CE"
+bool dowk = input.bool(true, "Draw wick CE", group = G_WK, inline = "w1",
+     tooltip = "Consecutive candles with a wick on the same side form a "
+     + "group. The CE (midpoint) of the longest wick of the "
+     + "group is drawn; a lone wick is its own group.")
+int nwk = input.int(10, "keep", minval = 1, maxval = 20, group = G_WK, inline = "w1",
+     tooltip = "Max wick levels kept per timeframe")
+float wkmin = input.float(30.0, "min wick %", minval = 1.0, maxval = 100.0, group = G_WK,
+     inline = "w1", tooltip = "Min wick size as % of the candle range to count as a wick")
+color wkucol = input.color(color.green, "upper", group = G_WK, inline = "w2")
+color wklcol = input.color(color.red, "lower", group = G_WK, inline = "w2")
+string wksty = getstyle(input.string("dashed", "line", options = ["solid", "dashed", "dotted"],
+     group = G_WK, inline = "w3"))
+int wkwid = input.int(1, "", options = [1, 2, 3], group = G_WK, inline = "w3")
+string txtwku = input.string("UW", "labels: upper", group = G_WK, inline = "w4")
+string txtwkl = input.string("LW", "lower", group = G_WK, inline = "w4")
+ 
+// ============================================================ setup
+int tfsecs = timeframe.in_seconds()
+int tfms = tfsecs * 1000
+bool dayOk = dodaily and tfsecs <= 86400
+bool wkOk = doweekly and tfsecs <= 604800
+int mmode = mitig == "CE touched" ? 1 : mitig == "Fully filled (wick)" ? 2
+     : mitig == "Fully filled (close)" ? 3 : 0
+string lblsz = getsize(lblsize)
+var int tfirst = time
+
+type Lvl
+    int kind    // 0 FVG, 1 volume imbalance, 2 wick
+    int tfi     // 0 daily, 1 weekly
+    int dir     // 1 bullish / support, -1 bearish / resistance
+    float hi
+    float lo
+    float ce
+    int t
+    float wsize = na
+    bool dead = false
+    line hiln = na
+    line loln = na
+    line celn = na
+    label hilb = na
+    label lolb = na
+    label celb = na
+    box bx = na
+
+var array<Lvl> lvls = array.new<Lvl>()
+var array<Lvl> wcur = array.new<Lvl>(4, na)   // current wick group level: tf * 2 + side
+
+// ============================================================ helpers
+rmLine(line l) =>
+    if not na(l)
+        l.delete()
+
+rmLabel(label l) =>
+    if not na(l)
+        l.delete()
+
+rmBox(box b) =>
+    if not na(b)
+        b.delete()
+
+tright(int n) =>
+    time + n * tfms
+
+method kill(Lvl l) =>
+    l.dead := true
+    rmLine(l.hiln)
+    rmLine(l.loln)
+    rmLine(l.celn)
+    rmLabel(l.hilb)
+    rmLabel(l.lolb)
+    rmLabel(l.celb)
+    rmBox(l.bx)
+
+kcol(int k, int d) =>
+    k == 0 ? (d == 1 ? fvgbull : fvgbear) : k == 1 ? (d == 1 ? vibull : vibear)
+         : (d == 1 ? wklcol : wkucol)
+
+ksty(int k) =>
+    k == 0 ? fvgsty : k == 1 ? visty : wksty
+
+kcesty(int k) =>
+    k == 0 ? fvgcesty : k == 1 ? vicesty : wksty
+
+kwid(int k, int tfi) =>
+    (k == 0 ? fvgwid : k == 1 ? viwid : wkwid) + (tfi == 1 ? wextra : 0)
+
+// part: 0 high, 1 low, 2 CE. Wick levels only show the CE
+kshow(int k, int part) =>
+    k == 0 ? (part == 0 ? fvgshi : part == 1 ? fvgslo : fvgsce) : k == 1
+         ? (part == 0 ? vishi : part == 1 ? vislo : visce) : part == 2
+
+kfill(int k) =>
+    k == 0 ? fvgfill : k == 1 ? vifill : false
+
+lbltxt(Lvl l, string part) =>
+    string nm = l.kind == 0 ? txtfvg : l.kind == 1 ? txtvi : (l.dir == -1 ? txtwku : txtwkl)
+    string sg = lbldir and l.kind < 2 ? (l.dir == 1 ? "+" : "-") : ""
+    (l.tfi == 0 ? txtd : txtw) + " " + nm + sg + " " + part
+
+mkLine(line cur, int x1, float p, int x2, color c, string sty, int w) =>
+    line r = cur
+    if na(r)
+        r := line.new(x1, p, x2, p, xloc = xloc.bar_time, color = c, style = sty, width = w)
+    else
+        r.set_xy1(x1, p)
+        r.set_xy2(x2, p)
+    r
+
+mkLbl(label cur, int x, float p, string txt, color c) =>
+    label r = cur
+    if na(r)
+        r := label.new(x, p, txt, xloc = xloc.bar_time, style = label.style_label_left,
+             color = transparent, textcolor = c, size = lblsz, text_formatting = lblbold
+             ? text.format_bold : text.format_none)
+    else
+        r.set_xy(x, p)
+    r
+
+// create or update the objects of a level, right edge at the last bar
+method draw(Lvl l) =>
+    int x = tright(xoff)
+    color c = kcol(l.kind, l.dir)
+    int w = kwid(l.kind, l.tfi)
+    string s1 = ksty(l.kind)
+    string s2 = kcesty(l.kind)
+    if kfill(l.kind)
+        color bg = color.new(c, l.kind == 0 ? fvgtr : vitr)
+        if na(l.bx)
+            l.bx := box.new(l.t, l.hi, x, l.lo, xloc = xloc.bar_time, border_color = transparent,
+                 bgcolor = bg)
+        else
+            l.bx.set_lefttop(l.t, l.hi)
+            l.bx.set_rightbottom(x, l.lo)
+    if kshow(l.kind, 0)
+        l.hiln := mkLine(l.hiln, l.t, l.hi, x, c, s1, w)
+        if dolbl
+            l.hilb := mkLbl(l.hilb, x, l.hi, lbltxt(l, ptxthi), c)
+    if kshow(l.kind, 1)
+        l.loln := mkLine(l.loln, l.t, l.lo, x, c, s1, w)
+        if dolbl
+            l.lolb := mkLbl(l.lolb, x, l.lo, lbltxt(l, ptxtlo), c)
+    if kshow(l.kind, 2)
+        l.celn := mkLine(l.celn, l.t, l.ce, x, c, s2, w)
+        if dolbl
+            l.celb := mkLbl(l.celb, x, l.ce, lbltxt(l, ptxtce), c)
+
+// ============================================================ levels
+addLvl(int kind, int tfi, int dir, float lo, float hi, int t) =>
+    Lvl l = Lvl.new(kind, tfi, dir, hi, lo, (hi + lo) / 2, math.max(t, tfirst))
+    lvls.push(l)
+    int keep = kind == 0 ? nfvg : kind == 1 ? nvi : nwk
+    int cnt = 0
+    for v in lvls
+        if v.kind == kind and v.tfi == tfi and not v.dead
+            cnt += 1
+    if cnt > keep
+        for i = 0 to lvls.size() - 1
+            Lvl o = lvls.get(i)
+            if o.kind == kind and o.tfi == tfi and not o.dead
+                o.kill()
+                lvls.remove(i)
+                break
+    l
+
+// one step of the wick group state machine (side 0 = upper wick, 1 = lower wick)
+wickStep(int tfi, int side, bool q, float sz, float lo, float hi, int t) =>
+    int idx = tfi * 2 + side
+    Lvl cur = wcur.get(idx)
+    if not q
+        Lvl none = na
+        wcur.set(idx, none)
+    else if na(cur) or (cur.dead and sz > cur.wsize)
+        Lvl n = addLvl(2, tfi, side == 0 ? -1 : 1, lo, hi, t)
+        n.wsize := sz
+        wcur.set(idx, n)
+    else if sz > cur.wsize
+        cur.lo := lo
+        cur.hi := hi
+        cur.ce := (lo + hi) / 2
+        cur.t := math.max(t, tfirst)
+        cur.wsize := sz
+    true
+// called once per completed higher timeframe candle. 1 is the candle just completed,
+// 2 the one before and 3 the one before that
+processTf(int tfi, float o1, float h1, float l1, float c1, int t1,
+     float o2, float h2, float l2, float c2, int t2, float h3, float l3) =>
+    if dofvg
+        if l1 > h3 and l1 - h3 >= fvgmin
+            addLvl(0, tfi, 1, h3, l1, t2)
+        if h1 < l3 and l3 - h1 >= fvgmin
+            addLvl(0, tfi, -1, h1, l3, t2)
+    float topP = math.max(o2, c2)
+    float botP = math.min(o2, c2)
+    float topC = math.max(o1, c1)
+    float botC = math.min(o1, c1)
+    if dovi
+        if botC > topP and l1 <= h2 and botC - topP >= vimin
+            addLvl(1, tfi, 1, topP, botC, t1)
+        if topC < botP and h1 >= l2 and botP - topC >= vimin
+            addLvl(1, tfi, -1, topC, botP, t1)
+    if dowk
+        float rng = h1 - l1
+        float uw = h1 - topC
+        float lw = botC - l1
+        bool uq = rng > 0 and uw >= wkmin / 100.0 * rng
+        bool lq = rng > 0 and lw >= wkmin / 100.0 * rng
+        wickStep(tfi, 0, uq, uw, topC, h1, t1)
+        wickStep(tfi, 1, lq, lw, l1, botC, t1)
+
+// mitigation: checked every chart bar, only surviving levels get drawn
+runMit() =>
+    int i = lvls.size() - 1
+    while i >= 0
+        Lvl l = lvls.get(i)
+        if l.dead
+            lvls.remove(i)
+        else if mmode > 0
+            bool m = false
+            if l.dir == 1
+                m := mmode == 1 ? low <= l.ce : mmode == 2 ? low <= l.lo : close < l.lo
+            else
+                m := mmode == 1 ? high >= l.ce : mmode == 2 ? high >= l.hi : close > l.hi
+            if m
+                l.kill()
+                lvls.remove(i)
+        i -= 1
+
+// ============================================================ higher timeframe data
+// previous completed candles only (lookahead_on with [n]), so nothing repaints
+htf(string tf) =>
+    request.security(syminfo.tickerid, tf,
+         [time, open[1], high[1], low[1], close[1], time[1],
+         open[2], high[2], low[2], close[2], time[2], high[3], low[3]],
+         lookahead = barmerge.lookahead_on)
+
+[dT, dO1, dH1, dL1, dC1, dT1, dO2, dH2, dL2, dC2, dT2, dH3, dL3] = htf(dayOk ? "D"
+     : timeframe.period)
+[wT, wO1, wH1, wL1, wC1, wT1, wO2, wH2, wL2, wC2, wT2, wH3, wL3] = htf(wkOk ? "W"
+     : timeframe.period)
+
+bool newD = dayOk and dT != nz(dT[1], dT)
+bool newW = wkOk and wT != nz(wT[1], wT)
+
+if newD
+    processTf(0, dO1, dH1, dL1, dC1, dT1, dO2, dH2, dL2, dC2, dT2, dH3, dL3)
+if newW
+    processTf(1, wO1, wH1, wL1, wC1, wT1, wO2, wH2, wL2, wC2, wT2, wH3, wL3)
+runMit()
+
+// ============================================================ last bar: draw
+if barstate.islast
+    for l in lvls
+        l.draw()
+
+var table note = table.new(position.bottom_right, 1, 1)
+if barstate.islast
+    table.cell(note, 0, 0, dayOk or wkOk ? "" : "ICTcotas: use a chart timeframe of 1W or lower",
+         text_color = color.orange, text_size = size.small)
