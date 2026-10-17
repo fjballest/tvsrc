@@ -23,7 +23,7 @@
 //    it is taken.
 //
 // Timeframes: 1W, 1D, 4H, 1H, 15m, 5m, 3m (each can be enabled/disabled).
-// Only those >= the chart timeframe are shown.
+// Only those >= the chart timeframe are shown. The chart timeframe is added (in order) when it is not already shown.
 
 //@version=6
 indicator("IFVG+CISD Bias", overlay = true)
@@ -60,11 +60,14 @@ show15 = input.bool(true, "15m", group = G_TF, inline = "t2")
 show5m = input.bool(true, "5m", group = G_TF, inline = "t2")
 show3m = input.bool(true, "3m", group = G_TF, inline = "t3",
     tooltip = "Only timeframes that are enabled AND greater than or equal to the chart timeframe are shown.")
+showCur = input.bool(true, "Chart timeframe", group = G_TF, inline = "t3",
+    tooltip = "Also show the chart timeframe when it is not already one of the timeframes above. "+
+        "It is placed in order among the other timeframes.")
 
 G_R = "Rows"
 showBias = input.bool(true, "IFVG bias", group = G_R, inline = "r")
 showDlv = input.bool(true, "Delivery", group = G_R, inline = "r")
-showHdr = input.bool(false, "Row labels", group = G_R, inline = "r")
+showHdr = input.bool(true, "Row labels", group = G_R, inline = "r")
 
 G_T = "Table"
 tblpos = getpos(input.string("Top right", "Position / orientation",
@@ -96,7 +99,7 @@ deferOn = input.bool(true, "Defer CISD until the low / high is taken", group = G
 exclInner = input.bool(true, "Exclude inner candles", group = G_D, inline = "in",
     tooltip = "Ignore candles whose open and close lie within the range of the previous candle, "+
         "of the last up-close candle (for down-close candles) or of the last down-close candle (for up-close candles).")
-innerRange = input.string("High-Low", "", options = ["Body", "High-Low"], group = G_D, inline = "in",
+innerRange = input.string("Body", "", options = ["Body", "High-Low"], group = G_D, inline = "in",
     tooltip = "Range of the reference candle used to decide if a candle is inner: its body (open to close) or its "+
         "whole range (low to high).")
 
@@ -376,13 +379,37 @@ secPair(string tf) =>
 
 // Timeframes ==================================================
 chartSecs = timeframe.in_seconds()
-bool v1 = show1W and timeframe.in_seconds("W") >= chartSecs
-bool v2 = show1D and timeframe.in_seconds("D") >= chartSecs
-bool v3 = show4H and timeframe.in_seconds("240") >= chartSecs
-bool v4 = show1H and timeframe.in_seconds("60") >= chartSecs
-bool v5 = show15 and timeframe.in_seconds("15") >= chartSecs
-bool v6 = show5m and timeframe.in_seconds("5") >= chartSecs
-bool v7 = show3m and timeframe.in_seconds("3") >= chartSecs
+int s1 = timeframe.in_seconds("W")
+int s2 = timeframe.in_seconds("D")
+int s3 = timeframe.in_seconds("240")
+int s4 = timeframe.in_seconds("60")
+int s5 = timeframe.in_seconds("15")
+int s6 = timeframe.in_seconds("5")
+int s7 = timeframe.in_seconds("3")
+bool v1 = show1W and s1 >= chartSecs
+bool v2 = show1D and s2 >= chartSecs
+bool v3 = show4H and s3 >= chartSecs
+bool v4 = show1H and s4 >= chartSecs
+bool v5 = show15 and s5 >= chartSecs
+bool v6 = show5m and s6 >= chartSecs
+bool v7 = show3m and s7 >= chartSecs
+// the chart timeframe is added when it is not already shown among the timeframes above
+bool dupCur = (v1 and s1 == chartSecs) or (v2 and s2 == chartSecs) or (v3 and s3 == chartSecs) or
+     (v4 and s4 == chartSecs) or (v5 and s5 == chartSecs) or (v6 and s6 == chartSecs) or (v7 and s7 == chartSecs)
+bool vCur = showCur and not dupCur
+
+// label of the chart timeframe, written like the others (1W, 1D, 4H, 1H, 15m ...)
+tfName(string s) =>
+    float m = str.tonumber(s)
+    string r = s
+    if not na(m)
+        r := m >= 60 and m % 60 == 0 ? str.tostring(m / 60, "#") + "h" : str.tostring(m, "#") + "m"
+    else if str.endswith(s, "S")
+        r := str.lower(s)
+    else if s == "D" or s == "W" or s == "M"
+        r := "1" + s
+    r
+curLabel = tfName(timeframe.period)
 
 // disabled / hidden timeframes request the chart timeframe (cheap, result ignored)
 [b1, d1] = secPair(v1 ? "W" : timeframe.period)
@@ -392,9 +419,10 @@ bool v7 = show3m and timeframe.in_seconds("3") >= chartSecs
 [b5, d5] = secPair(v5 ? "15" : timeframe.period)
 [b6, d6] = secPair(v6 ? "5" : timeframe.period)
 [b7, d7] = secPair(v7 ? "3" : timeframe.period)
+[bC, dC] = secPair(timeframe.period)
 
 // Table ======================================================
-int nvis = (v1 ? 1 : 0) + (v2 ? 1 : 0) + (v3 ? 1 : 0) + (v4 ? 1 : 0) + (v5 ? 1 : 0) + (v6 ? 1 : 0) + (v7 ? 1 : 0)
+int nvis = (v1 ? 1 : 0) + (v2 ? 1 : 0) + (v3 ? 1 : 0) + (v4 ? 1 : 0) + (v5 ? 1 : 0) + (v6 ? 1 : 0) + (v7 ? 1 : 0) + (vCur ? 1 : 0)
 int nRows = (showBias ? 1 : 0) + (showDlv ? 1 : 0)
 int off = showHdr ? 1 : 0
 int biasRow = showBias ? 0 : -1
@@ -416,10 +444,13 @@ put(int slot, int r, string txt, color tc, string tip) =>
         tbl.cell(b, a, txt, text_color = tc, bgcolor = bgCol, text_size = tblsz, tooltip = tip)
 
 if barstate.islast
-    array<bool> vis = array.from(v1, v2, v3, v4, v5, v6, v7)
-    array<int> bs = array.from(b1, b2, b3, b4, b5, b6, b7)
-    array<int> ds = array.from(d1, d2, d3, d4, d5, d6, d7)
-    array<string> labels = array.from("1W", "1D", "4H", "1H", "15m", "5m", "3m")
+    array<int> secs = array.from(s1, s2, s3, s4, s5, s6, s7, chartSecs)
+    array<bool> vis = array.from(v1, v2, v3, v4, v5, v6, v7, vCur)
+    array<int> bs = array.from(b1, b2, b3, b4, b5, b6, b7, bC)
+    array<int> ds = array.from(d1, d2, d3, d4, d5, d6, d7, dC)
+    array<string> labels = array.from("1W", "1D", "4H", "1H", "15m", "5m", "3m", curLabel)
+    // timeframes ordered from the longest to the shortest, the chart timeframe included
+    array<int> idxs = array.sort_indices(secs, order.descending)
 
     if showHdr
         put(-1, -1, "", txtCol, "")
@@ -429,7 +460,8 @@ if barstate.islast
             put(-1, dlvRow, "DLV", txtCol, "Delivery state")
 
     int slot = 0
-    for i = 0 to 6
+    for k = 0 to 7
+        int i = idxs.get(k)
         if vis.get(i)
             put(slot, -1, labels.get(i), txtCol, "")
 
