@@ -86,8 +86,17 @@ string daymlnsty = getstyle(input.string("solid", "", options = ["solid", "dashe
      group = G_DAYS, inline = "dmax"))
 int daymwid = input.int(2, "", options = [1, 2, 3], group = G_DAYS, inline = "dmax")
 bool dodaylbl = input.bool(true, "label unbroken day max/min", group = G_DAYS,
-     inline = "dlbl", tooltip = "Tiny label on day max/min lines that have not been taken yet. "
+     inline = "dlbl", tooltip = "Label on day max/min lines that have not been taken yet. "
      + "It reads week high / week low when the level is the max/min of its week.")
+string dlblsize = input.string("tiny", "size", options = ["tiny", "small", "normal", "large",
+     "huge"], group = G_DAYS, inline = "dlbl")
+bool doreh = input.bool(true, "REH/REL labels", group = G_DAYS, inline = "dreh",
+     tooltip = "When two (or more) unbroken day highs (lows) are close to each other "
+     + "their lines stay, but only the higher high (lower low) is labeled, "
+     + "as day REHs (day RELs): relative equal highs (lows).")
+float reltol = input.float(0.05, "tolerance x daily ATR", minval = 0.0, step = 0.01,
+     group = G_DAYS, inline = "dreh", tooltip = "Max distance between the levels, "
+     + "as a fraction of the daily ATR(14)")
 
 bool doeq = input.bool(true, "equilibrium", group = G_DAYS, inline = "eq",
      tooltip = "mid line between max/min for the whole (previous) day")
@@ -119,10 +128,13 @@ color sesmmincol = input.color(color.red, "min", group = G_ZONES, inline = "smax
 string sesmlnsty = getstyle(input.string("solid", "", options = ["solid", "dashed", "dotted"],
      group = G_ZONES, inline = "smax"))
 int sesmwid = input.int(1, "", options = [1, 2, 3], group = G_ZONES, inline = "smax")
-bool doseslbl = input.bool(true, "Label unbroken session max/min", group = G_ZONES)
-color asiacolor = input.color(color.red, "asia color", group = G_ZONES)
-color londoncolor = input.color(color.green, "london color", group = G_ZONES)
-color uscolor = input.color(color.blue, "NY color", group = G_ZONES)
+bool doseslbl = input.bool(true, "Label unbroken session max/min", group = G_ZONES,
+     inline = "slbl")
+string slblsize = input.string("tiny", "size", options = ["tiny", "small", "normal", "large",
+     "huge"], group = G_ZONES, inline = "slbl")
+color asiacolor = input.color(color.red, "colors: asia", group = G_ZONES, inline = "sescol")
+color londoncolor = input.color(color.green, "london", group = G_ZONES, inline = "sescol")
+color uscolor = input.color(color.blue, "NY", group = G_ZONES, inline = "sescol")
 
 const string GRP_DOG = "Gaps and Ranges"
 bool dogaps = input.bool(true, "Draw NDOG/NWOG/RTHOGs", group = GRP_DOG, inline = "gap",
@@ -142,7 +154,16 @@ int rthogpo3num = input.int(4, "number of stddevs to draw above/below", group = 
 bool dogrect = input.bool(false, "Draw gap rectangles", inline = "gtransp", group = GRP_DOG)
 int grtransp = input.int(90, "transp", inline = "gtransp", group = GRP_DOG,
      tooltip = "transparency for the gap rectangles when drawn")
-float biggap = input.float(5.0, "NDOG/NWOG min size for .hi/.lo labels", group = GRP_DOG)
+bool combgaps = input.bool(false, "Combine gaps at similar levels", group = GRP_DOG,
+     inline = "cmb", tooltip = "Several NDOGs (NWOGs) at the same or nearby levels "
+     + "are drawn once, with the outer levels that include them, "
+     + "labeled NDOGx3 (NWOGx3). A NWOG with NDOGs at similar hi/lo "
+     + "levels is labeled NWOG+NDOG and those NDOG lines are not drawn.")
+float combtol = input.float(0.05, "tolerance x daily ATR", minval = 0.0, step = 0.01,
+     group = GRP_DOG, inline = "cmb", tooltip = "Max distance between levels to be "
+     + "considered similar, as a fraction of the daily ATR(14). It is also used to decide "
+     + "when the hi and lo of a gap are too close to need two labels: they then get a "
+     + "single label in the middle.")
 
 string gaplnsty = getstyle(input.string("solid", "NDOG", options = ["solid", "dashed", "dotted"],
      group = GRP_DOG, inline = "gln"))
@@ -163,7 +184,44 @@ string rgappo3lnsty = getstyle(input.string("dotted", "PO3 line",
      options = ["solid", "dashed", "dotted"], group = GRP_DOG, inline = "rgqln"))
 bool extendgaps = input.bool(false, "extend old RTHOG lines", group = GRP_DOG,
      tooltip = "extend to the right the lines of old RTHOGs")
-bool dopremarket = input.bool(true, "Draw premarket range (m5 or less)", group = GRP_DOG)
+
+const string G_PM = "Premarket Range"
+bool dopremarket = input.bool(true, "Draw premarket range (m5 or less)", group = G_PM,
+     inline = "pm0", tooltip = "High and low of the premarket range, with its quadrants and "
+     + "stddevs. Needs a chart timeframe of 5m or lower.")
+int pmkeep = input.int(1, "quadrants/stddevs for the last", minval = 1, maxval = 5,
+     group = G_PM, inline = "pm0", tooltip = "Number of most recent ranges that get quadrant "
+     + "and stddev lines (as with RTHOG, only the latest by default). Older ranges keep "
+     + "only their high and low.")
+string pmmode = input.string("Auto", "range", options = ["Auto", "Manual"], group = G_PM,
+     inline = "pm1", tooltip = "Auto uses 07:00-09:00 New York time for US (NQ) and "
+     + "06:30-08:30 Madrid time for EU (DAX). Manual uses the range on the right, in the "
+     + "timezone of the market open (New York for NQ, Madrid for DAX).")
+string pmsession = input.session("0700-0900", "manual range", group = G_PM, inline = "pm1")
+bool dopmq = input.bool(true, "PMKT quadrants", group = G_PM, inline = "pm2")
+float pmqmin = input.float(25.0, "min size", group = G_PM, inline = "pm2",
+     tooltip = "min size between quadrants to draw them (the lines at 25%, 50% (CE) and 75% "
+     + "of the range)")
+bool dopmpo3 = input.bool(true, "PMKT stddevs", group = G_PM, inline = "pm3")
+float pmpo3min = input.float(25.0, "min size", group = G_PM, inline = "pm3",
+     tooltip = "min size of the steps to draw them (selects octants, quadrants, half range, "
+     + "whole range or none)")
+int pmpo3num = input.int(4, "number of stddevs to draw above/below", minval = 1,
+     group = G_PM)
+color pmcolor = input.color(color.red, "line", group = G_PM, inline = "pm4")
+int pmwid = input.int(2, "", options = [1, 2, 3], group = G_PM, inline = "pm4")
+string pmqsty = getstyle(input.string("solid", "quadrant", options = ["solid", "dashed", "dotted"],
+     group = G_PM, inline = "pm4"))
+string pmcesty = getstyle(input.string("solid", "CE", options = ["solid", "dashed", "dotted"],
+     group = G_PM, inline = "pm4"))
+string pmpo3sty = getstyle(input.string("dotted", "stddev", options = ["solid", "dashed", "dotted"],
+     group = G_PM, inline = "pm4"))
+string pmlblsize = input.string("normal", "label size", options = ["tiny", "small", "normal",
+     "large", "huge"], group = G_PM, inline = "pm5")
+float pmctol = input.float(0.05, "combine RTHOG labels, tolerance x daily ATR", minval = 0.0,
+     step = 0.01, group = G_PM, inline = "pm5", tooltip = "When an RTHOG stddev line and a "
+     + "premarket stddev line are this close, one label is shown for both, "
+     + "like RTHOG +2 PMKT +3")
 
 const string G_EQ = "Equal Highs / Lows"
 bool doeqhl = input.bool(true, "Draw EQH / EQL", group = G_EQ, inline = "eq1",
@@ -213,6 +271,9 @@ bool preOn = dopremarket and tfsecs <= 300
 int rdx = tfsecs <= 60 ? 4 : 2
 
 string lblsz = getsize(eqlblsize)
+string dlblsz = getsize(dlblsize)
+string pmlsz = getsize(pmlblsize)
+string slblsz = getsize(slblsize)
 string tkr = str.upper(syminfo.ticker)
 string dsc = str.upper(syminfo.description)
 bool autoEU = str.contains(dsc, "DAX") or str.contains(tkr, "DAX") or str.contains(dsc, "GERMANY")
@@ -225,7 +286,8 @@ string asiastr = useUS ? "2000-0000" : "2300-0600"
 string londonstr = useUS ? "0200-0500" : "0800-1300"
 string nyamstr = useUS ? "0700-1130" : "1330-1800"
 string nypmstr = useUS ? "1330-1600" : "1900-2200"
-string premarketstr = useUS ? "0700-0900" : "0630-0830"
+string premarketstr = pmmode == "Manual" ? pmsession
+     : (useUS ? "0700-0900" : "0630-0830")
 
 var array<string> mNames = useUS ? array.from("NYpre", "NYAM.1", "NYAM.2", "NYAM.3", "NY.lunch",
      "NYPM", "NYLast", "MOC", "LDN.1", "LDN.2")
@@ -256,11 +318,12 @@ int lnGaps = dogaps ? gapKinds * 2 * ngapsEff : 0
 int lnRth = dogaps and dorthog ? 4 * ngapsEff + 2 * rthogpo3num + 8 : 0
 int lnSes = doses ? 2 * nsesEff : 0
 int lnPre = preOn ? 4 * nsesEff : 0
+int lnPmx = preOn ? pmkeep * ((dopmq ? 3 : 0) + (dopmpo3 ? 2 * pmpo3num : 0)) : 0
 int lnEq = doeqhl ? (doeqd ? 4 : 2) * eqkeep : 0
 int lbSes = doses and doseslbl ? 2 * nsesEff : 0
 int lbPre = preOn and doseslbl ? 2 * nsesEff : 0
-int lnReserve = lnMonths + lnGaps + lnRth + lnSes + lnPre + lnEq + 10
-int lbReserve = lnMonths + lnGaps + lnRth + lbSes + lbPre + lnEq + 10
+int lnReserve = lnMonths + lnGaps + lnRth + lnSes + lnPre + lnPmx + lnEq + 10
+int lbReserve = lnMonths + lnGaps + lnRth + lbSes + lbPre + lnPmx + lnEq + 10
 int lnPerDay = (dolines ? 1 : 0) + (dodmaxmin ? 2 : 0) + (doeq ? 1 : 0) + (doopen ? 1 : 0)
 int lbPerDay = (doeq ? 1 : 0) + (doopen ? 1 : 0) + (dodaylbl and dodmaxmin ? 2 : 0)
 int daysByLn = lnPerDay > 0 ? math.floor((500 - lnReserve) / lnPerDay) : ndays
@@ -296,6 +359,8 @@ type Zone
     int extendt = na
     float pwhi = na   // highest high of the earlier days of the same week
     float pwlo = na   // lowest low of the earlier days of the same week
+    int hmode = 0     // 0 normal label, 1 REHs label, 2 no label (close to a higher high)
+    int lmode = 0     // 0 normal label, 1 RELs label, 2 no label (close to a lower low)
     bool isday = false
     bool isweek = false
     bool dead = false
@@ -318,6 +383,10 @@ type Zone
     label minlbl = na
     label eqlabel = na
     label oplabel = na
+    array<line> qlines = na     // premarket quadrant lines
+    array<label> qlabels = na
+    array<line> sdlines = na    // premarket stddev lines, in the order +1, -1, +2, -2...
+    array<label> sdlabels = na
 
 type Gap
     string name
@@ -325,6 +394,12 @@ type Gap
     float hi
     float lo
     bool isw = false
+    int n = 1          // gaps grouped into this one (combine gaps)
+    int nd = 0         // NDOGs merged into this NWOG (combine gaps)
+    bool show = true
+    float uhi = na
+    float ulo = na
+    int ut = na
     line hiln = na
     line loln = na
     label hilbl = na
@@ -383,10 +458,11 @@ tright(int n) =>
 timestr() =>
     str.format_time(time, "d MMM", tz)
 
-mkLL(int x1, int x2, float p, color c, string sty, int w, string txt, color tc) =>
+mkLL(int x1, int x2, float p, color c, string sty, int w, string txt, color tc,
+     string sz = size.normal) =>
     line l = line.new(x1, p, x2, p, xloc = xloc.bar_time, color = c, style = sty, width = w)
     label b = label.new(x2, p, txt, xloc = xloc.bar_time, style = label.style_label_left,
-         color = transparent, textcolor = tc)
+         color = transparent, textcolor = tc, size = sz)
     [l, b]
 
 setR(line l, label b, int x, color c) =>
@@ -397,12 +473,12 @@ setR(line l, label b, int x, color c) =>
         b.set_x(x)
         b.set_textcolor(c)
 
-tinyLbl(label cur, bool show, int x, float y, string txt, color c) =>
+tinyLbl(label cur, bool show, int x, float y, string txt, color c, string sz) =>
     label r = cur
     if show
         if na(r)
             r := label.new(x, y, txt, xloc = xloc.bar_time, style = label.style_label_left,
-                 color = transparent, textcolor = c, size = size.tiny)
+                 color = transparent, textcolor = c, size = sz)
         else
             r.set_xy(x, y)
             r.set_text(txt)
@@ -492,8 +568,73 @@ mkZone(string name, ZoneInfo zi = na) =>
     z.zi := zi
     z
 
+// premarket quadrant and stddev objects
+method pmclear(Zone z) =>
+    if not na(z.qlines)
+        for l in z.qlines
+            rmLine(l)
+        z.qlines.clear()
+    if not na(z.qlabels)
+        for b in z.qlabels
+            rmLabel(b)
+        z.qlabels.clear()
+    if not na(z.sdlines)
+        for l in z.sdlines
+            rmLine(l)
+        z.sdlines.clear()
+    if not na(z.sdlabels)
+        for b in z.sdlabels
+            rmLabel(b)
+        z.sdlabels.clear()
+    true
+
+// quadrants (25%, CE, 75%) and stddevs of the range, like the RTHOG ones. Drawn from a
+// couple of bars before the end of the range (or the last bar while it is forming)
+method pmdraw(Zone z) =>
+    z.pmclear()
+    float r = z.hi - z.lo
+    int x1 = tright(xoff)
+    int x0 = (na(z.tend) ? time : z.tend) - tfms * rdx
+    string nm = str.format_time(z.tstart, "d MMM", tz)
+    if r > 0
+        if dopmq and r / 4.0 > pmqmin
+            if na(z.qlines)
+                z.qlines := array.new<line>()
+                z.qlabels := array.new<label>()
+            for k = 1 to 3
+                string pt = k == 1 ? "dq" : k == 2 ? "ce" : "uq"
+                [l1, b1] = mkLL(x0, x1, z.lo + k * r / 4.0, pmcolor, k == 2 ? pmcesty : pmqsty,
+                     pmwid, "PMKT " + pt + " " + nm, pmcolor, pmlsz)
+                z.qlines.push(l1)
+                z.qlabels.push(b1)
+        if dopmpo3
+            float u = 0.0
+            if r / 8 > pmpo3min
+                u := r / 8
+            else if r / 4 > pmpo3min
+                u := r / 4
+            else if r / 2 > pmpo3min
+                u := r / 2
+            else if r > pmpo3min
+                u := r
+            if u > 0
+                if na(z.sdlines)
+                    z.sdlines := array.new<line>()
+                    z.sdlabels := array.new<label>()
+                for i = 1 to pmpo3num
+                    [l2, b2] = mkLL(x0, x1, z.hi + i * u, pmcolor, pmpo3sty, pmwid,
+                         "PMKT +" + str.tostring(i) + "dev", pmcolor, pmlsz)
+                    z.sdlines.push(l2)
+                    z.sdlabels.push(b2)
+                    [l3, b3] = mkLL(x0, x1, z.lo - i * u, pmcolor, pmpo3sty, pmwid,
+                         "PMKT -" + str.tostring(i) + "dev", pmcolor, pmlsz)
+                    z.sdlines.push(l3)
+                    z.sdlabels.push(b3)
+    true
+
 method kill(Zone z) =>
     z.dead := true
+    z.pmclear()
     rmBox(z.rect)
     rmLine(z.vline)
     rmLine(z.vline2)
@@ -537,13 +678,20 @@ method refresh(Zone z) =>
             z.minln.set_xy1(z.lot, z.lo)
             z.minln.set_xy2(lx, z.lo)
         if z.drawlbl
+            string lsz = z.isday ? dlblsz : slblsz
             string hn = z.name + " hi"
             string ln = z.name + " lo"
             if z.isday
                 hn := na(z.pwhi) or z.hi >= z.pwhi ? "week high" : "day high"
                 ln := na(z.pwlo) or z.lo <= z.pwlo ? "week low" : "day low"
-            z.maxlbl := tinyLbl(z.maxlbl, na(z.hidonet), re, z.hi, hn, z.maxsty.col)
-            z.minlbl := tinyLbl(z.minlbl, na(z.lodonet), re, z.lo, ln, z.minsty.col)
+                if z.hmode == 1
+                    hn := "day REHs"
+                if z.lmode == 1
+                    ln := "day RELs"
+            z.maxlbl := tinyLbl(z.maxlbl, na(z.hidonet) and z.hmode != 2, re, z.hi, hn,
+                 z.maxsty.col, lsz)
+            z.minlbl := tinyLbl(z.minlbl, na(z.lodonet) and z.lmode != 2, re, z.lo, ln,
+                 z.minsty.col, lsz)
     if z.isday and doeq
         float eq = math.avg(z.hi, z.lo)
         int ex = na(z.extendt) ? re : z.extendt
@@ -608,6 +756,31 @@ runActive() =>
         else
             z.upd()
         i -= 1
+
+// unbroken day highs (lows) close to each other: the lines stay, but only the higher high
+// (lower low) keeps a label, which reads REHs (RELs)
+markRel(array<Zone> arr, float tol) =>
+    int n = arr.size()
+    if n > 0
+        for i = 0 to n - 1
+            Zone a = arr.get(i)
+            a.hmode := 0
+            a.lmode := 0
+            for j = 0 to n - 1
+                if j != i
+                    Zone b = arr.get(j)
+                    if na(a.hidonet) and na(b.hidonet) and math.abs(a.hi - b.hi) <= tol
+                        if b.hi > a.hi or (b.hi == a.hi and j > i)
+                            a.hmode := 2
+                        else if a.hmode == 0
+                            a.hmode := 1
+                    if na(a.lodonet) and na(b.lodonet) and math.abs(a.lo - b.lo) <= tol
+                        if b.lo < a.lo or (b.lo == a.lo and j > i)
+                            a.lmode := 2
+                        else if a.lmode == 0
+                            a.lmode := 1
+
+    true
 
 // ended zones: only watch for the max/min being taken
 runMon() =>
@@ -684,37 +857,66 @@ if inWin and tfok
     runMon()
 
 // ============================================================ NDOG / NWOG
-method lbl(Gap g, string hl) =>
-    math.abs(g.hi - g.lo) >= biggap ? g.name + "." + hl : g.name
-
-method gend(Gap g, float xe) =>
-    float s = g.hi
-    g.hi := math.max(s, xe)
-    g.lo := math.min(s, xe)
-    g.name := (g.isw ? "NWOG " : "NDOG ") + timestr()
+// create the lines, labels and rectangle of a gap
+method gmake(Gap g) =>
     Sty st = g.isw ? wgapsty : gapsty
     int x = tright(xoff)
     g.hiln := line.new(g.tstart, g.hi, x, g.hi, xloc = xloc.bar_time, color = st.col,
          style = st.sty, width = st.wid)
     g.loln := line.new(g.tstart, g.lo, x, g.lo, xloc = xloc.bar_time, color = st.col,
          style = st.sty, width = st.wid)
-    g.hilbl := label.new(x, g.hi, g.lbl("hi"), xloc = xloc.bar_time, style = label.style_label_left,
+    g.hilbl := label.new(x, g.hi, g.name, xloc = xloc.bar_time, style = label.style_label_left,
          color = transparent, textcolor = st.col)
-    g.lolbl := label.new(x, g.lo, g.lbl("lo"), xloc = xloc.bar_time, style = label.style_label_left,
+    g.lolbl := label.new(x, g.lo, g.name, xloc = xloc.bar_time, style = label.style_label_left,
          color = transparent, textcolor = st.col)
     if dogrect
         g.rect := box.new(g.tstart, g.hi, x, g.lo, xloc = xloc.bar_time, border_color = transparent,
              bgcolor = color.new(st.col, grtransp))
+    true
 
-method gright(Gap g) =>
+method gend(Gap g, float xe) =>
+    float s = g.hi
+    g.hi := math.max(s, xe)
+    g.lo := math.min(s, xe)
+    g.name := (g.isw ? "NWOG " : "NDOG ") + timestr()
+    g.gmake()
+
+// text of the gap: plain, or combined (NDOGx3, NWOGx2, NWOG+NDOG) keeping the date
+method gname(Gap g) =>
+    string b = g.name
+    string dt = " " + str.substring(g.name, 5)   // date of the gap that draws the level
+    if g.isw and g.nd > 0
+        b := (g.n > 1 ? "NWOGx" + str.tostring(g.n) : "NWOG") + "+NDOG"
+             + (g.nd > 1 ? "x" + str.tostring(g.nd) : "") + dt
+    else if g.n > 1
+        b := (g.isw ? "NWOGx" : "NDOGx") + str.tostring(g.n) + dt
+    b
+
+// labels of the levels h and l: two labels with .hi/.lo, or a single one in the middle
+// when the levels are within tol of each other
+method glabels(Gap g, float h, float l, float tol, int x) =>
+    bool small = math.abs(h - l) <= tol
+    string b = g.gname()
+    Sty gs = g.isw ? wgapsty : gapsty
+    g.hilbl.set_xy(x, small ? math.avg(h, l) : h)
+    g.hilbl.set_text(small ? b : b + ".hi")
+    if small
+        rmLabel(g.lolbl)
+        g.lolbl := na
+    else
+        if na(g.lolbl)
+            g.lolbl := label.new(x, l, b + ".lo", xloc = xloc.bar_time,
+                 style = label.style_label_left, color = transparent, textcolor = gs.col)
+        g.lolbl.set_xy(x, l)
+        g.lolbl.set_text(b + ".lo")
+    true
+
+method gright(Gap g, float tol) =>
     int x = tright(xoff)
     if not na(g.hiln)
         g.hiln.set_x2(x)
         g.loln.set_x2(x)
-        g.hilbl.set_x(x)
-        g.lolbl.set_x(x)
-        g.hilbl.set_text(g.lbl("hi"))
-        g.lolbl.set_text(g.lbl("lo"))
+        g.glabels(g.hi, g.lo, tol, x)
     if not na(g.rect)
         g.rect.set_right(x)
 
@@ -724,7 +926,92 @@ method kill(Gap g) =>
     rmLabel(g.hilbl)
     rmLabel(g.lolbl)
     rmBox(g.rect)
- 
+    g.hiln := na
+    g.loln := na
+    g.hilbl := na
+    g.lolbl := na
+    g.rect := na
+
+// ---- combining gaps at similar levels (derived state, recomputed on the last bar)
+method gcomb(Gap g, float tol) =>
+    if not g.show
+        g.kill()
+    else
+        if na(g.hiln)
+            g.gmake()
+        int x = tright(xoff)
+        g.hiln.set_xy1(g.ut, g.uhi)
+        g.hiln.set_xy2(x, g.uhi)
+        g.loln.set_xy1(g.ut, g.ulo)
+        g.loln.set_xy2(x, g.ulo)
+        g.glabels(g.uhi, g.ulo, tol, x)
+        if not na(g.rect)
+            g.rect.set_lefttop(g.ut, g.uhi)
+            g.rect.set_rightbottom(x, g.ulo)
+    true
+
+// gaps whose ranges overlap or are within tol are one group: the oldest draws the
+// outer levels of the group, the others are hidden
+gcluster(array<Gap> arr, float tol) =>
+    int n = arr.size()
+    // a for loop from 0 to n - 1 runs backwards when n = 0, so an empty list is skipped
+    if n > 0
+        array<int> cid = array.new<int>()
+        for i = 0 to n - 1
+            Gap g = arr.get(i)
+            g.n := 1
+            g.nd := 0
+            g.show := true
+            g.uhi := g.hi
+            g.ulo := g.lo
+            g.ut := g.tstart
+            cid.push(i)
+        bool ch = n > 1
+        while ch
+            ch := false
+            for i = 0 to n - 2
+                for j = i + 1 to n - 1
+                    if cid.get(i) != cid.get(j)
+                        Gap a = arr.get(i)
+                        Gap b = arr.get(j)
+                        if a.hi + tol >= b.lo and b.hi + tol >= a.lo
+                            int from = cid.get(j)
+                            int xto = cid.get(i)
+                            for k = 0 to n - 1
+                                if cid.get(k) == from
+                                    cid.set(k, xto)
+                            ch := true
+        array<int> first = array.new<int>(n, -1)
+        for i = 0 to n - 1
+            int c = cid.get(i)
+            int r = first.get(c)
+            if r < 0
+                first.set(c, i)
+            else
+                Gap rep = arr.get(r)
+                Gap g = arr.get(i)
+                rep.n += 1
+                rep.uhi := math.max(rep.uhi, g.hi)
+                rep.ulo := math.min(rep.ulo, g.lo)
+                g.show := false
+
+    true
+
+combineGaps(array<Gap> dg, array<Gap> wg, float tol) =>
+    gcluster(dg, tol)
+    gcluster(wg, tol)
+    for w in wg
+        if w.show
+            for d in dg
+                if d.show and math.abs(d.uhi - w.uhi) <= tol and math.abs(d.ulo - w.ulo) <= tol
+                    w.nd += d.n
+                    d.show := false
+    for g in dg
+        g.gcomb(tol)
+    for g in wg
+        g.gcomb(tol)
+    true
+
 bool gapOpenBar = tsec == gapStartSec
 bool gapCloseBar = (tsec + tfsecs) % 86400 == gapStartSec
 bool gapEndBar = tsec == gapEndSec
@@ -1078,6 +1365,29 @@ drawMonth(int idx, float h, float l, float c, int t, int tc) =>
      high[3], low[3], close[3], time[3], time[2]],
      lookahead = barmerge.lookahead_on)
 
+// ============================================================ RTHOG / premarket stddev labels
+// k-th stddev line in the order +1, -1, +2, -2...: "+2" or "-2"
+po3idx(int k) =>
+    (k % 2 == 0 ? "+" : "-") + str.tostring(int(k / 2) + 1)
+
+// stddev lines of the RTHOG and the premarket range at almost the same price share one
+// label: "RTHOG +2 PMKT +3". The other label is emptied.
+combinePo3(RTHOG g, Zone z, float tol) =>
+    if not na(g.po3labels) and not na(z.sdlabels)
+        for [k, l] in g.po3labels
+            l.set_text("RTHOG " + po3idx(k) + "dev")
+        for [k, l] in z.sdlabels
+            l.set_text("PMKT " + po3idx(k) + "dev")
+        array<bool> used = array.new<bool>(z.sdlabels.size(), false)
+        for [k, l] in g.po3labels
+            for [m, q] in z.sdlabels
+                if not used.get(m) and math.abs(l.get_y() - q.get_y()) <= tol
+                    l.set_text("RTHOG " + po3idx(k) + " PMKT " + po3idx(m))
+                    q.set_text("")
+                    used.set(m, true)
+                    break
+    true
+
 // ============================================================ last-bar work: right edges, months,
 // table
 var table tbl = table.new(position.top_right, 1, 4, bgcolor = transparent)
@@ -1091,6 +1401,8 @@ if domacrobg and tfok
 bgcolor(inMacro ? macrobgcolor : na)
 
 if finalBar and tfok
+    if doreh and dodaylbl and dodmaxmin
+        markRel(days, reltol * nz(datr, 0.0))
     for z in days
         if z.live()
             z.refresh()
@@ -1100,15 +1412,28 @@ if finalBar and tfok
     for z in premarkets
         if z.live()
             z.refresh()
-    for g in dgaps
-        g.gright()
-    for g in wgaps
-        g.gright()
+    if preOn
+        int npm = premarkets.size()
+        for [i, z] in premarkets
+            if i >= npm - pmkeep
+                z.pmdraw()
+            else
+                z.pmclear()
+    float gtol = combtol * nz(datr, 0.0)
+    if combgaps
+        combineGaps(dgaps, wgaps, gtol)
+    else
+        for g in dgaps
+            g.gright(gtol)
+        for g in wgaps
+            g.gright(gtol)
     for [i, g] in rthogs
         if i == rthogs.size() - 1
             g.right(lrgapcolor)
         else if i == rthogs.size() - 2
             g.right(rgapcolor)
+    if preOn and rthogs.size() > 0 and premarkets.size() > 0
+        combinePo3(rthogs.last(), premarkets.last(), pmctol * nz(datr, 0.0))
     if doeqhl
         drawEq(hpv, "EQH", eqhcol)
         drawEq(lpv, "EQL", eqlcol)
