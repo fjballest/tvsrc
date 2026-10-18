@@ -1,0 +1,284 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+
+// CISD (Change in State of Delivery) on the chart timeframe.
+// Same delivery logic as the "DLV" row of IFVG Bias + Delivery Table, plus inner-candle exclusion and
+// deferral of the CISD until the low/high of the reference candle is taken.
+//
+// Rules:
+//  - Delivery is BULLISH while up-close candles keep opening higher. The reference level is the OPEN of the
+//    last up-close candle. When a down-close candle CLOSES below it -> bearish CISD.
+//  - Delivery is BEARISH while down-close candles keep opening lower. The reference level is the OPEN of the
+//    last down-close candle. When an up-close candle CLOSES above it -> bullish CISD.
+//  - Deferral: if the down-close candle that closes below the open of the last up-close candle does NOT go
+//    beyond that up-close candle's low, the CISD is deferred until that low is taken (and the same for up-close
+//    candles and the high of the last down-close candle). The deferred CISD is cancelled if a candle closes back
+//    beyond the open (above it for a bearish CISD, below it for a bullish one) or a new candle of the
+//    reference color appears (up-close while bullish, down-close while bearish).
+//  - Exception: when the delivery changes state N times in a row with no continuation in between, the range
+//    formed by the opens involved is locked. While locked, it only changes when an up-close candle closes above the
+//    TOP open of the range (bullish) or a down-close candle closes below the BOTTOM open (bearish).
+//    (The deferral does not apply to range breaks.)
+//  - Inner candles are excluded from the logic: a candle whose open and close lie within the range of the
+//    previous candle, or (down-close candles) within the range of the last up-close candle, or (up-close
+//    candles) within the range of the last down-close candle.
+//  - Everything is evaluated on closed candles only.
+//
+// Drawn: a horizontal segment at the level broken by each CISD (from the candle that set it to the candle
+// that confirmed the CISD) and a triangle on the candle that confirms it.
+
+//@version=6
+indicator("Delivery CISD", overlay = true, max_lines_count = 500)
+
+// Inputs =====================================================
+lockN = input.int(2, "Alternating changes to lock the range", minval = 2,
+    tooltip = "Number of consecutive changes of delivery state without any continuation in between "+
+        "(continuation = an up-close candle opening higher while bullish, or a down-close candle opening lower "+
+        "while bearish) after which the range is locked. While locked, delivery only changes when a close "+
+        "breaks the top open (bullish) or the bottom open (bearish) of the range.")
+deferOn = input.bool(true, "Defer CISD until the low / high is taken",
+    tooltip = "If the candle that closes beyond the open of the reference candle does not go beyond the reference "+
+        "candle's low (bearish CISD) or high (bullish CISD), the CISD is deferred until that low / high is taken.")
+bullCol = input.color(color.new(#26a69a, 0), "Colors: bullish", inline = "c")
+bearCol = input.color(color.new(#ef5350, 0), "bearish", inline = "c")
+segWidth = input.int(2, "Segment width", minval = 1, maxval = 4)
+exclInner = input.bool(true, "Exclude inner candles", inline = "in",
+    tooltip = "Ignore candles whose open and close lie within the range of the previous candle, "+
+        "of the last up-close candle (for down-close candles) or of the last down-close candle (for up-close candles).")
+innerRange = input.string("High-Low", "", options = ["Body", "High-Low"], inline = "in",
+    tooltip = "Range of the reference candle used to decide if a candle is inner: its body (open to close) or its "+
+        "whole range (low to high). With High-Low, a candle closing slightly below the open of the last up-close candle "+
+        "(but above its low) counts as inner and can no longer trigger a CISD.")
+
+// State ======================================================
+var int st = 0              // 1 bullish, -1 bearish, 0 not defined yet
+var float ref = na          // open of the last up-close (bullish) / down-close (bearish) candle
+var int refBar = na         // bar index of that candle
+var float refLo = na        // low of that candle
+var float refHi = na        // high of that candle
+var bool conf = true        // a continuation happened since the last change of state
+var int flips = 0           // consecutive changes of state without continuation in between
+var bool inRng = false      // range locked
+var float rTop = na         // top open of the locked range
+var float rBot = na         // bottom open of the locked range
+var float sTop = na         // top open of the current alternation sequence
+var float sBot = na         // bottom open of the current alternation sequence
+var int seqBar = na         // bar where the alternation sequence started
+
+// deferred CISD: -1 = bearish waiting for the reference candle's low, 1 = bullish waiting for its high
+var int pend = 0
+var float pOpen = na        // open of the reference candle (level already closed beyond)
+var float pLvl = na         // low (bearish) / high (bullish) of the reference candle that must be taken
+var int pBar = na           // bar of the reference candle
+var float pNewOpen = na     // last candle of the new direction while waiting (becomes the new reference)
+var float pNewHi = na
+var float pNewLo = na
+var int pNewBar = na
+
+var float lastUpLo = na     // range of the last up-close candle (inner candle detection)
+var float lastUpHi = na
+var float lastDnLo = na     // range of the last down-close candle
+var float lastDnHi = na
+
+int prevSt = st
+float brokenLvl = na        // level broken on this candle
+int brokenBar = na          // candle where that level was set
+
+if barstate.isconfirmed
+    bool up = close > open
+    bool dn = close < open
+
+    // inner candle detection (all ranges are those of the raw previous candles)
+    bool useHL = innerRange == "High-Low"
+    float xLo = math.min(open, close)
+    float xHi = math.max(open, close)
+    bool inner = false
+    if exclInner and bar_index > 0
+        float pLo = useHL ? low[1] : math.min(open[1], close[1])
+        float pHi = useHL ? high[1] : math.max(open[1], close[1])
+        inner := xLo >= pLo and xHi <= pHi
+        if not inner and dn and not na(lastUpLo)
+            inner := xLo >= lastUpLo and xHi <= lastUpHi
+        if not inner and up and not na(lastDnLo)
+            inner := xLo >= lastDnLo and xHi <= lastDnHi
+
+    if inner
+        // excluded candle: no reference, no continuation, no change of state
+        bool skipped = true
+    else if st == 0
+        if up or dn
+            st := up ? 1 : -1
+            ref := open
+            refBar := bar_index
+            refLo := low
+            refHi := high
+            conf := true
+            flips := 0
+    else if inRng
+        // range locked: only a close beyond the top / bottom open changes the delivery
+        if up and close > rTop
+            brokenLvl := rTop
+            brokenBar := seqBar
+            st := 1
+            ref := open
+            refBar := bar_index
+            refLo := low
+            refHi := high
+            inRng := false
+            conf := true
+            flips := 0
+            sTop := na
+            sBot := na
+            pend := 0
+        else if dn and close < rBot
+            brokenLvl := rBot
+            brokenBar := seqBar
+            st := -1
+            ref := open
+            refBar := bar_index
+            refLo := low
+            refHi := high
+            inRng := false
+            conf := true
+            flips := 0
+            sTop := na
+            sBot := na
+            pend := 0
+        else
+            rTop := math.max(rTop, open)
+            rBot := math.min(rBot, open)
+    else
+        bool flip = false
+        float oRef = ref        // level broken by the CISD
+        int oBar = refBar       // candle that set it
+        float nRef = open       // new reference (open of the candle of the new direction)
+        float nHi = high
+        float nLo = low
+        int nBar = bar_index
+        if st == 1
+            if pend == -1
+                // a down-close candle already closed below the open of the last up-close candle without taking its low
+                if dn
+                    pNewOpen := open
+                    pNewHi := high
+                    pNewLo := low
+                    pNewBar := bar_index
+                if close < pOpen and low < pLvl
+                    flip := true
+                    oRef := pOpen
+                    oBar := pBar
+                    nRef := pNewOpen
+                    nHi := pNewHi
+                    nLo := pNewLo
+                    nBar := pNewBar
+                else if close > pOpen or up
+                    pend := 0
+            if not flip
+                if up
+                    if open > ref
+                        // continuation: up-close candle offering a higher open
+                        conf := true
+                        flips := 0
+                        sTop := na
+                        sBot := na
+                    ref := open
+                    refBar := bar_index
+                    refLo := low
+                    refHi := high
+                else if dn and close < ref
+                    if not deferOn or low < refLo
+                        flip := true
+                    else
+                        pend := -1
+                        pOpen := ref
+                        pLvl := refLo
+                        pBar := refBar
+                        pNewOpen := open
+                        pNewHi := high
+                        pNewLo := low
+                        pNewBar := bar_index
+        else
+            if pend == 1
+                // an up-close candle already closed above the open of the last down-close candle without taking its high
+                if up
+                    pNewOpen := open
+                    pNewHi := high
+                    pNewLo := low
+                    pNewBar := bar_index
+                if close > pOpen and high > pLvl
+                    flip := true
+                    oRef := pOpen
+                    oBar := pBar
+                    nRef := pNewOpen
+                    nHi := pNewHi
+                    nLo := pNewLo
+                    nBar := pNewBar
+                else if close < pOpen or dn
+                    pend := 0
+            if not flip
+                if dn
+                    if open < ref
+                        // continuation: down-close candle offering a lower open
+                        conf := true
+                        flips := 0
+                        sTop := na
+                        sBot := na
+                    ref := open
+                    refBar := bar_index
+                    refLo := low
+                    refHi := high
+                else if up and close > ref
+                    if not deferOn or high > refHi
+                        flip := true
+                    else
+                        pend := 1
+                        pOpen := ref
+                        pLvl := refHi
+                        pBar := refBar
+                        pNewOpen := open
+                        pNewHi := high
+                        pNewLo := low
+                        pNewBar := bar_index
+        if flip
+            if conf
+                flips := 1
+                seqBar := oBar
+                sTop := math.max(oRef, nRef)
+                sBot := math.min(oRef, nRef)
+            else
+                flips += 1
+                sTop := math.max(nz(sTop, oRef), math.max(oRef, nRef))
+                sBot := math.min(nz(sBot, oRef), math.min(oRef, nRef))
+            brokenLvl := oRef
+            brokenBar := oBar
+            conf := false
+            st := -st
+            ref := nRef
+            refBar := nBar
+            refLo := nLo
+            refHi := nHi
+            pend := 0
+            if flips >= lockN
+                inRng := true
+                rTop := sTop
+                rBot := sBot
+
+    // remember the range of this candle for the next ones
+    if up
+        lastUpLo := useHL ? low : xLo
+        lastUpHi := useHL ? high : xHi
+    else if dn
+        lastDnLo := useHL ? low : xLo
+        lastDnHi := useHL ? high : xHi
+
+// +1 = bullish CISD, -1 = bearish CISD
+int cisd = (prevSt != 0 and st != prevSt) ? st : 0
+
+// Drawing ====================================================
+if cisd != 0 and not na(brokenLvl)
+    line.new(brokenBar, brokenLvl, bar_index, brokenLvl, color = cisd > 0 ? bullCol : bearCol, width = segWidth)
+
+plotshape(cisd == 1, "CISD bullish", shape.triangleup, location.belowbar, bullCol, size = size.tiny)
+plotshape(cisd == -1, "CISD bearish", shape.triangledown, location.abovebar, bearCol, size = size.tiny)
+
+alertcondition(cisd == 1, "Bullish CISD", "Bullish CISD on {{ticker}} {{interval}}")
+alertcondition(cisd == -1, "Bearish CISD", "Bearish CISD on {{ticker}} {{interval}}")
