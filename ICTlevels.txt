@@ -154,7 +154,7 @@ int rthogpo3num = input.int(4, "number of stddevs to draw above/below", group = 
 bool dogrect = input.bool(false, "Draw gap rectangles", inline = "gtransp", group = GRP_DOG)
 int grtransp = input.int(90, "transp", inline = "gtransp", group = GRP_DOG,
      tooltip = "transparency for the gap rectangles when drawn")
-bool combgaps = input.bool(false, "Combine gaps at similar levels", group = GRP_DOG,
+bool combgaps = input.bool(true, "Combine gaps at similar levels", group = GRP_DOG,
      inline = "cmb", tooltip = "Several NDOGs (NWOGs) at the same or nearby levels "
      + "are drawn once, with the outer levels that include them, "
      + "labeled NDOGx3 (NWOGx3). A NWOG with NDOGs at similar hi/lo "
@@ -199,11 +199,11 @@ string pmmode = input.string("Auto", "range", options = ["Auto", "Manual"], grou
      + "timezone of the market open (New York for NQ, Madrid for DAX).")
 string pmsession = input.session("0700-0900", "manual range", group = G_PM, inline = "pm1")
 bool dopmq = input.bool(true, "PMKT quadrants", group = G_PM, inline = "pm2")
-float pmqmin = input.float(25.0, "min size", group = G_PM, inline = "pm2",
+float pmqmin = input.float(20.0, "min size", group = G_PM, inline = "pm2",
      tooltip = "min size between quadrants to draw them (the lines at 25%, 50% (CE) and 75% "
      + "of the range)")
 bool dopmpo3 = input.bool(true, "PMKT stddevs", group = G_PM, inline = "pm3")
-float pmpo3min = input.float(25.0, "min size", group = G_PM, inline = "pm3",
+float pmpo3min = input.float(20.0, "min size", group = G_PM, inline = "pm3",
      tooltip = "min size of the steps to draw them (selects octants, quadrants, half range, "
      + "whole range or none)")
 int pmpo3num = input.int(4, "number of stddevs to draw above/below", minval = 1,
@@ -357,6 +357,7 @@ type Zone
     int hidonet = na
     int lodonet = na
     int extendt = na
+    int tclose = na     // premarket range: market close, the lines never go past it
     float pwhi = na   // highest high of the earlier days of the same week
     float pwlo = na   // lowest low of the earlier days of the same week
     int hmode = 0     // 0 normal label, 1 REHs label, 2 no label (close to a higher high)
@@ -593,7 +594,7 @@ method pmclear(Zone z) =>
 method pmdraw(Zone z) =>
     z.pmclear()
     float r = z.hi - z.lo
-    int x1 = tright(xoff)
+    int x1 = na(z.tclose) ? tright(xoff) : math.min(tright(xoff), z.tclose)
     int x0 = (na(z.tend) ? time : z.tend) - tfms * rdx
     string nm = str.format_time(z.tstart, "d MMM", tz)
     if r > 0
@@ -650,6 +651,8 @@ method kill(Zone z) =>
 // create or update every object of the zone from its current state
 method refresh(Zone z) =>
     int re = tright(2)
+    if not na(z.tclose)
+        re := math.min(re, z.tclose)
     int xe = na(z.tend) ? re : z.tend
     if z.drawvlines or (z.isday and dolines)
         if na(z.vline)
@@ -663,8 +666,8 @@ method refresh(Zone z) =>
                  xloc = xloc.bar_time,
                  color = z.lnsty.col, style = z.lnsty.sty, width = z.lnsty.wid)
     if z.drawmaxmin
-        int hx = na(z.hidonet) ? re : z.hidonet
-        int lx = na(z.lodonet) ? re : z.lodonet
+        int hx = na(z.hidonet) ? re : math.min(z.hidonet, re)
+        int lx = na(z.lodonet) ? re : math.min(z.lodonet, re)
         if na(z.maxln)
             z.maxln := line.new(z.hit, z.hi, hx, z.hi, xloc = xloc.bar_time, color = z.maxsty.col,
                  width = z.maxsty.wid, style = z.maxsty.sty)
@@ -845,6 +848,8 @@ if inWin and tfok
         Zone p = mkZone(premarket.name, premarket)
         p.drawmaxmin := dosmaxmin
         p.drawvlines := true
+        // lines stop at the market close (end of the market window, in tz seconds of day)
+        p.tclose := time + ((market.es - tsec + 86400) % 86400) * 1000
         p.drawlbl := doseslbl
         p.lnsty := daysty
         p.maxsty := sesmaxsty
