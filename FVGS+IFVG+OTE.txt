@@ -1,6 +1,12 @@
 // This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
 // © franjballest
 // [OTE] modified: IFVGs can now be filtered/flagged by ICT OTE (0.62 - 0.79 retracement of the leg)
+// [DE] Delivery Engine features (from Nuno's Delivery Engine V20, updated to V29), all off by default:
+//   - displacement filter: FVGs only when the middle candle range exceeds N standard deviations
+//   - inversion rules: full-body confirmation, several inversions per zone (IFVG x2...), invalidation
+//   - A+ setups: IFVG right after a sweep of the opposite swing liquidity (killzone, HTF structure), and FVGs
+//     born from an MSS with displacement after such a sweep; tagged A+ on the boxes
+// Label parts: the IFVG labels can show or hide the OTE timeframes, the +/- sign and the A+ tag.
 
 // draw fvgs of the current timeframe including volume gaps
 // when using m5,4,3,2,1, track last 1PFVGs
@@ -45,7 +51,7 @@ getvalign(s) =>
 // FVGS =================================================
 // INPUTS ====================================================
 // Sections: Enable / Draw / Filter | FVG Settings | 1st Presented FVGs | Wick Settings |
-//           IFVG Settings | IFVG + OTE
+//           IFVG Settings | IFVG + OTE | Delivery Engine
 // Inputs sharing an `inline` id are shown on one line in the settings dialog.
 
 // Enable / Draw / Filter ====================================
@@ -153,11 +159,25 @@ showSignals = input.bool(false, "Show signals", group = G_IFVG, inline = "ial",
 showIfvgLbl = input.bool(true, "Labels", group = G_IFVG, inline = "ial",
     tooltip = "Show the text labels (IFVG+ / IFVG- / OTE) on the IFVG boxes.")
 color ifvgTxtCol = showIfvgLbl ? color.black : color.new(color.black, 100)
+lblTf = input.bool(true, "Label parts: OTE TF", group = G_IFVG, inline = "lp",
+    tooltip = "Parts of the IFVG labels: the timeframes of the OTE match (e.g. 5m+15m), the + / - of the IFVG "+
+        "(IFVG+ / IFVG-), and the A+ tag of the Delivery Engine setups.")
+lblSign = input.bool(true, "+ / -", group = G_IFVG, inline = "lp")
+lblAp = input.bool(true, "A+", group = G_IFVG, inline = "lp")
 
-keepIFVG = input.bool(false, "Keep confirmed IFVGs, max", group = G_IFVG, inline = "keep",
+keepIFVG = input.bool(true, "Keep confirmed IFVGs, max", group = G_IFVG, inline = "keep",
     tooltip = "Confirmed IFVGs not yet invalidated stay drawn (their FVG box stays an IFVG box). "+
         "When invalidated (close back through it) or beyond max, the FVG box is restored as it was.")
 keepMax = input.int(20, "", minval = 1, maxval = 100, group = G_IFVG, inline = "keep")
+deConf = input.string("Close", "IFVG confirmation", options = ["Close", "Full body"], group = G_IFVG,
+    tooltip = "Close: the close is beyond the FVG. Full body: open and close are both beyond it.")
+deInv = input.bool(false, "Inversion rules, max inversions", group = G_IFVG, inline = "di",
+    tooltip = "Close mode (not swings). Off: a close back through a confirmed IFVG just cancels it and it can be "+
+        "confirmed again.\nOn: each close through the zone inverts it again (IFVG, IFVG x2 in the other direction, "+
+        "...) up to the max; the next close through invalidates it. Only the first inversion is tracked for OTE.")
+deMaxInv = input.int(1, "", minval = 1, maxval = 10, group = G_IFVG, inline = "di")
+deDead = input.string("Fade", "Invalidated IFVG", options = ["Fade", "Back to FVG"], group = G_IFVG, inline = "dv")
+deDeadCol = input.color(color.new(color.gray, 85), "", group = G_IFVG, inline = "dv")
 
 ifvgswings = input.bool(false, "Swings (else closes)", group = G_IFVG, inline = "sw",
     tooltip = "On: keep a single IFVG under watch, located using swings.\n"+
@@ -221,6 +241,51 @@ oteBandCol = input.color(color.new(color.yellow, 85), "Colors: band", group = G_
     tooltip = "Band fill (when matching), IFVG highlight / border, and band text.")
 oteHighlight = input.color(color.yellow, "border", group = G_OTE, inline = "oc")
 oteTextCol = input.color(color.black, "text", group = G_OTE, inline = "oc")
+
+// Delivery Engine (from Nuno's Delivery Engine V20) =========
+G_DE = "Delivery Engine (Nuno)"
+
+deDisp = input.bool(false, "Displacement FVGs only", group = G_DE, inline = "dd",
+    tooltip = "Only FVGs whose middle candle is a displacement candle: its range is larger than 'strength' times "+
+        "the standard deviation of the last 'length' candle ranges. Applies to the drawn FVGs and to the IFVG "+
+        "candidates; 1PFVGs are not filtered.")
+deDispType = input.string("Open to Close", "", options = ["Open to Close", "High to Low"], group = G_DE, inline = "dd")
+deStdLen = input.int(100, "Length / strength (x std dev)", minval = 1, group = G_DE, inline = "ds")
+deStdX = input.float(4.0, "", minval = 0.0, step = 0.5, group = G_DE, inline = "ds")
+deDispBar = input.bool(false, "Color displacement candles", group = G_DE, inline = "dc",
+    tooltip = "The middle candle of each displacement FVG (length / strength above), with or without "+
+        "'Displacement FVGs only'.")
+deDispCol = input.color(color.yellow, "", group = G_DE, inline = "dc")
+deFlag = input.bool(false, "Flag displacement FVGs, border width", group = G_DE, inline = "df",
+    tooltip = "FVGs whose middle candle is a displacement candle are drawn with this border width, "+
+        "with or without 'Displacement FVGs only'.")
+deFlagW = input.int(3, "", minval = 1, maxval = 4, group = G_DE, inline = "df")
+
+
+deAplus = input.bool(false, "A+ setups", group = G_DE, inline = "da",
+    tooltip = "A+ IFVG: confirmed within 'within' candles after a sweep of the opposite swing liquidity "+
+        "(IFVG+ after a swing low is taken, IFVG- after a swing high).\n"+
+        "A+ FVG: born from a market structure shift with displacement (close beyond the last swing high / low "+
+        "against the structure, with a displacement candle in its direction among the last candles) that comes "+
+        "within 'within' candles after such a sweep.\nSwing liquidity: pivots with this length on each side.")
+deLiqLen = input.int(5, "swing length / within", minval = 1, maxval = 50, group = G_DE, inline = "da")
+deSeqWin = input.int(50, "", minval = 1, maxval = 200, group = G_DE, inline = "da")
+deMssLen = input.int(3, "MSS swing length", minval = 1, maxval = 20, group = G_DE,
+    tooltip = "Candles on each side of the internal swings broken by the MSS. Shorter: the MSS comes earlier, "+
+        "against a closer level. Same as the swing length: the Delivery Engine V20 behaviour.")
+deMssX = input.float(2.0, "MSS displacement (x std dev) / candles", minval = 0.5, step = 0.25, group = G_DE, inline = "dm",
+    tooltip = "Strength of the MSS displacement candle, and how many candles before the break it may be.\n"+
+        "A break against the structure without displacement is a CHoCH; a later break with displacement in the "+
+        "same direction within 'within' candles is taken as the MSS.")
+deMssWin = input.int(2, "", minval = 0, maxval = 5, group = G_DE, inline = "dm")
+deKz = input.bool(true, "A+ only inside killzones", group = G_DE,
+    tooltip = "The sweep-to-IFVG / MSS must happen inside the Asia, London, NY AM or NY PM sessions of ICTlevels "+
+        "(TZ of the 1st Presented FVGs). Ignored above 15m.")
+deHtfOn = input.bool(false, "A+ only with the HTF structure", group = G_DE, inline = "dh",
+    tooltip = "Only A+ when the structure of this timeframe (last closed candle) goes in the same direction: "+
+        "bullish after a close above its last swing high, bearish after a close below its last swing low. "+
+        "Ignored when not higher than the chart timeframe.")
+deHtf = input.timeframe("60", "", group = G_DE, inline = "dh")
 
 bounces(p) =>
     (math.abs(p-low) < 2 and close > low+10) or (math.abs(p-high)<2 and close < high-10)
@@ -305,7 +370,13 @@ type FVG
     bool cand = false // current IFVG candidate (its box is shown as IFVG)
     bool own = false // the box exists only because of the IFVG (the FVG itself is not drawn)
     bool shown = false // FVG is in the drawn arrays
+    bool aplus = false // [DE] A+ FVG (born from an A+ MSS)
+    bool disp = false // [DE] middle candle is a displacement candle
 
+
+// [DE] border width: thicker for flagged displacement FVGs
+method bw(FVG f) =>
+    deFlag and f.disp ? deFlagW : 1
 
 method kill(FVG f) =>
     if not na(f)
@@ -460,8 +531,8 @@ method restore(FVG f) =>
         else
             f.rect.set_bgcolor(f.bgColor())
             f.rect.set_border_color(f.lnColor())
-            f.rect.set_border_width(1)
-            f.rect.set_text("")
+            f.rect.set_border_width(f.bw())
+            f.rect.set_text(f.aplus and lblAp and not hideReg ? "A+" : "")
             f.rect.set_right(f.endsAt())
             f.rect.set_extend((f.isifp or f.isfp) ? extend.right : extend.none)
     true
@@ -657,6 +728,152 @@ onSweep(int armStart) =>
         pendF.clear()
     true
 
+// [DE] Delivery Engine =========================================================
+// displacement: candle range vs. its standard deviation (TFO criterion of the Delivery Engine)
+float deRange = deDispType == "Open to Close" ? math.abs(open - close) : high - low
+float deStd = ta.stdev(deRange, deStdLen) * deStdX
+bool deDispOK = deRange[2] > deStd[2]   // middle candle of the FVG detected on this bar
+// the middle candle of a displacement FVG (detected one candle later, hence the offset)
+bool deDispFvg = deRange[1] > deStd[1] and (close[1] > open[1] ? high[2] < low : low[2] > high)
+barcolor(deDispBar and deDispFvg ? deDispCol : na, offset = -1)
+float deStdMss = ta.stdev(deRange, deStdLen) * deMssX
+bool deDispUp = nz(ta.barssince(deRange > deStdMss and close > open), 999) <= deMssWin
+bool deDispDn = nz(ta.barssince(deRange > deStdMss and close < open), 999) <= deMssWin
+
+// killzones (ICTlevels sessions) in the 1PFVG time zone; ignored above 15m
+bool deUS = tz != "Europe/Madrid"
+bool deInKz = not na(time(timeframe.period, deUS ? "2000-0000" : "2300-0600", tz))
+     or not na(time(timeframe.period, deUS ? "0200-0500" : "0800-1300", tz))
+     or not na(time(timeframe.period, deUS ? "0700-1130" : "1330-1800", tz))
+     or not na(time(timeframe.period, deUS ? "1330-1600" : "1900-2200", tz))
+bool deKzOK = not deKz or not timeframe.isintraday or tfsecs > 900 or deInKz
+
+// HTF structure: 1 after a close above the last swing high, -1 after a close below the last swing low
+deStruct(int len) =>
+    var float sh = na
+    var float sl = na
+    var int d = 0
+    float ph = ta.pivothigh(high, len, len)
+    float pl = ta.pivotlow(low, len, len)
+    if not na(sh) and close > sh
+        d := 1
+        sh := na
+    if not na(sl) and close < sl
+        d := -1
+        sl := na
+    if not na(ph)
+        sh := ph
+    if not na(pl)
+        sl := pl
+    d
+bool deHtfUse = deHtfOn and timeframe.in_seconds(deHtf) > tfsecs
+int deHtfDir = request.security(syminfo.tickerid, deHtfUse ? deHtf : timeframe.period, deStruct(deLiqLen)[1],
+     lookahead = barmerge.lookahead_on)
+bool deHtfUp = not deHtfUse or nz(deHtfDir) == 1
+bool deHtfDn = not deHtfUse or nz(deHtfDir) == -1
+
+// swing liquidity (BSL / SSL) not taken yet, and its sweeps
+float dePH = ta.pivothigh(high, deLiqLen, deLiqLen)
+float dePL = ta.pivotlow(low, deLiqLen, deLiqLen)
+var array<float> deBsl = array.new<float>()
+var array<float> deSsl = array.new<float>()
+var int deLastBsl = na   // bar of the last sweep of a swing high
+var int deLastSsl = na
+if deBsl.size() > 0
+    for i = deBsl.size() - 1 to 0
+        if high > deBsl.get(i)
+            deBsl.remove(i)
+            deLastBsl := bar_index
+if deSsl.size() > 0
+    for i = deSsl.size() - 1 to 0
+        if low < deSsl.get(i)
+            deSsl.remove(i)
+            deLastSsl := bar_index
+bool deSslRecent = not na(deLastSsl) and bar_index - deLastSsl <= deSeqWin
+bool deBslRecent = not na(deLastBsl) and bar_index - deLastBsl <= deSeqWin
+
+// A+ for an IFVG confirmed on this bar in direction d
+deAp(int d) =>
+    deAplus and deKzOK and (d == 1 ? deSslRecent and deHtfUp : deBslRecent and deHtfDn)
+
+// structure of the chart (swings of deMssLen): MSS = break of the last swing against the structure with
+// displacement, or a break with displacement in the direction of a recent CHoCH (break without displacement)
+float deMPH = ta.pivothigh(high, deMssLen, deMssLen)
+float deMPL = ta.pivotlow(low, deMssLen, deMssLen)
+var float deShP = na
+var float deSlP = na
+var int deDir = 0
+var int deMssUpBar = na    // bar of the last A+ MSS up
+var int deMssDnBar = na
+var int deChochUp = na     // bar of the last CHoCH up, while it can still be upgraded to an MSS
+var int deChochDn = na
+if not na(deShP) and close > deShP
+    bool isRev = deDir != 1
+    bool upg = not isRev and not na(deChochUp) and bar_index - deChochUp <= deSeqWin and deDispUp
+    bool isMss = (isRev or upg) and deDispUp
+    if isMss
+        deChochUp := na
+    else if isRev
+        deChochUp := bar_index
+    deChochDn := na
+    if isMss and deAp(1)
+        deMssUpBar := bar_index
+        // FVGs born after the sweep become A+
+        for f in lfvgs
+            if f.sbar >= deLastSsl and not f.aplus
+                f.aplus := true
+                if not na(f.rect) and not f.kept and lblAp and not hideReg
+                    f.rect.set_text("A+")
+    deDir := 1
+    deShP := na
+if not na(deSlP) and close < deSlP
+    bool isRev = deDir != -1
+    bool upg = not isRev and not na(deChochDn) and bar_index - deChochDn <= deSeqWin and deDispDn
+    bool isMss = (isRev or upg) and deDispDn
+    if isMss
+        deChochDn := na
+    else if isRev
+        deChochDn := bar_index
+    deChochUp := na
+    if isMss and deAp(-1)
+        deMssDnBar := bar_index
+        for f in sfvgs
+            if f.sbar >= deLastBsl and not f.aplus
+                f.aplus := true
+                if not na(f.rect) and not f.kept and lblAp and not hideReg
+                    f.rect.set_text("A+")
+    deDir := -1
+    deSlP := na
+if not na(deMPH)
+    deShP := deMPH
+if not na(deMPL)
+    deSlP := deMPL
+if not na(dePH)
+    deBsl.push(dePH)
+    if deBsl.size() > 50
+        deBsl.shift()
+if not na(dePL)
+    deSsl.push(dePL)
+    if deSsl.size() > 50
+        deSsl.shift()
+
+// IFVG label: sign, inversion count, OTE (and its timeframes), A+
+ifvgTxt(int d, int inv, bool ote, string tags, bool ap) =>
+    string t = "IFVG" + (lblSign ? (d < 0 ? "-" : "+") : "")
+    if inv > 1
+        t += " ×" + str.tostring(inv)
+    if ote
+        t += " OTE" + (lblTf and tags != "" ? " " + tags : "")
+    if ap and lblAp
+        t += " A+"
+    t
+
+// confirmation of a close (or full body) through an FVG
+upBreak(float hi) =>
+    deConf == "Full body" ? math.min(open, close) > hi : close > hi
+dnBreak(float lo) =>
+    deConf == "Full body" ? math.max(open, close) < lo : close < lo
+
 var hasfp = false
 var hasifp = false
 if hour(time,tz) != fph
@@ -670,9 +887,11 @@ if true
     [hi, lo, fhi, flo] = longFVGHL(open[1],close[1],high[1],low[1],
          open[2],close[2],high[2],low[2],
          open[3],close[3],high[3],low[3])
-    if fhi - flo > minfvg and fhi-flo < maxfvg
+    if fhi - flo > minfvg and fhi-flo < maxfvg and (not deDisp or deDispOK or isFPFVG())
         f = FVG.new(hi,lo,math.avg(hi,lo),true,timeat(-3))
         f.sbar := bar_index - 3 // [OTE]
+        f.aplus := deAplus and not na(deMssUpBar) and bar_index - deMssUpBar <= 3 // [DE]
+        f.disp := deDispOK // [DE]
         lastlongfvg := f
         if not hasifp and hasfp and doifp
             fp = fpfvgs.last()
@@ -693,9 +912,11 @@ if true
     [hi, lo, fhi, flo] = shortFVGHL(open[1],close[1],high[1],low[1],
          open[2],close[2],high[2],low[2],
          open[3],close[3],high[3],low[3])
-    if fhi - flo > minfvg and fhi - flo < maxfvg
+    if fhi - flo > minfvg and fhi - flo < maxfvg and (not deDisp or deDispOK or isFPFVG())
         f = FVG.new(hi,lo,math.avg(hi,lo),false,timeat(-3))
         f.sbar := bar_index - 3 // [OTE]
+        f.aplus := deAplus and not na(deMssDnBar) and bar_index - deMssDnBar <= 3 // [DE]
+        f.disp := deDispOK // [DE]
         lastshortfvg := f
         if not hasifp and hasfp and doifp
             fp = fpfvgs.last()
@@ -729,20 +950,25 @@ updfvgs(array<FVG> fvgs) =>
                         color = f.lnColor(),
                         xloc = xloc.bar_time,
                         extend = (f.isifp or f.isfp) ? extend.right : extend.none,
-                        width = 1)
+                        width = f.bw())
                     f.loln := line.new(f.start, f.lo, et, f.lo,
                         color = f.lnColor(),
                         xloc = xloc.bar_time,
                         extend = (f.isifp or f.isfp) ? extend.right : extend.none,
-                        width = 1)
+                        width = f.bw())
             else if na(f.rect)
                 f.rect := box.new(f.start, f.hi, et, f.lo,
                     bgcolor = f.bgColor(),
                     border_color = f.lnColor(),
-                    border_width = 1,
+                    border_width = f.bw(),
                     xloc = xloc.bar_time,
                     extend = (f.isifp or f.isfp) ? extend.right : extend.none,
                     border_style = line.style_solid)
+                if f.aplus and lblAp and not hideReg
+                    f.rect.set_text("A+")
+                    f.rect.set_text_size(ifvgtsz)
+                    f.rect.set_text_halign(ifvgha)
+                    f.rect.set_text_valign(ifvgva)
             if na(f.celine) and f.hi-f.lo > mince
                 f.celine := line.new(f.start,f.ce,et,f.ce,
                     color = f.lnColor(),
@@ -1182,11 +1408,18 @@ var FVG bullifvg = na
 var FVG bearifvg = na
 var int bullconfirm = na
 var int bearconfirm = na
+var int bullInv = 0       // [DE] inversions of the bull candidate (-1 invalidated)
+var int bearInv = 0
+var bool bullAp = false   // [DE] A+ IFVG
+var bool bearAp = false
+var bool swAp = false
 if doifvg and not ifvgswings and not na(lastlongfvg)
     if not na(bearifvg)
         bearifvg.release(not na(bearconfirm), bearconfirm)
     bearifvg := lastlongfvg
     bearconfirm := na
+    bearInv := 0
+    bearAp := false
     gBear.gStart(-1, bearifvg.lo, bearifvg.hi, h4, bearifvg.sbar) // [OTE]
     ifvgBoxb := bearifvg.adopt(-1)
 if doifvg and not ifvgswings and not na(lastshortfvg)
@@ -1194,6 +1427,8 @@ if doifvg and not ifvgswings and not na(lastshortfvg)
         bullifvg.release(not na(bullconfirm), bullconfirm)
     bullifvg := lastshortfvg
     bullconfirm := na
+    bullInv := 0
+    bullAp := false
     gBull.gStart(1, bullifvg.lo, bullifvg.hi, l4, bullifvg.sbar) // [OTE]
     ifvgBox := bullifvg.adopt(1)
 if not na(ifvgBox) and barstate.isnew
@@ -1319,14 +1554,16 @@ if not na(ifvgBox) and barstate.isnew
     ifvgBox.set_right(time)
 
 if not na(ifstime) and barstate.isconfirmed
-    if ifsdir == -1 and close < ifslo and na(ifsconfirm)
+    if ifsdir == -1 and dnBreak(ifslo) and na(ifsconfirm)
         ifsconfirm := time
         gSw.gConfirm() // [OTE]
-        ifvgBox.set_text("IFVG-")
-    else if ifsdir == 1 and close > ifshi and na(ifsconfirm)
+        swAp := deAp(-1)
+        ifvgBox.set_text(ifvgTxt(-1, 1, false, "", swAp))
+    else if ifsdir == 1 and upBreak(ifshi) and na(ifsconfirm)
         ifsconfirm := time
         gSw.gConfirm() // [OTE]
-        ifvgBox.set_text("IFVG+")
+        swAp := deAp(1)
+        ifvgBox.set_text(ifvgTxt(1, 1, false, "", swAp))
     if ifsdir == -1 and not na(ifsconfirm) and close > ifshi
         ifsconfirm := na
         gSw.gCancel() // [OTE]
@@ -1344,25 +1581,99 @@ if doifvg and ifvgswings
             sig := -1
         else if ifsdir == 1 and low <= ifshi and low >= ifslo
             sig := 1
-if doifvg and not ifvgswings
+// [DE] invalidated IFVG: faded (stays as it is, no longer extended) or back to the plain FVG
+deKill(FVG fv) =>
+    FVG f = na(fv.dup) ? fv : fv.dup
+    if deDead == "Back to FVG"
+        f.restore()
+    else
+        f.kept := false
+        f.cand := false
+        if not na(f.rect)
+            f.rect.set_bgcolor(deDeadCol)
+            f.rect.set_border_color(deDeadCol)
+            f.rect.set_border_width(1)
+            f.rect.set_text("")
+            f.rect.set_right(time)
+    true
+
+// [DE] the box of an inverted zone in direction d
+deRecolor(box b, int d) =>
+    if not na(b)
+        color c = d < 0 ? bearIFVGColor : bullIFVGColor
+        b.set_bgcolor(color.new(c, ifvgTrans))
+        b.set_border_color(color.new(c, borderTrans))
+    true
+
+if doifvg and not ifvgswings and not deInv
     if not na(bullifvg) and not na(bullconfirm) and close < bullifvg.lo
         bullconfirm := na
         gBull.gCancel() // [OTE]
         ifvgBox.set_text(na)
-    if not na(bullifvg) and barstate.isconfirmed and close > bullifvg.hi and na(bullconfirm)
+    if not na(bullifvg) and barstate.isconfirmed and upBreak(bullifvg.hi) and na(bullconfirm)
         bullconfirm := time
         gBull.gConfirm() // [OTE]
-        ifvgBox.set_text("IFVG+")
+        bullAp := deAp(1)
+        ifvgBox.set_text(ifvgTxt(1, 1, false, "", bullAp))
         sig := 1
     if not na(bearifvg) and not na(bearconfirm) and close > bearifvg.hi
         bearconfirm := na
         gBear.gCancel() // [OTE]
         ifvgBoxb.set_text(na)
-    if not na(bearifvg) and barstate.isconfirmed and close < bearifvg.lo and na(bearconfirm)
-        ifvgBoxb.set_text("IFVG-")
+    if not na(bearifvg) and barstate.isconfirmed and dnBreak(bearifvg.lo) and na(bearconfirm)
+        bearAp := deAp(-1)
+        ifvgBoxb.set_text(ifvgTxt(-1, 1, false, "", bearAp))
         bearconfirm := time
         gBear.gConfirm() // [OTE]
         sig := -1
+
+// [DE] inversion rules: every close through the zone inverts it again, up to the max; then it is invalidated.
+// Bull candidate (bearish FVG): inversions 1, 3, ... are bullish (close above), 2, 4, ... bearish (close below).
+if doifvg and not ifvgswings and deInv and barstate.isconfirmed
+    if not na(bullifvg) and bullInv >= 0
+        bool brk = bullInv % 2 == 0 ? upBreak(bullifvg.hi) : dnBreak(bullifvg.lo)
+        if brk
+            if bullInv >= deMaxInv
+                bullInv := -1
+                bullconfirm := na
+                gBull.gCancel() // [OTE]
+                deKill(bullifvg)
+                ifvgBox := na
+            else
+                bullInv += 1
+                int d = bullInv % 2 == 1 ? 1 : -1
+                if bullInv == 1
+                    bullconfirm := time
+                    gBull.gConfirm() // [OTE]
+                else
+                    bullconfirm := na
+                    gBull.gCancel() // [OTE] only the first inversion
+                    deRecolor(ifvgBox, d)
+                bullAp := deAp(d)
+                ifvgBox.set_text(ifvgTxt(d, bullInv, false, "", bullAp))
+                sig := d
+    if not na(bearifvg) and bearInv >= 0
+        bool brk = bearInv % 2 == 0 ? dnBreak(bearifvg.lo) : upBreak(bearifvg.hi)
+        if brk
+            if bearInv >= deMaxInv
+                bearInv := -1
+                bearconfirm := na
+                gBear.gCancel() // [OTE]
+                deKill(bearifvg)
+                ifvgBoxb := na
+            else
+                bearInv += 1
+                int d = bearInv % 2 == 1 ? -1 : 1
+                if bearInv == 1
+                    bearconfirm := time
+                    gBear.gConfirm() // [OTE]
+                else
+                    bearconfirm := na
+                    gBear.gCancel() // [OTE] only the first inversion
+                    deRecolor(ifvgBoxb, d)
+                bearAp := deAp(d)
+                ifvgBoxb.set_text(ifvgTxt(d, bearInv, false, "", bearAp))
+                sig := sig == 0 ? d : sig
 
 updKept()
 
@@ -1381,13 +1692,13 @@ else if swOteSig != 0
 
 if doifvg and useOTE
     if bearOteSig != 0 and not na(ifvgBoxb)
-        ifvgBoxb.set_text("IFVG- OTE " + gBear.tags)
+        ifvgBoxb.set_text(ifvgTxt(-1, 1, true, gBear.tags, bearAp))
         ifvgBoxb.set_border_color(oteHighlight)
     if bullOteSig != 0 and not na(ifvgBox)
-        ifvgBox.set_text("IFVG+ OTE " + gBull.tags)
+        ifvgBox.set_text(ifvgTxt(1, 1, true, gBull.tags, bullAp))
         ifvgBox.set_border_color(oteHighlight)
     if swOteSig != 0 and not na(ifvgBox)
-        ifvgBox.set_text((swOteSig < 0 ? "IFVG- OTE " : "IFVG+ OTE ") + gSw.tags)
+        ifvgBox.set_text(ifvgTxt(swOteSig, 1, true, gSw.tags, swAp))
         ifvgBox.set_border_color(oteHighlight)
 
 plotshape(showSignals and not hideReg and sig == -1 and sig[1] == 0, 

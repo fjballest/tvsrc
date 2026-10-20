@@ -1,0 +1,1997 @@
+//@version=6
+indicator("Delivery Engine V29", "DE V29", overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500, max_bars_back = 500)
+
+grpT    = "Tema"
+i_theme = input.string("Auto", "Tema del indicador", options = ["Auto", "Dark", "Light", "Custom"], group = grpT,
+                       tooltip = "Auto: detecta si el fondo del gráfico es claro u oscuro.\nDark / Light: paletas fijas.\nCustom: usa los colores que elijas en cada sección (solo se pueden editar en este modo).")
+isCustom = i_theme == "Custom"
+
+grpD = "Displacement (criterio TFO)"
+require_fvg = input.bool(true, "Exigir FVG para colorear la vela", group = grpD)
+disp_type   = input.string("Open to Close", "Tipo de displacement", options = ["Open to Close", "High to Low"], group = grpD)
+std_len     = input.int(100, "Longitud", minval = 1, group = grpD, tooltip = "Cuántas velas mira hacia atrás para calcular la desviación estándar del rango de vela")
+std_x       = input.float(4.0, "Fuerza (múltiplo de σ)", minval = 0, step = 0.5, group = grpD)
+c_disp      = input.color(color.yellow, "Color de vela", group = grpD, active = isCustom)
+
+grpF = "FVG de displacement"
+show_fvg   = input.bool(true, "Marcar FVG de displacement", group = grpF)
+fvg_ahead  = input.int(5, "Velas hacia el futuro", minval = 0, maxval = 30, group = grpF, tooltip = "Las FVG★ / IFVG vivas se extienden estas velas más allá de la vela en formación (solo si «Extender» está activo). 0 = hasta la última vela.")
+kz_filter  = input.string("Todas", "Qué FVG marcar", options = ["Todas", "Solo en killzone"], group = grpF, tooltip = "Solo en killzone: la vela de displacement debe formarse dentro de una killzone activa.\nPor encima de «Killzones hasta» este filtro no se aplica.")
+c_bull     = input.color(color.new(color.teal, 75), "FVG alcista", inline = "f", group = grpF, active = isCustom)
+c_bear     = input.color(color.new(color.red, 75), "FVG bajista", inline = "f", group = grpF, active = isCustom)
+show_ce    = input.bool(true, "Mostrar 50% (CE)", group = grpF)
+zone_brd   = input.string("Solo A+", "Bordes de las zonas", options = ["Todos", "Solo A+", "Ninguno"], group = grpF,
+                          tooltip = "Todos: todas las FVG / IFVG con borde.\nSolo A+: solo las zonas A+ llevan borde (dorado), el resto solo relleno.\nNinguno: sin bordes; las A+ se distinguen por la etiqueta.")
+zone_txt   = input.string("FVG★ solo si A+", "Etiquetas de las zonas", options = ["Todas", "FVG★ solo si A+", "Ninguna"], group = grpF, tooltip = "Todas: FVG★, IFVG y A+ en todas las zonas.\nFVG★ solo si A+: las FVG★ normales van sin etiqueta; las FVG★ A+ y todas las IFVG (normales y A+) la mantienen.\nNinguna: sin etiquetas (las A+ se distinguen por el borde dorado si está activado).")
+extend_fvg = input.bool(true, "Extender mientras siga viva", group = grpF)
+max_fvg    = input.int(50, "Máx. zonas activas (FVG + IFVG)", minval = 1, maxval = 240, group = grpF)
+
+grpI = "IFVG (inversión)"
+max_inv   = input.int(1, "Máx. inversiones por zona", minval = 1, maxval = 10, group = grpI, tooltip = "Cuántas veces puede invertirse una zona.\n1 = FVG → IFVG; el siguiente cierre a través la invalida.\n2 = FVG → IFVG → IFVG×2; el siguiente la invalida. Etc.")
+inv_mode  = input.string("Cierre", "Confirmación de cuerpo", options = ["Cierre", "Cuerpo completo"], group = grpI, tooltip = "Cierre: el cierre de la vela queda al otro lado de la zona.\nCuerpo completo: apertura y cierre quedan ambos al otro lado.")
+c_ibull   = input.color(color.new(color.blue, 75), "IFVG alcista", inline = "i", group = grpI, active = isCustom)
+c_ibear   = input.color(color.new(color.orange, 75), "IFVG bajista", inline = "i", group = grpI, active = isCustom)
+on_dead   = input.string("Atenuar", "IFVG invalidada", options = ["Atenuar", "Borrar"], group = grpI)
+max_dead  = input.int(20, "Máx. zonas invalidadas visibles", minval = 0, maxval = 100, group = grpI, tooltip = "Solo con «Atenuar»: se conservan las últimas N zonas invalidadas y las más antiguas se borran.")
+c_dead    = input.color(color.new(color.gray, 85), "Color invalidada", group = grpI, active = isCustom)
+
+grpM = "Estructura (MSS)"
+show_mss = input.bool(true, "Marcar MSS", group = grpM)
+mss_len  = input.int(3, "Longitud de swing del MSS", minval = 1, maxval = 20, group = grpM, tooltip = "Velas a cada lado para confirmar los swings de estructura interna que rompe el MSS / CHoCH / BOS. Más corto = el MSS llega antes y contra un nivel más cercano. 5 reproduce el comportamiento de V20 (mismos swings que BSL/SSL).")
+mss_disp = input.bool(true, "Exigir displacement en el MSS", group = grpM)
+mss_win  = input.int(2, "Velas para el displacement", minval = 0, maxval = 5, group = grpM, tooltip = "La vela de displacement debe ser la de ruptura o una de las N anteriores, en la dirección de la ruptura.")
+mss_sx   = input.float(2.0, "Fuerza del displacement del MSS (× σ)", minval = 0.5, step = 0.25, group = grpM, tooltip = "Umbral propio del MSS, independiente del de las velas de displacement coloreadas (que solo marca las más extremas). 2σ = vela claramente mayor de lo normal.")
+show_choch = input.bool(true, "Marcar CHoCH (giro sin displacement)", group = grpM, tooltip = "Cambio de estructura sin displacement: la estructura gira igual, pero sin la intención de un MSS. Línea discontinua y no cuenta para A+.\nSi tras un CHoCH llega una ruptura con displacement en la misma dirección (dentro de «Velas máx. entre barrido y MSS»), esa ruptura se marca como MSS.")
+show_bos = input.bool(false, "Marcar BOS (continuación)", group = grpM)
+c_mssUp  = input.color(#00e676, "MSS alcista", inline = "m", group = grpM, active = isCustom)
+c_mssDn  = input.color(#ff1744, "MSS bajista", inline = "m", group = grpM, active = isCustom)
+
+grpOTE = "OTE (Optimal Trade Entry)"
+show_ote  = input.bool(true, "Marcar OTE tras el MSS", inline = "ote", group = grpOTE, tooltip = "Zona de retroceso 62 % – 79 % de la pierna que provoca el MSS (compras tras un MSS alcista, ventas tras uno bajista). La pierna empieza en el mínimo (máximo) más extremo desde el swing roto y termina en el extremo del impulso; sigue al extremo hasta que el precio retrocede al 62 %.")
+c_ote     = input.color(#C084FC, "", inline = "ote", group = grpOTE, active = isCustom)
+ote_scope = input.string("Todos los MSS", "Para", options = ["Todos los MSS", "Solo A+"], group = grpOTE)
+ote_htf   = input.bool(true, "OTE de las temporalidades de la tabla", group = grpOTE, tooltip = "Dibuja en el margen derecho el OTE del último MSS de cada temporalidad activa de la tabla (mayor que la del gráfico), a la derecha de las FVG HTF.")
+ote_w     = input.int(10, "Ancho (velas)", minval = 3, maxval = 40, group = grpOTE, tooltip = "Ancho de la caja OTE, pegada al borde derecho (termina donde terminan las FVG).")
+ote_max   = input.int(3, "Máx. zonas OTE", minval = 1, maxval = 10, group = grpOTE, tooltip = "Al superarlo se borra la más antigua.")
+
+grpC = "CISD (Change in State of Delivery)"
+show_cisd  = input.bool(true, "Marcar CISD", group = grpC)
+cisd_sweep = input.bool(true, "Exigir barrido de liquidez", group = grpC, tooltip = "Activado: la referencia es la serie de velas que llevó el precio a barrer liquidez (BSL/SSL, EQH/EQL, PDH/PDL, killzone…).\nDesactivado: la referencia es la serie que hizo un nuevo máximo / mínimo local.")
+cisd_look  = input.int(20, "Ventana de extremo local (velas)", minval = 3, maxval = 200, group = grpC, tooltip = "Solo se usa si NO se exige barrido: un máximo / mínimo es local si es el extremo de las últimas N velas.")
+cisd_win   = input.int(10, "Velas máx. desde el barrido", minval = 1, maxval = 100, group = grpC, tooltip = "El cierre del CISD debe llegar como mucho este número de velas después del barrido.")
+cisd_rng   = input.float(0.75, "Recorrido mínimo de la serie (× ATR)", minval = 0, step = 0.25, group = grpC, tooltip = "Distancia entre la apertura de la serie y su extremo. Descarta series pequeñas sin entrega real.")
+cisd_str   = input.string("Cuerpo ≥ 50%", "Fuerza de la vela CISD", options = ["Cualquier cierre", "Cuerpo ≥ 50%", "Displacement"], group = grpC,
+                          tooltip = "Cualquier cierre: basta con cerrar más allá de la apertura de la serie.\nCuerpo ≥ 50%: la vela debe tener cuerpo de al menos la mitad de su rango.\nDisplacement: la vela debe cumplir el criterio de displacement (TFO).\nSi un cierre más allá de la apertura no cumple la fuerza (o la killzone), la referencia sigue viva y una vela posterior puede confirmar el CISD.")
+cisd_kz    = input.bool(false, "Solo dentro de killzone", group = grpC, tooltip = "Por encima de «Killzones hasta» este filtro no se aplica.")
+c_cisdUp   = input.color(#00e676, "CISD alcista", inline = "c", group = grpC, active = isCustom)
+c_cisdDn   = input.color(#ff1744, "CISD bajista", inline = "c", group = grpC, active = isCustom)
+
+grpA = "Secuencia A+"
+seq_win  = input.int(50, "Velas máx. entre barrido y MSS", minval = 1, maxval = 200, group = grpA, tooltip = "Barrido de liquidez → MSS con displacement dentro de este número de velas = setup A+.\nReferencia: 50 en 5m, 20-30 en 15m.\nTambién es la ventana en la que un CHoCH puede ser «mejorado» a MSS.")
+aplus_kz = input.bool(true, "A+ solo con MSS dentro de killzone", group = grpA, tooltip = "Por encima de «Killzones hasta» este filtro no se aplica.")
+aplus_htf_on = input.bool(false, "A+ solo a favor de la HTF", inline = "ah", group = grpA)
+aplus_htf    = input.timeframe("60", "", inline = "ah", group = grpA, tooltip = "Solo es A+ si la estructura de esta temporalidad (última vela cerrada, sin repintado) va en la misma dirección que el setup.\nSe ignora si es igual o menor que la temporalidad del gráfico.")
+c_aplus  = input.color(#ffd600, "Color A+", group = grpA, active = isCustom)
+
+grpO = "DOL (Draw on Liquidity)"
+show_dol    = input.bool(true, "Mostrar DOL", inline = "d", group = grpO)
+c_dol       = input.color(#00b0ff, "", inline = "d", group = grpO, active = isCustom)
+dol_dir     = input.string("Entrega", "Dirección", options = ["Entrega", "Estructura", "Libre"], group = grpO, tooltip = "Entrega: la dirección del último evento entre MSS / CHoCH / BOS y CISD. Tras un barrido + CISD el DOL pasa al otro lado aunque la estructura aún no haya girado. Sin evento ni estructura no hay DOL.\nEstructura: la dirección del último MSS / CHoCH / BOS.\nLibre: candidatos a ambos lados del precio; gana el más cercano (según la selección).\nLa columna DOL de las filas HTF usa la dirección de entrega (o la de estructura si eliges «Estructura»).")
+dol_sel     = input.string("Ciclo ERL ↔ IRL", "Selección", options = ["Ciclo ERL ↔ IRL", "Más cercano"], group = grpO, tooltip = "Ciclo ERL ↔ IRL (ICT): tras un barrido de liquidez externa, el IRL (FVG / gap) más cercano en la dirección elegida; tras rellenar una FVG, la liquidez externa más cercana. Si no hay de esa familia, la otra. Usa siempre los IRL.\nMás cercano: el candidato más cercano en la dirección elegida.")
+dol_irl     = input.bool(true, "Incluir IRL como objetivo (FVG★, FVG HTF, NWOG / NDOG)", group = grpO)
+dol_hfvg    = input.bool(true, "FVG de las temporalidades de la tabla", group = grpO, tooltip = "Usa las temporalidades activadas en la tabla HTF que sean mayores que la del gráfico. Tamaño mínimo: 0.4 ATR de su temporalidad. Se dejan de usar al alcanzarse (borde o CE según la opción siguiente).")
+dol_hteq    = input.bool(true, "EQH / EQL de las temporalidades de la tabla", group = grpO, tooltip = "Añade como candidatos de liquidez externa el EQH y el EQL sin barrer más cercanos de cada temporalidad de la tabla (mayor que la del gráfico): dos swings a menos de la tolerancia EQH/EQL × ATR de esa temporalidad.")
+dol_stats   = input.bool(true, "Medir el DOL (aciertos)", group = grpO, tooltip = "Acierto: el precio llega al DOL mientras sigue siendo el DOL. Fallo: el DOL cambia o desaparece antes de tocarse (puede ser porque el contexto cambió, no solo porque el DOL estuviera mal). Se muestra en la tabla (bloque DOL). Calcula el DOL en cada vela del periodo medido: si el indicador va lento, desactívalo o reduce los días.")
+stats_days  = input.int(20, "Días a medir", minval = 1, maxval = 365, group = grpO)
+dol_fvg_lvl = input.string("Borde", "Objetivo dentro de FVG / gap", options = ["Borde", "CE (50%)"], group = grpO, tooltip = "Borde: el objetivo es el primer borde que toca el precio.\nCE (50%): el objetivo es la mitad de la zona.")
+dol_min     = input.float(0.15, "Distancia mín. (× ATR)", minval = 0, step = 0.05, group = grpO, tooltip = "Los niveles más cerca que esto no cuentan como objetivo.")
+dol_max     = input.float(0.0, "Distancia máx. (× ATR)", minval = 0, step = 0.5, group = grpO, tooltip = "0 = sin límite (por defecto). Ponle un valor (p. ej. 12) si quieres un tope duro; en 1m / 5m deja fuera PDH, PWH y ERL con frecuencia.")
+dol_ladder  = input.int(1, "Objetivos siguientes (escalera)", minval = 0, maxval = 3, group = grpO, tooltip = "Marca también los N siguientes objetivos (DOL 2, DOL 3…) como líneas discretas y como filas del bloque DOL de la tabla. 0 = solo el DOL.")
+
+grpK = "Killzones (hora de Nueva York)"
+kz_tz    = input.string("America/New_York", "Zona horaria", group = grpK)
+kz_maxtf = input.timeframe("15", "Killzones hasta", group = grpK, tooltip = "Por encima de esta temporalidad las killzones no se dibujan, no crean liquidez y los filtros «solo en killzone» (FVG, CISD, A+) se ignoran.")
+kzA_on  = input.bool(true,  "", inline = "k1", group = grpK)
+kzA_nm  = input.string("ASIA", "", inline = "k1", group = grpK)
+kzA_ss  = input.session("2000-0000", "", inline = "k1", group = grpK)
+c_kzA   = input.color(color.new(#3B82F6, 88), "", inline = "k1", group = grpK, active = isCustom)
+kzL_on  = input.bool(true,  "", inline = "k2", group = grpK)
+kzL_nm  = input.string("LDN", "", inline = "k2", group = grpK)
+kzL_ss  = input.session("0200-0500", "", inline = "k2", group = grpK)
+c_kzL   = input.color(color.new(#10B981, 88), "", inline = "k2", group = grpK, active = isCustom)
+kzN_on  = input.bool(true,  "", inline = "k3", group = grpK)
+kzN_nm  = input.string("NY AM", "", inline = "k3", group = grpK)
+kzN_ss  = input.session("0930-1100", "", inline = "k3", group = grpK)
+c_kzN   = input.color(color.new(#F59E0B, 88), "", inline = "k3", group = grpK, active = isCustom)
+kzU_on  = input.bool(false, "", inline = "k4", group = grpK)
+kzU_nm  = input.string("LUNCH", "", inline = "k4", group = grpK)
+kzU_ss  = input.session("1200-1300", "", inline = "k4", group = grpK)
+c_kzU   = input.color(color.new(#A855F7, 88), "", inline = "k4", group = grpK, active = isCustom)
+kzP_on  = input.bool(true,  "", inline = "k5", group = grpK)
+kzP_nm  = input.string("NY PM", "", inline = "k5", group = grpK)
+kzP_ss  = input.session("1330-1600", "", inline = "k5", group = grpK)
+c_kzP   = input.color(color.new(#EF4444, 88), "", inline = "k5", group = grpK, active = isCustom)
+kz_txt  = input.bool(true, "Mostrar nombre", group = grpK)
+kz_liq  = input.bool(true, "Máx./mín. de cada killzone como liquidez", group = grpK, tooltip = "Al terminar la killzone, su máximo y su mínimo pasan a ser niveles de liquidez que se extienden hasta ser barridos.\nAl empezar la siguiente sesión de esa killzone, los niveles de la anterior se renombran («ASIA-1 H»…).")
+kz_max  = input.int(40, "Máx. cajas de killzone en gráfico", minval = 5, maxval = 150, group = grpK)
+
+grpN = "Niveles clave"
+show_pd   = input.bool(true,  "PDH / PDL", inline = "n1", group = grpN)
+c_pd      = input.color(#4dd0e1, "", inline = "n1", group = grpN, active = isCustom)
+show_pw   = input.bool(true,  "PWH / PWL", inline = "n2", group = grpN)
+c_pw      = input.color(#ffee58, "", inline = "n2", group = grpN, active = isCustom)
+show_nymo = input.bool(true,  "NY Midnight Open", inline = "n3", group = grpN)
+c_nymo    = input.color(#60A5FA, "", inline = "n3", group = grpN, active = isCustom)
+show_0830 = input.bool(false, "08:30 Open", inline = "n4", group = grpN)
+c_o830    = input.color(#FBBF24, "", inline = "n4", group = grpN, active = isCustom)
+show_0930 = input.bool(true,  "09:30 Open", inline = "n5", group = grpN, tooltip = "Cada apertura solo se dibuja si una vela del gráfico abre exactamente a esa hora (p. ej. el 09:30 no aparece en NQ 1H, donde las velas abren en punto).")
+c_o930    = input.color(#34D399, "", inline = "n5", group = grpN, active = isCustom)
+
+grpW = "NWOG / NDOG"
+show_nwog = input.bool(true, "NWOG", inline = "g1", group = grpW, tooltip = "New Week Opening Gap: entre el cierre del viernes y la apertura del domingo / lunes. Se muestra en gráficos por debajo de 1 semana.")
+c_nwog    = input.color(#4C7DFF, "", inline = "g1", group = grpW, active = isCustom)
+n_nwog    = input.int(5, "Cuántos", minval = 1, maxval = 20, inline = "g1", group = grpW, tooltip = "ICT recomienda ver como mínimo los 5 últimos.")
+show_ndog = input.bool(true, "NDOG", inline = "g2", group = grpW, tooltip = "New Day Opening Gap: entre el cierre de la sesión anterior y la apertura de la nueva (solo intradía).")
+c_ndog    = input.color(#FF5252, "", inline = "g2", group = grpW, active = isCustom)
+n_ndog    = input.int(5, "Cuántos", minval = 1, maxval = 20, inline = "g2", group = grpW, tooltip = "ICT recomienda ver como mínimo los 5 últimos.")
+gap_lines = input.string("CE", "Líneas del gap", options = ["CE", "Cuadrantes", "Ninguna"], group = grpW, tooltip = "CE: línea al 50 %. Cuadrantes: líneas al 25 %, 50 % y 75 %.")
+gap_dates = input.string("MM/dd", "Fecha en la etiqueta", options = ["MM/dd", "dd/MM", "Sin fecha"], group = grpW, tooltip = "Día de trading en que abre el gap (p. ej. el NWOG del domingo por la tarde lleva la fecha del lunes). También se usa en los niveles de sesiones, días y semanas anteriores («NY AM 10/19 H», «DH 10/19»). Con «Sin fecha» esos niveles se llaman «-1» / «ant».")
+gap_off   = input.int(12, "Separación al borde derecho (velas)", minval = 1, maxval = 50, group = grpW, tooltip = "Las cajas, las líneas y sus etiquetas llegan hasta esta distancia a la derecha de la última vela, así que las etiquetas siempre quedan junto al borde derecho y no en el origen del gap. Pine no puede fijar objetos a la pantalla: si desplazas el gráfico hacia el pasado, se mueven con las velas.")
+show_eh   = input.bool(false, "Event Horizon", inline = "g3", group = grpW, tooltip = "Punto medio entre dos NWOG: el CE del NWOG más cercano por encima del precio y el del más cercano por debajo (el rango de operación entre los NWOG visibles). Se recalcula con el precio. Necesita un NWOG a cada lado.")
+c_eh      = input.color(#FFEB3B, "", inline = "g3", group = grpW, active = isCustom)
+
+grpL = "Liquidez — BSL / SSL"
+piv_len  = input.int(5, "Longitud de swing", minval = 1, maxval = 50, group = grpL, tooltip = "Velas a cada lado para confirmar un swing high / low de BSL / SSL. (Los swings del MSS tienen su propia longitud en el grupo «Estructura».)")
+show_bsl = input.bool(true, "BSL", inline = "b", group = grpL)
+c_bsl    = input.color(#f23645, "", inline = "b", group = grpL, active = isCustom)
+show_ssl = input.bool(true, "SSL", inline = "s", group = grpL)
+c_ssl    = input.color(#089981, "", inline = "s", group = grpL, active = isCustom)
+
+grpE = "Liquidez — Máximos / mínimos iguales"
+show_eqh = input.bool(true, "EQH", inline = "e", group = grpE)
+show_eql = input.bool(true, "EQL", inline = "e", group = grpE)
+c_eq     = input.color(#e040fb, "", inline = "e", group = grpE, active = isCustom)
+show_reh = input.bool(true, "REH", inline = "r", group = grpE)
+show_rel = input.bool(true, "REL", inline = "r", group = grpE)
+c_re     = input.color(color.new(#e040fb, 40), "", inline = "r", group = grpE, active = isCustom)
+eq_len   = input.int(2, "Longitud de swing para EQH/EQL", minval = 1, maxval = 20, group = grpE, tooltip = "Velas a cada lado para los swings con los que se buscan máximos / mínimos iguales. Más corto detecta dobles techos / suelos muy juntos; 5 reproduce el comportamiento de V20.")
+eq_tol   = input.float(0.1, "Tolerancia EQH/EQL (× ATR)", minval = 0, step = 0.05, group = grpE)
+re_tol   = input.float(0.3, "Tolerancia REH/REL (× ATR)", minval = 0, step = 0.05, group = grpE, tooltip = "Debe ser mayor que la de EQH/EQL. Diferencias entre ambas tolerancias = relativamente iguales.")
+eq_dist  = input.int(150, "Distancia máx. entre swings (velas)", minval = 5, maxval = 400, group = grpE)
+
+grpR = "Liquidez — ERL"
+show_erl = input.bool(true, "ERL (swings mayores)", inline = "x", group = grpR)
+c_erl    = input.color(#7e57c2, "", inline = "x", group = grpR, active = isCustom)
+erl_len  = input.int(20, "Longitud de swing mayor", minval = 2, maxval = 100, group = grpR, tooltip = "Debe ser mayor que la longitud de BSL/SSL.")
+
+grpS = "Liquidez — Gestión"
+liq_txt  = input.bool(true, "Mostrar etiquetas", group = grpS)
+on_sweep = input.string("Atenuar", "Al ser barrida", options = ["Atenuar", "Atenuar sin etiqueta", "Borrar"], group = grpS,
+                        tooltip = "Atenuar: la línea termina en la vela del barrido, punteada, con la etiqueta centrada sobre el tramo.\nAtenuar sin etiqueta: igual pero sin texto.\nBorrar: el nivel desaparece al barrerse.")
+max_swept = input.int(20, "Máx. niveles barridos visibles", minval = 0, maxval = 150, group = grpS, tooltip = "Solo se conservan en el gráfico los últimos N niveles barridos; los más antiguos se borran.")
+merge_tol = input.float(0.05, "Fusionar niveles a menos de (× ATR)", minval = 0, step = 0.01, group = grpS, tooltip = "Dos niveles del mismo lado a menos de esta distancia se tratan como uno solo. Ej.: ASIA L y SSL en el mismo mínimo → solo ASIA L. PDL y ASIA L → \"PDL · ASIA L\".")
+lbl_gap   = input.float(0.25, "Separación mínima entre etiquetas (× ATR)", minval = 0, step = 0.05, group = grpS, tooltip = "Si dos etiquetas quedan más juntas que esto, se oculta la de menor prioridad (la línea se mantiene).\nPrioridad: PWH/PWL > PDH/PDL > ERL > killzones > EQH/EQL > REH/REL > BSL/SSL.")
+c_swept  = input.color(color.new(color.gray, 40), "Color barrida", group = grpS, active = isCustom)
+max_liq  = input.int(80, "Máx. niveles activos", minval = 5, maxval = 200, group = grpS)
+
+grpG      = "Historial"
+hist_days = input.int(0, "Historial visible (días)", minval = 0, maxval = 365, group = grpG, tooltip = "0 = sin límite.\nCon N > 0, lo que ya terminó antes de los últimos N días (zonas invalidadas, niveles barridos, MSS / CHoCH / BOS / CISD y cajas de killzone) no se dibuja.\nLo que sigue activo (FVG vivas, liquidez sin barrer) se mantiene aunque sea más antiguo.")
+
+grpH = "Tabla HTF (estructura)"
+show_htf = input.bool(true, "Mostrar tabla HTF", group = grpH)
+htf_len  = input.int(5, "Longitud de swing HTF", minval = 1, maxval = 20, group = grpH, tooltip = "Velas a cada lado para confirmar un swing en cada temporalidad superior. La estructura cambia cuando una vela HTF CIERRA más allá del último swing contrario.")
+htf1_on  = input.bool(true, "", inline = "h1", group = grpH)
+htf1     = input.timeframe("15",  "", inline = "h1", group = grpH)
+htf2_on  = input.bool(true, "", inline = "h2", group = grpH)
+htf2     = input.timeframe("60",  "", inline = "h2", group = grpH)
+htf3_on  = input.bool(true, "", inline = "h3", group = grpH)
+htf3     = input.timeframe("240", "", inline = "h3", group = grpH)
+htf4_on  = input.bool(true, "", inline = "h4", group = grpH)
+htf4     = input.timeframe("D",   "", inline = "h4", group = grpH)
+htf5_on  = input.bool(true, "", inline = "h5", group = grpH)
+htf5     = input.timeframe("W",   "", inline = "h5", group = grpH)
+htf_pos  = input.string("Arriba derecha", "Posición", options = ["Arriba derecha", "Abajo derecha", "Arriba izquierda", "Abajo izquierda"], group = grpH)
+htf_sz   = input.string("Pequeño", "Tamaño", options = ["Diminuto", "Pequeño", "Normal"], group = grpH)
+htf_dol  = input.bool(true, "Columna DOL en la tabla", group = grpH, tooltip = "DOL de cada temporalidad: su máximo / mínimo de swing sin barrer más cercano en la dirección de su estructura. ✓ = ya tocado en la vela HTF en curso.")
+htf_dolLn = input.bool(true, "Marcar DOL HTF en el gráfico", group = grpH)
+show_dolbox = input.bool(true, "Bloque DOL en la tabla (objetivo, distancia y escalera)", group = grpH, tooltip = "Añade al final de la tabla el DOL activo con su distancia en ATR y las filas de la escalera. Requiere «Mostrar tabla HTF».")
+hf_show     = input.bool(true, "Dibujar FVG de temporalidades superiores (displacement)", group = grpH, tooltip = "Dibuja las FVG no invalidadas de las temporalidades activas de la tabla (mayores que la del gráfico) como una caja compacta en el margen derecho, con su CE y la etiqueta encima.")
+hf_n        = input.int(2, "Máx. por temporalidad", minval = 1, maxval = 5, group = grpH, tooltip = "Se dibujan las más cercanas al precio de cada temporalidad.")
+hf_disp     = input.bool(true, "Solo FVG con vela de displacement", group = grpH, tooltip = "La vela central de la FVG debe ser de displacement con la misma definición que las FVG★ del gráfico (cuerpo > desviación × multiplicador, en esa temporalidad). Si lo desactivas, vuelven todas las FVG de al menos 0.4 ATR.")
+hf_w        = input.int(6, "Ancho de las cajas HTF (velas)", minval = 2, maxval = 30, group = grpH, tooltip = "Las FVG / IFVG de temporalidades superiores se dibujan en el margen derecho, a la derecha de la última vela. Necesitas espacio libre a la derecha del gráfico (desplázalo un poco o ajusta el margen).")
+hf_ifvg     = input.bool(false, "Incluir IFVG de temporalidades superiores", group = grpH, tooltip = "Cuando el precio cierra al otro lado de una FVG HTF, en vez de borrarla pasa a ser una IFVG (polaridad invertida) y se mantiene hasta que el precio cierre de nuevo al lado contrario.")
+
+chartSecs = timeframe.in_seconds()
+
+kzActive = timeframe.isintraday and chartSecs <= timeframe.in_seconds(kz_maxtf)
+
+seqBars  = seq_win
+cisdBars = cisd_win
+eqBars   = math.min(eq_dist, 400)
+
+histOK = hist_days == 0 or time >= last_bar_time - hist_days * 86400000
+
+bgLum   = 0.299 * color.r(chart.bg_color) + 0.587 * color.g(chart.bg_color) + 0.114 * color.b(chart.bg_color)
+isLight = i_theme == "Light" or (i_theme == "Auto" and bgLum > 128)
+
+th(color dark, color light, color custom) =>
+    isCustom ? custom : isLight ? light : dark
+
+disp_color = th(color.yellow,                 #F59E0B,                      c_disp)
+bull_col   = th(color.new(#26A69A, 75),       color.new(#00897B, 80),       c_bull)
+bear_col   = th(color.new(#F23645, 75),       color.new(#E53935, 82),       c_bear)
+ibull_col  = th(color.new(#2962FF, 75),       color.new(#1E40AF, 82),       c_ibull)
+ibear_col  = th(color.new(#FF9800, 75),       color.new(#EA580C, 80),       c_ibear)
+dead_col   = th(color.new(#808080, 85),       color.new(#9CA3AF, 85),       c_dead)
+mss_up_col = th(#00E676,                      #059669,                      c_mssUp)
+mss_dn_col = th(#FF1744,                      #DC2626,                      c_mssDn)
+cisd_up_col = th(#00E676,                     #059669,                      c_cisdUp)
+cisd_dn_col = th(#FF1744,                     #DC2626,                      c_cisdDn)
+tbl_bg     = isLight and not isCustom ? color.new(#FFFFFF, 5) : color.new(#131722, 5)
+tbl_frame  = isLight and not isCustom ? #D1D4DC : #2A2E39
+tbl_head   = isLight and not isCustom ? color.new(#F0F3FA, 0) : color.new(#1E222D, 0)
+tbl_txt    = isLight and not isCustom ? #131722 : #D1D4DC
+tbl_dim    = isLight and not isCustom ? #6B7280 : #787B86
+aplus_col  = th(#FFD600,                      #B45309,                      c_aplus)
+dol_col    = th(#00B0FF,                      #0369A1,                      c_dol)
+dol_txt    = isLight and not isCustom ? color.white : color.black
+kzA_col    = th(color.new(#3B82F6, 88),       color.new(#2563EB, 90),       c_kzA)
+kzL_col    = th(color.new(#10B981, 88),       color.new(#059669, 90),       c_kzL)
+kzN_col    = th(color.new(#F59E0B, 88),       color.new(#D97706, 90),       c_kzN)
+kzU_col    = th(color.new(#A855F7, 88),       color.new(#7C3AED, 90),       c_kzU)
+kzP_col    = th(color.new(#EF4444, 88),       color.new(#DC2626, 90),       c_kzP)
+pd_col     = th(#4DD0E1,                      #0891B2,                      c_pd)
+pw_col     = th(#FFEE58,                      #A16207,                      c_pw)
+nymo_col   = th(#60A5FA,                      #1D4ED8,                      c_nymo)
+o830_col   = th(#FBBF24,                      #B45309,                      c_o830)
+o930_col   = th(#34D399,                      #047857,                      c_o930)
+nwog_col   = th(#4C7DFF,                      #1D4ED8,                      c_nwog)
+ndog_col   = th(#FF5252,                      #B91C1C,                      c_ndog)
+ote_col    = th(#C084FC,                      #7E22CE,                      c_ote)
+eh_col     = th(#FFEB3B,                      #A16207,                      c_eh)
+bsl_col    = th(#F23645,                      #DC2626,                      c_bsl)
+ssl_col    = th(#089981,                      #047857,                      c_ssl)
+eq_col     = th(#E040FB,                      #A21CAF,                      c_eq)
+re_col     = th(color.new(#E040FB, 40),       color.new(#A21CAF, 45),       c_re)
+erl_col    = th(#7E57C2,                      #5B21B6,                      c_erl)
+swept_col  = th(color.new(#808080, 40),       color.new(#6B7280, 35),       c_swept)
+
+type DispFVG
+    box   bx
+    line  ce
+    float top
+    float btm
+    bool  bull
+    int   inv
+    int   born
+    bool  aplus
+    bool  touched = false
+
+type Liq
+    line   ln
+    label  lb
+    float  price
+    bool   isHigh
+    int    x
+    string kind
+
+type Piv
+    float price
+    int   x
+
+type HL
+    string dt  = ""
+    string pdt = ""
+    box   bx
+    float h
+    float l
+    int   hx
+    int   lx
+
+type Gap
+    box    bx
+    float  top
+    float  btm
+    string kind
+    bool   filled  = false
+    bool   reached = false
+    int    born    = na
+    array<line> lns = na
+
+type HFvg
+    float  top
+    float  btm
+    string tf
+    int    tier
+    bool   bull
+    int    born
+    bool   inv     = false
+    bool   reached = false
+    bool   filled  = false
+
+type Ote
+    box   bx
+    array<line>  lns
+    array<label> lbs
+    bool  bull
+    float s
+    float e
+    int   ex
+    int   born
+    bool  locked = false
+
+type Cand
+    float  price
+    int    d
+    string kind
+    bool   irl
+
+var array<DispFVG> zones     = array.new<DispFVG>()
+var array<DispFVG> deadZones = array.new<DispFVG>()
+var array<Liq>     liqs      = array.new<Liq>()
+var array<Liq>     sweptLiqs = array.new<Liq>()
+var array<Piv>     phs       = array.new<Piv>()
+var array<Piv>     pls       = array.new<Piv>()
+var array<int>     eqXH      = array.new<int>()
+var array<int>     eqXL      = array.new<int>()
+var array<box>     kzBoxes   = array.new<box>()
+var array<line>    brkLines  = array.new<line>()
+var array<label>   brkLabels = array.new<label>()
+var array<Gap>     gaps      = array.new<Gap>()
+var array<HFvg>    hfvgs     = array.new<HFvg>()
+var array<Ote>     oteList   = array.new<Ote>()
+
+var float shP = na
+var int   shX = na
+var bool  shBroken = true
+var float slP = na
+var int   slX = na
+var bool  slBroken = true
+var int   dir = 0
+var int   cEvt    = 0
+var int   cEvtDir = 0
+var int   chochUpBar = na
+var int   chochDnBar = na
+var float gAtr = na
+var int   lastIrl = na
+var int   lastExtSweep = na
+var bool  dolSeeded = false
+
+var int  lastSslSweep = na
+var int  lastBslSweep = na
+var int  mssUpBar  = na
+var int  mssDnBar  = na
+var bool mssUpAplus = false
+var bool mssDnAplus = false
+
+var float upRunOpen = na
+var int   upRunX    = na
+var int   lastUpBar = na
+var float dnRunOpen = na
+var int   dnRunX    = na
+var int   lastDnBar = na
+var float refUpOpen = na
+var int   refUpX    = na
+var int   refUpBar  = na
+var float refUpHigh = na
+var float refDnOpen = na
+var int   refDnX    = na
+var int   refDnBar  = na
+var float refDnLow  = na
+
+deleteLiq(Liq l) =>
+    l.ln.delete()
+    if not na(l.lb)
+        l.lb.delete()
+
+ageLevel(string oldName, string newName) =>
+    if liqs.size() > 0
+        for l in liqs
+            parts = str.split(l.kind, " · ")
+            bool ch = false
+            for i = 0 to parts.size() - 1
+                if parts.get(i) == oldName
+                    parts.set(i, newName)
+                    ch := true
+            if ch
+                l.kind := parts.join(" · ")
+                if not na(l.lb)
+                    l.lb.set_text(l.kind)
+    true
+
+liqPrio(string k) =>
+    str.startswith(k, "PW") ? 7 : str.startswith(k, "PD") ? 6 : str.startswith(k, "ERL") ? 5 :
+     k == "EQH" or k == "EQL" ? 3 : k == "REH" or k == "REL" ? 2 : k == "BSL" or k == "SSL" ? 1 : 4
+
+newLiq(int x1, float price, bool isHigh, string kind, color col, string sty, int wid) =>
+    xs  = math.max(x1, bar_index - 4999)
+    ln  = line.new(xs, price, bar_index + 2, price, color = col, style = sty, width = wid)
+    label lb = liq_txt ? label.new(bar_index + 2, price, kind, style = label.style_label_left, color = color.new(color.black, 100), textcolor = col, size = size.tiny) : na
+    liqs.push(Liq.new(ln, lb, price, isHigh, x1, kind))
+    if liqs.size() > max_liq
+        int worst = 0
+        int wPrio = liqPrio(liqs.get(0).kind)
+        for i = 1 to liqs.size() - 2
+            pr = liqPrio(liqs.get(i).kind)
+            if pr < wPrio
+                wPrio := pr
+                worst := i
+        deleteLiq(liqs.get(worst))
+        liqs.remove(worst)
+    true
+
+addLiq(int x1, float price, bool isHigh, string kind, color col, string sty, int wid) =>
+    tol = nz(gAtr) * merge_tol
+    int idx = -1
+    if liqs.size() > 0
+        for i = liqs.size() - 1 to 0
+            o = liqs.get(i)
+            if o.isHigh == isHigh and math.abs(o.price - price) <= tol
+                idx := i
+                break
+    if idx < 0
+        newLiq(x1, price, isHigh, kind, col, sty, wid)
+    else
+        o  = liqs.get(idx)
+        pn = liqPrio(kind)
+        po = liqPrio(o.kind)
+        if pn == 1 or po == 1 or (pn <= 3 and po <= 3)
+            if pn > po
+                deleteLiq(o)
+                liqs.remove(idx)
+                newLiq(x1, price, isHigh, kind, col, sty, wid)
+        else if not str.contains(o.kind, kind)
+            txt = pn > po ? kind + " · " + o.kind : o.kind + " · " + kind
+            ext = isHigh ? math.max(o.price, price) : math.min(o.price, price)
+            o.kind  := txt
+            o.price := ext
+            o.ln.set_y1(ext)
+            o.ln.set_y2(ext)
+            if pn > po
+                o.ln.set_color(col)
+                o.ln.set_style(sty)
+                o.ln.set_width(wid)
+            if not na(o.lb)
+                o.lb.set_text(txt)
+                o.lb.set_y(ext)
+                if pn > po
+                    o.lb.set_textcolor(col)
+    idx
+
+kindColor(string k) =>
+    switch k
+        "BSL" => bsl_col
+        "SSL" => ssl_col
+        "EQH" => eq_col
+        "EQL" => eq_col
+        "REH" => re_col
+        "REL" => re_col
+        => erl_col
+
+addStruct(int x1, float price, bool isHigh, string kind) =>
+    sty = kind == "REH" or kind == "REL" ? line.style_dashed : line.style_solid
+    wid = kind == "BSL" or kind == "SSL" ? 1 : 2
+    addLiq(x1, price, isHigh, kind, kindColor(kind), sty, wid)
+
+removeLiq(int x, string kind) =>
+    if liqs.size() > 0
+        for i = liqs.size() - 1 to 0
+            l = liqs.get(i)
+            if l.x == x and l.kind == kind
+                deleteLiq(l)
+                liqs.remove(i)
+                break
+
+hasLiqAt(int x, bool isHigh) =>
+    bool found = false
+    for l in liqs
+        if l.x == x and l.isHigh == isHigh
+            found := true
+            break
+    found
+
+findEqual(array<Piv> arr, float p, int x, bool isHigh, float atrv) =>
+    string kind = ""
+    int    qx   = na
+    float  qp   = na
+    if arr.size() > 0
+        for j = arr.size() - 1 to 0
+            q = arr.get(j)
+            if x - q.x > eqBars
+                break
+            diff = math.abs(p - q.price)
+            lvl  = isHigh ? math.max(p, q.price) : math.min(p, q.price)
+            clean = true
+            k0 = bar_index - x + 1
+            k1 = bar_index - q.x - 1
+            if k1 >= k0
+                for k = k0 to k1
+                    if isHigh ? high[k] > lvl : low[k] < lvl
+                        clean := false
+                        break
+            if clean
+                if diff <= eq_tol * atrv
+                    if (isHigh ? show_eqh : show_eql)
+                        kind := isHigh ? "EQH" : "EQL"
+                else if diff <= re_tol * atrv and (isHigh ? show_reh : show_rel)
+                    kind := isHigh ? "REH" : "REL"
+            if kind != ""
+                qx := q.x
+                qp := q.price
+                break
+    [kind, qx, qp]
+
+dateTxt() =>
+    gap_dates == "Sin fecha" ? "" : str.format_time(time_tradingday, gap_dates, "UTC")
+
+killzone(HL k, bool show, string sess, string name, color col) =>
+    inS = kzActive and not na(time("", sess, kz_tz))
+    st  = inS and not inS[1]
+    en  = not inS and inS[1]
+    if show
+        if st
+            sfx = k.dt != "" ? k.dt : "-1"
+            ageLevel(name + " H", name + " " + sfx + " H")
+            ageLevel(name + " L", name + " " + sfx + " L")
+            k.dt := dateTxt()
+            k.h  := high
+            k.l  := low
+            k.hx := bar_index
+            k.lx := bar_index
+            k.bx := na
+            if histOK
+                k.bx := box.new(bar_index, high, bar_index, low, border_color = color.new(col, 60), bgcolor = col, text = kz_txt ? name : "", text_color = color.new(col, 20), text_size = size.tiny, text_halign = text.align_left, text_valign = text.align_top)
+                kzBoxes.push(k.bx)
+                if kzBoxes.size() > kz_max
+                    kzBoxes.shift().delete()
+        else if inS and not na(k.h)
+            if high > k.h
+                k.h  := high
+                k.hx := bar_index
+            if low < k.l
+                k.l  := low
+                k.lx := bar_index
+            if not na(k.bx)
+                k.bx.set_top(k.h)
+                k.bx.set_bottom(k.l)
+                k.bx.set_right(bar_index)
+        if en and kz_liq and not na(k.h)
+            lc = color.new(col, 0)
+            addLiq(k.hx, k.h, true,  name + " H", lc, line.style_solid, 1)
+            addLiq(k.lx, k.l, false, name + " L", lc, line.style_solid, 1)
+    show and inS
+
+periodHL(HL p, bool isNew, bool show, string tf, string nH, string nL, string oH, string oL, color col) =>
+    if show and timeframe.in_seconds() < timeframe.in_seconds(tf)
+        if isNew
+            sfx = p.pdt != "" ? p.pdt : "ant"
+            ageLevel(nH, oH + " " + sfx)
+            ageLevel(nL, oL + " " + sfx)
+            p.pdt := p.dt
+            p.dt  := dateTxt()
+            if not na(p.h)
+                removeLiq(p.hx, "BSL")
+                removeLiq(p.lx, "SSL")
+                addLiq(p.hx, p.h, true,  nH, col, line.style_solid, 2)
+                addLiq(p.lx, p.l, false, nL, col, line.style_solid, 2)
+            p.h  := high
+            p.l  := low
+            p.hx := bar_index
+            p.lx := bar_index
+        else if not na(p.h)
+            if high > p.h
+                p.h  := high
+                p.hx := bar_index
+            if low < p.l
+                p.l  := low
+                p.lx := bar_index
+
+anchorOpen(bool show, string sess, string name, color col) =>
+    var line  ln = na
+    var label lb = na
+    inS = timeframe.isintraday and not na(time("", sess, kz_tz))
+    st  = inS and not inS[1]
+    t0    = int(str.tonumber(str.substring(sess, 0, 2))) * 60 + int(str.tonumber(str.substring(sess, 2, 4)))
+    exact = hour(time, kz_tz) * 60 + minute(time, kz_tz) == t0
+    if show
+        if st
+            if not na(ln)
+                ln.delete()
+                ln := na
+            if not na(lb)
+                lb.delete()
+                lb := na
+            if exact
+                ln := line.new(bar_index, open, bar_index, open, color = col, style = line.style_dotted)
+                lb := label.new(bar_index, open, name, style = label.style_label_left, color = color.new(color.black, 100), textcolor = col, size = size.tiny)
+        if inS and not na(ln)
+            ln.set_x2(bar_index)
+            lb.set_x(bar_index)
+
+oteLevel(Ote o, float r) =>
+    o.bull ? o.e - r * (o.e - o.s) : o.e + r * (o.s - o.e)
+
+deleteOte(Ote o) =>
+    if not na(o.bx)
+        o.bx.delete()
+    if not na(o.lns)
+        for ln in o.lns
+            ln.delete()
+        for lb in o.lbs
+            lb.delete()
+
+paintOte(Ote o) =>
+    if not na(o.bx)
+        xr = bar_index + fvg_ahead
+        xl = xr - ote_w
+        a = oteLevel(o, 0.62)
+        b = oteLevel(o, 0.79)
+        o.bx.set_lefttop(xl, math.max(a, b))
+        o.bx.set_rightbottom(xr, math.min(a, b))
+        o.bx.set_bgcolor(color.new(ote_col, o.locked ? 88 : 72))
+        for k = 0 to 2
+            r = k == 0 ? 0.62 : k == 1 ? 0.705 : 0.79
+            y = oteLevel(o, r)
+            ln = o.lns.get(k)
+            ln.set_xy1(xl, y)
+            ln.set_xy2(xr, y)
+            ln.set_color(color.new(ote_col, o.locked ? 65 : (k == 1 ? 10 : 35)))
+            lb = o.lbs.get(k)
+            lb.set_xy(xr, y)
+            lb.set_textcolor(color.new(ote_col, o.locked ? 55 : 15))
+    true
+
+newOte(bool bull, int fromX) =>
+    int   n  = math.min(bar_index - nz(fromX, bar_index), 400)
+    float st = bull ? low : high
+    for i = 0 to n
+        st := bull ? math.min(st, low[i]) : math.max(st, high[i])
+    float en = bull ? high : low
+    box bx = na
+    array<line>  lns = na
+    array<label> lbs = na
+    if histOK
+        xr = bar_index + fvg_ahead
+        bx  := box.new(xr - ote_w, math.max(en, st), xr, math.min(en, st), border_color = color.new(color.black, 100))
+        lns := array.new<line>()
+        lbs := array.new<label>()
+        for k = 0 to 2
+            lns.push(line.new(xr - ote_w, en, xr, en, style = k == 1 ? line.style_solid : line.style_dashed, width = 1))
+            lbs.push(label.new(xr, en, k == 0 ? "62" : k == 1 ? (bull ? "OTE ▲ 70.5" : "OTE ▼ 70.5") : "79", style = label.style_label_left, color = color.new(color.black, 100), textcolor = ote_col, size = size.tiny))
+    Ote o = Ote.new(bx, lns, lbs, bull, st, en, bar_index, bar_index)
+    if oteList.size() > 0
+        for i = oteList.size() - 1 to 0
+            if oteList.get(i).bull == bull
+                deleteOte(oteList.get(i))
+                oteList.remove(i)
+    oteList.push(o)
+    if oteList.size() > ote_max
+        deleteOte(oteList.shift())
+    paintOte(o)
+    true
+
+closedThrough(DispFVG f) =>
+    body_hi = math.max(open, close)
+    body_lo = math.min(open, close)
+    if f.bull
+        inv_mode == "Cierre" ? close < f.btm : body_hi < f.btm
+    else
+        inv_mode == "Cierre" ? close > f.top : body_lo > f.top
+
+deleteZone(DispFVG f) =>
+    f.bx.delete()
+    if not na(f.ce)
+        f.ce.delete()
+
+zoneText(DispFVG f) =>
+    base  = f.inv == 0 ? "FVG★" : f.inv == 1 ? "IFVG" : "IFVG×" + str.tostring(f.inv)
+    showT = zone_txt == "Todas" or (zone_txt == "FVG★ solo si A+" and (f.inv > 0 or f.aplus))
+    showT ? base + (f.aplus ? " A+" : "") : ""
+
+paintZone(DispFVG f) =>
+    col = f.inv == 0 ? (f.bull ? bull_col : bear_col) : (f.bull ? ibull_col : ibear_col)
+    showB = zone_brd == "Todos" or (zone_brd == "Solo A+" and f.aplus)
+    f.bx.set_bgcolor(col)
+    f.bx.set_border_color(not showB ? color.new(color.black, 100) : f.aplus ? aplus_col : color.new(col, 30))
+    f.bx.set_border_width(f.aplus and showB ? 2 : 1)
+    f.bx.set_text(zoneText(f))
+    f.bx.set_text_color(f.aplus ? aplus_col : color.new(col, 0))
+    if not na(f.ce)
+        f.ce.set_color(color.new(col, 20))
+
+absorbSwept(float price, bool isHigh, int fromX) =>
+    string extra = ""
+    tol = math.max(nz(gAtr) * merge_tol, syminfo.mintick)
+    if sweptLiqs.size() > 0
+        for i = sweptLiqs.size() - 1 to 0
+            sw = sweptLiqs.get(i)
+            if sw.isHigh == isHigh and math.abs(sw.price - price) <= tol and sw.ln.get_x2() > fromX
+                if liqPrio(sw.kind) == 1
+                    deleteLiq(sw)
+                    sweptLiqs.remove(i)
+                else
+                    extra := extra + " · " + sw.kind
+                    if not na(sw.lb)
+                        sw.lb.delete()
+                        sw.lb := na
+    extra
+
+drawBreak(int x1, float price, bool up, string txt, color col, string sty) =>
+    if histOK
+        xs = math.max(x1, bar_index - 4999)
+        ln = line.new(xs, price, bar_index, price, color = col, style = sty, width = 1)
+        lb = label.new(math.round((xs + bar_index) / 2), price, txt, style = up ? label.style_label_down : label.style_label_up, color = color.new(color.black, 100), textcolor = col, size = size.tiny)
+        brkLines.push(ln)
+        brkLabels.push(lb)
+        if brkLines.size() > 60
+            brkLines.shift().delete()
+            brkLabels.shift().delete()
+
+candle_range = disp_type == "Open to Close" ? math.abs(open - close) : high - low
+std          = ta.stdev(candle_range, std_len) * std_x
+atr          = ta.atr(14)
+gAtr        := atr
+newDay       = timeframe.change("D")
+newWeek      = timeframe.change("W")
+hiRef        = math.max(high, nz(close[1], high))
+loRef        = math.min(low, nz(close[1], low))
+
+disp_mid = candle_range[1] > std[1]
+bull_mid = close[1] > open[1]
+bull_gap = high[2] < low
+bear_gap = low[2] > high
+fvg      = bull_mid ? bull_gap : bear_gap
+
+displacement = require_fvg ? disp_mid and fvg : candle_range > std
+barcolor(displacement ? disp_color : na, offset = require_fvg ? -1 : 0)
+
+std_mss  = ta.stdev(candle_range, std_len) * mss_sx
+dispUpOK = nz(ta.barssince(candle_range > std_mss and close > open), 999) <= mss_win
+dispDnOK = nz(ta.barssince(candle_range > std_mss and close < open), 999) <= mss_win
+
+structDol(int len) =>
+    var float sh  = na
+    var float sl  = na
+    var bool  shB = true
+    var bool  slB = true
+    var int   d   = 0
+    var int   evt = 0
+    var int   ed  = 0
+    var array<float> hiLv = array.new<float>()
+    var array<float> loLv = array.new<float>()
+    var array<float> eqHi = array.new<float>()
+    var array<float> eqLo = array.new<float>()
+    var int   shI = na
+    var int   slI = na
+    var float oS  = na
+    var float oE  = na
+    var int   oD  = 0
+    var bool  oL  = false
+    var int   oBn = na
+    bool mUp = false
+    bool mDn = false
+    var float upO = na
+    var int   upB = na
+    var float dnO = na
+    var int   dnB = na
+    var float rU  = na
+    var int   rUB = na
+    var float rUH = na
+    var float rD  = na
+    var int   rDB = na
+    var float rDL = na
+    atrT = ta.atr(14)
+    cr  = disp_type == "Open to Close" ? math.abs(close - open) : high - low
+    sdT = ta.stdev(cr, std_len)
+    sdm = sdT * mss_sx
+    upD = nz(ta.barssince(cr > sdm and close > open), 999) <= mss_win
+    dnD = nz(ta.barssince(cr > sdm and close < open), 999) <= mss_win
+    lHi = ta.highest(high, cisd_look)
+    lLo = ta.lowest(low, cisd_look)
+    if not shB and not na(sh) and close > sh
+        shB := true
+        evt := d != 1 ? (upD or not mss_disp ? 2 : 3) : 1
+        d   := 1
+        ed  := 1
+        mUp := evt == 2
+    if not slB and not na(sl) and close < sl
+        slB := true
+        evt := d != -1 ? (dnD or not mss_disp ? 2 : 3) : 1
+        d   := -1
+        ed  := -1
+        mDn := evt == 2
+    if mUp or mDn
+        int nL = math.min(bar_index - nz(mUp ? shI : slI, bar_index), 200)
+        float stL = mUp ? low : high
+        for i = 0 to nL
+            stL := mUp ? math.min(stL, low[i]) : math.max(stL, high[i])
+        oS  := stL
+        oE  := mUp ? high : low
+        oD  := mUp ? 1 : -1
+        oL  := false
+        oBn := bar_index
+    else if oD != 0
+        if (oD == 1 and close < oS) or (oD == -1 and close > oS)
+            oD := 0
+        else if not oL and bar_index > oBn
+            if (oD == 1 and high > oE) or (oD == -1 and low < oE)
+                oE := oD == 1 ? high : low
+            l62 = oD == 1 ? oE - 0.62 * (oE - oS) : oE + 0.62 * (oS - oE)
+            if (oD == 1 and low <= l62) or (oD == -1 and high >= l62)
+                oL := true
+    bool hiSw = false
+    bool loSw = false
+    if hiLv.size() > 0
+        for i = hiLv.size() - 1 to 0
+            if high > hiLv.get(i)
+                hiLv.remove(i)
+                hiSw := true
+    if loLv.size() > 0
+        for i = loLv.size() - 1 to 0
+            if low < loLv.get(i)
+                loLv.remove(i)
+                loSw := true
+    if eqHi.size() > 0
+        for i = eqHi.size() - 1 to 0
+            if high > eqHi.get(i)
+                eqHi.remove(i)
+    if eqLo.size() > 0
+        for i = eqLo.size() - 1 to 0
+            if low < eqLo.get(i)
+                eqLo.remove(i)
+    isUp = close > open
+    isDn = close < open
+    if isUp and not (close[1] > open[1])
+        upO := open
+    if isDn and not (close[1] < open[1])
+        dnO := open
+    if isUp
+        upB := bar_index
+    if isDn
+        dnB := bar_index
+    tU = cisd_sweep ? hiSw : high >= lHi
+    tD = cisd_sweep ? loSw : low <= lLo
+    if tU and not na(upB) and bar_index - upB <= 2
+        rU  := upO
+        rUB := bar_index
+        rUH := high
+    if tD and not na(dnB) and bar_index - dnB <= 2
+        rD  := dnO
+        rDB := bar_index
+        rDL := low
+    if not na(rU)
+        rUH := math.max(rUH, high)
+        if bar_index - rUB > cisdBars
+            rU := na
+    if not na(rD)
+        rDL := math.min(rDL, low)
+        if bar_index - rDB > cisdBars
+            rD := na
+    if not na(rU) and close < rU
+        okB = switch cisd_str
+            "Cualquier cierre" => true
+            "Cuerpo ≥ 50%"     => isDn and (open - close) >= 0.5 * (high - low)
+            => isDn and cr > sdT * std_x
+        rngU = rUH - rU >= cisd_rng * atrT
+        if rngU and okB
+            evt := 4
+            ed  := -1
+            rU  := na
+        else if not rngU
+            rU := na
+    if not na(rD) and close > rD
+        okB = switch cisd_str
+            "Cualquier cierre" => true
+            "Cuerpo ≥ 50%"     => isUp and (close - open) >= 0.5 * (high - low)
+            => isUp and cr > sdT * std_x
+        rngD = rD - rDL >= cisd_rng * atrT
+        if rngD and okB
+            evt := 4
+            ed  := 1
+            rD  := na
+        else if not rngD
+            rD := na
+    ph = ta.pivothigh(high, len, len)
+    pl = ta.pivotlow(low, len, len)
+    if not na(ph)
+        sh  := ph
+        shI := bar_index - len
+        shB := false
+        hiLv.push(ph)
+        if hiLv.size() > 40
+            hiLv.shift()
+        if hiLv.size() > 1
+            for i = 0 to hiLv.size() - 2
+                if math.abs(hiLv.get(i) - ph) <= eq_tol * atrT
+                    float qv = math.max(hiLv.get(i), ph)
+                    bool dupQ = false
+                    for v in eqHi
+                        if math.abs(v - qv) <= eq_tol * atrT
+                            dupQ := true
+                    if not dupQ
+                        eqHi.push(qv)
+                        if eqHi.size() > 20
+                            eqHi.shift()
+    if not na(pl)
+        sl  := pl
+        slI := bar_index - len
+        slB := false
+        loLv.push(pl)
+        if loLv.size() > 40
+            loLv.shift()
+        if loLv.size() > 1
+            for i = 0 to loLv.size() - 2
+                if math.abs(loLv.get(i) - pl) <= eq_tol * atrT
+                    float qv = math.min(loLv.get(i), pl)
+                    bool dupQ = false
+                    for v in eqLo
+                        if math.abs(v - qv) <= eq_tol * atrT
+                            dupQ := true
+                    if not dupQ
+                        eqLo.push(qv)
+                        if eqLo.size() > 20
+                            eqLo.shift()
+    dd = dol_dir == "Estructura" ? d : (ed != 0 ? ed : d)
+    float dol = na
+    if dd == 1
+        for v in hiLv
+            if v > close and (na(dol) or v < dol)
+                dol := v
+    else if dd == -1
+        for v in loLv
+            if v < close and (na(dol) or v > dol)
+                dol := v
+    float eqUp = na
+    for v in eqHi
+        if v > close and (na(eqUp) or v < eqUp)
+            eqUp := v
+    float eqDn = na
+    for v in eqLo
+        if v < close and (na(eqDn) or v > eqDn)
+            eqDn := v
+    [d, evt, ed, dol, eqUp, eqDn, oS, oE, oD, oL]
+
+structConfirmed(int len) =>
+    [d, e, ed, dl, qU, qD, oS, oE, oD, oL] = structDol(len)
+    atrH = ta.atr(14)
+    crH  = disp_type == "Open to Close" ? math.abs(close - open) : high - low
+    sdH  = ta.stdev(crH, std_len) * std_x
+    bG = low > high[2] and (low - high[2]) >= 0.4 * atrH and (not hf_disp or (crH[1] > sdH[1] and close[1] > open[1]))
+    sG = high < low[2] and (low[2] - high) >= 0.4 * atrH and (not hf_disp or (crH[1] > sdH[1] and close[1] < open[1]))
+    [d[1], e[1], ed[1], dl[1], high, low, bG[1], low[1], high[3], sG[1], low[3], high[1], time[1], qU[1], qD[1], oS[1], oE[1], oD[1], oL[1]]
+
+structCode(int len) =>
+    [d, e, ed, dl, qU, qD, oS, oE, oD, oL] = structDol(len)
+    d[1]
+
+dolDirOf(int d0, int ed0) =>
+    d = nz(d0)
+    e = nz(ed0)
+    dol_dir == "Estructura" ? d : e != 0 ? e : d
+
+tfLabel(string tf) =>
+    s = timeframe.in_seconds(tf)
+    s < 3600 ? str.tostring(math.round(s / 60.0)) + "m" : s < 86400 ? str.tostring(math.round(s / 3600.0)) + "H" : s < 604800 ? str.tostring(math.round(s / 86400.0)) + "D" : s < 2419200 ? str.tostring(math.round(s / 604800.0)) + "W" : str.tostring(math.round(s / 2628003.0)) + "M"
+
+tierOf(int sec) =>
+    sec >= 604800 ? 4 : sec >= 86400 ? 3 : sec >= 14400 ? 2 : sec >= 3600 ? 1 : 0
+
+[s1, e1, ed1, dl1, hh1, ll1, bg1, bt1, bb1, sg1, st1, sb1, t1, eh1, el1, os1, oe1, od1, ol1] = request.security(syminfo.tickerid, htf1, structConfirmed(htf_len), lookahead = barmerge.lookahead_on)
+[s2, e2, ed2, dl2, hh2, ll2, bg2, bt2, bb2, sg2, st2, sb2, t2, eh2, el2, os2, oe2, od2, ol2] = request.security(syminfo.tickerid, htf2, structConfirmed(htf_len), lookahead = barmerge.lookahead_on)
+[s3, e3, ed3, dl3, hh3, ll3, bg3, bt3, bb3, sg3, st3, sb3, t3, eh3, el3, os3, oe3, od3, ol3] = request.security(syminfo.tickerid, htf3, structConfirmed(htf_len), lookahead = barmerge.lookahead_on)
+[s4, e4, ed4, dl4, hh4, ll4, bg4, bt4, bb4, sg4, st4, sb4, t4, eh4, el4, os4, oe4, od4, ol4] = request.security(syminfo.tickerid, htf4, structConfirmed(htf_len), lookahead = barmerge.lookahead_on)
+[s5, e5, ed5, dl5, hh5, ll5, bg5, bt5, bb5, sg5, st5, sb5, t5, eh5, el5, os5, oe5, od5, ol5] = request.security(syminfo.tickerid, htf5, structConfirmed(htf_len), lookahead = barmerge.lookahead_on)
+
+sF      = request.security(syminfo.tickerid, aplus_htf, structCode(htf_len), lookahead = barmerge.lookahead_on)
+htfFilt = aplus_htf_on and timeframe.in_seconds(aplus_htf) > chartSecs
+htfUpOK = not htfFilt or nz(sF) == 1
+htfDnOK = not htfFilt or nz(sF) == -1
+
+ingestHF(bool on, string tf, bool bG, float bT, float bB, bool sG, float sT, float sB, int tH) =>
+    if on and (dol_hfvg or hf_show) and timeframe.in_seconds(tf) > chartSecs and not na(tH) and tH != nz(tH[1])
+        lbl = tfLabel(tf)
+        tr  = tierOf(timeframe.in_seconds(tf))
+        if bG and not na(bT) and not na(bB)
+            hfvgs.push(HFvg.new(bT, bB, lbl, tr, true, bar_index))
+        if sG and not na(sT) and not na(sB)
+            hfvgs.push(HFvg.new(sT, sB, lbl, tr, false, bar_index))
+        while hfvgs.size() > 40
+            hfvgs.shift()
+
+ingestHF(htf1_on, htf1, bg1, bt1, bb1, sg1, st1, sb1, t1)
+ingestHF(htf2_on, htf2, bg2, bt2, bb2, sg2, st2, sb2, t2)
+ingestHF(htf3_on, htf3, bg3, bt3, bb3, sg3, st3, sb3, t3)
+ingestHF(htf4_on, htf4, bg4, bt4, bb4, sg4, st4, sb4, t4)
+ingestHF(htf5_on, htf5, bg5, bt5, bb5, sg5, st5, sb5, t5)
+
+if hfvgs.size() > 0
+    for i = hfvgs.size() - 1 to 0
+        h  = hfvgs.get(i)
+        ce = (h.top + h.btm) / 2
+        if bar_index > h.born
+            if not h.reached
+                rch = dol_fvg_lvl == "CE (50%)" ? (hiRef >= ce and loRef <= ce) : (hiRef >= h.btm and loRef <= h.top)
+                if rch
+                    h.reached := true
+                    lastIrl   := bar_index
+            if not h.filled and hiRef >= ce and loRef <= ce
+                h.filled := true
+            broken = h.bull ? close < h.btm : close > h.top
+            back   = h.bull ? close > h.top : close < h.btm
+            if not h.inv and broken
+                if hf_ifvg
+                    h.inv     := true
+                    h.reached := false
+                    h.filled  := false
+                else
+                    hfvgs.remove(i)
+            else if h.inv and back
+                hfvgs.remove(i)
+
+var array<box>  hfBoxes = array.new<box>()
+var array<line> hfLines = array.new<line>()
+var array<label> hfLabels = array.new<label>()
+drawHF(string tfl) =>
+    array<float> dists = array.new<float>()
+    array<int>   ids   = array.new<int>()
+    for i = 0 to hfvgs.size() - 1
+        h = hfvgs.get(i)
+        if h.tf == tfl
+            dists.push(close > h.top ? close - h.top : close < h.btm ? h.btm - close : 0.0)
+            ids.push(i)
+    if ids.size() > 0
+        ord = dists.sort_indices(order.ascending)
+        int shown = 0
+        for j in ord
+            if shown >= hf_n
+                break
+            h   = hfvgs.get(ids.get(j))
+            col = h.inv ? (h.bull ? ibull_col : ibear_col) : (h.bull ? bull_col : bear_col)
+            solid = color.new(col, 0)
+            ceP = (h.top + h.btm) / 2
+            x0 = bar_index + gap_off + 2
+            x1 = x0 + hf_w
+            hfBoxes.push(box.new(x0, h.top, x1, h.btm, border_color = color.new(solid, h.filled ? 75 : 35), bgcolor = color.new(solid, h.filled ? 92 : 80)))
+            hfLines.push(line.new(x0, ceP, x1, ceP, color = color.new(solid, 40), style = line.style_dashed, width = 1))
+            hfLabels.push(label.new(math.round((x0 + x1) / 2), h.top, (h.inv ? "IFVG " : "FVG ") + h.tf, style = label.style_label_down, color = color.new(color.black, 100), textcolor = solid, size = size.tiny))
+            shown += 1
+    true
+
+drawOteHF(string tfl, float so, float eo, int dd, bool lk) =>
+    if dd != 0 and not na(so) and not na(eo)
+        a  = dd == 1 ? eo - 0.62 * (eo - so) : eo + 0.62 * (so - eo)
+        b  = dd == 1 ? eo - 0.79 * (eo - so) : eo + 0.79 * (so - eo)
+        x0 = bar_index + gap_off + 2 + hf_w + 2
+        x1 = x0 + hf_w
+        hfBoxes.push(box.new(x0, math.max(a, b), x1, math.min(a, b), border_color = color.new(color.black, 100), bgcolor = color.new(ote_col, lk ? 88 : 72)))
+        for r in array.from(0.62, 0.705, 0.79)
+            y = dd == 1 ? eo - r * (eo - so) : eo + r * (so - eo)
+            hfLines.push(line.new(x0, y, x1, y, color = color.new(ote_col, lk ? 65 : (r == 0.705 ? 10 : 35)), style = r == 0.705 ? line.style_solid : line.style_dashed, width = 1))
+        hfLabels.push(label.new(math.round((x0 + x1) / 2), math.max(a, b), "OTE " + tfl + (dd == 1 ? " ▲" : " ▼"), style = label.style_label_down, color = color.new(color.black, 100), textcolor = color.new(ote_col, lk ? 45 : 0), size = size.tiny))
+    true
+
+if barstate.islast
+    for b in hfBoxes
+        b.delete()
+    for ln in hfLines
+        ln.delete()
+    for lb in hfLabels
+        lb.delete()
+    hfBoxes.clear()
+    hfLines.clear()
+    hfLabels.clear()
+    if show_ote and ote_htf and histOK
+        if htf1_on and timeframe.in_seconds(htf1) > chartSecs
+            drawOteHF(tfLabel(htf1), os1, oe1, nz(od1), ol1)
+        if htf2_on and timeframe.in_seconds(htf2) > chartSecs
+            drawOteHF(tfLabel(htf2), os2, oe2, nz(od2), ol2)
+        if htf3_on and timeframe.in_seconds(htf3) > chartSecs
+            drawOteHF(tfLabel(htf3), os3, oe3, nz(od3), ol3)
+        if htf4_on and timeframe.in_seconds(htf4) > chartSecs
+            drawOteHF(tfLabel(htf4), os4, oe4, nz(od4), ol4)
+        if htf5_on and timeframe.in_seconds(htf5) > chartSecs
+            drawOteHF(tfLabel(htf5), os5, oe5, nz(od5), ol5)
+    if hf_show and histOK and hfvgs.size() > 0
+        if htf1_on and timeframe.in_seconds(htf1) > chartSecs
+            drawHF(tfLabel(htf1))
+        if htf2_on and timeframe.in_seconds(htf2) > chartSecs
+            drawHF(tfLabel(htf2))
+        if htf3_on and timeframe.in_seconds(htf3) > chartSecs
+            drawHF(tfLabel(htf3))
+        if htf4_on and timeframe.in_seconds(htf4) > chartSecs
+            drawHF(tfLabel(htf4))
+        if htf5_on and timeframe.in_seconds(htf5) > chartSecs
+            drawHF(tfLabel(htf5))
+
+var HL kzA = HL.new()
+var HL kzL = HL.new()
+var HL kzN = HL.new()
+var HL kzU = HL.new()
+var HL kzP = HL.new()
+var HL pDay  = HL.new()
+var HL pWeek = HL.new()
+
+inA = killzone(kzA, kzA_on, kzA_ss, kzA_nm, kzA_col)
+inL = killzone(kzL, kzL_on, kzL_ss, kzL_nm, kzL_col)
+inN = killzone(kzN, kzN_on, kzN_ss, kzN_nm, kzN_col)
+inU = killzone(kzU, kzU_on, kzU_ss, kzU_nm, kzU_col)
+inP = killzone(kzP, kzP_on, kzP_ss, kzP_nm, kzP_col)
+inKZ = inA or inL or inN or inU or inP
+kzCond = not aplus_kz or not kzActive or inKZ
+
+periodHL(pDay,  newDay,  show_pd, "D", "PDH", "PDL", "DH", "DL", pd_col)
+periodHL(pWeek, newWeek, show_pw, "W", "PWH", "PWL", "WH", "WL", pw_col)
+
+anchorOpen(show_nymo, "0000-1700", "NYMO",  nymo_col)
+anchorOpen(show_0830, "0830-1700", "08:30", o830_col)
+anchorOpen(show_0930, "0930-1700", "09:30", o930_col)
+
+gapColOf(string kind) =>
+    kind == "NWOG" ? nwog_col : ndog_col
+
+deleteGap(Gap g) =>
+    if not na(g.bx)
+        g.bx.delete()
+    if not na(g.lns)
+        for ln in g.lns
+            ln.delete()
+
+newGap(string kind, float gT, float gB) =>
+    int nMax = kind == "NWOG" ? n_nwog : n_ndog
+    int cnt  = 0
+    for g in gaps
+        cnt += g.kind == kind ? 1 : 0
+    if cnt >= nMax
+        for i = 0 to gaps.size() - 1
+            if gaps.get(i).kind == kind
+                deleteGap(gaps.get(i))
+                gaps.remove(i)
+                break
+    color col = gapColOf(kind)
+    box bx = na
+    array<line> ls = array.new<line>()
+    if (kind == "NWOG" ? show_nwog : show_ndog) and histOK
+        string dt = gap_dates == "Sin fecha" ? "" : " " + str.format_time(time_tradingday, gap_dates, "UTC")
+        bx := box.new(bar_index - 1, gT, bar_index + gap_off, gB, border_color = color.new(col, 30), bgcolor = color.new(col, 88), text = kind + dt, text_size = size.tiny, text_color = color.new(col, 10), text_halign = text.align_right, text_valign = text.align_center)
+        if gap_lines != "Ninguna"
+            array<float> qs = gap_lines == "CE" ? array.from(0.5) : array.from(0.25, 0.5, 0.75)
+            for q in qs
+                py = gB + (gT - gB) * q
+                ls.push(line.new(bar_index - 1, py, bar_index + gap_off, py, color = color.new(col, q == 0.5 ? 20 : 55), style = line.style_dashed, width = 1))
+    gaps.push(Gap.new(bx, gT, gB, kind, born = bar_index, lns = ls))
+
+gapOn = show_nwog or show_ndog or show_eh or dol_irl or dol_sel == "Ciclo ERL ↔ IRL"
+if gapOn and newWeek and chartSecs < 604800 and not na(close[1])
+    gT = math.max(open, close[1])
+    gB = math.min(open, close[1])
+    if gT - gB >= syminfo.mintick
+        newGap("NWOG", gT, gB)
+else if gapOn and newDay and timeframe.isintraday and not na(close[1])
+    gT = math.max(open, close[1])
+    gB = math.min(open, close[1])
+    if gT - gB >= syminfo.mintick
+        newGap("NDOG", gT, gB)
+
+if gaps.size() > 0
+    for g in gaps
+        ce = (g.top + g.btm) / 2
+        hiG = g.born == bar_index ? high : hiRef
+        loG = g.born == bar_index ? low : loRef
+        if not g.filled and hiG >= ce and loG <= ce
+            g.filled := true
+            if not na(g.bx)
+                g.bx.set_bgcolor(color.new(gapColOf(g.kind), 95))
+                g.bx.set_border_color(color.new(gapColOf(g.kind), 70))
+        if not g.reached and bar_index > g.born
+            gReach = dol_fvg_lvl == "CE (50%)" ? (hiG >= ce and loG <= ce) : (hiG >= g.btm and loG <= g.top)
+            if gReach
+                g.reached := true
+                lastIrl   := bar_index
+        if barstate.islast and not na(g.bx)
+            g.bx.set_right(bar_index + gap_off)
+            for ln in g.lns
+                ln.set_x2(bar_index + gap_off)
+
+var line  ehLn = na
+var label ehLb = na
+if barstate.islast
+    if not na(ehLn)
+        ehLn.delete()
+    if not na(ehLb)
+        ehLb.delete()
+    ehLn := na
+    ehLb := na
+    if show_eh and histOK
+        float upCE = na
+        float dnCE = na
+        int   upB  = na
+        int   dnB  = na
+        for g in gaps
+            if g.kind == "NWOG"
+                ceW = (g.top + g.btm) / 2
+                if ceW > close and (na(upCE) or ceW < upCE)
+                    upCE := ceW
+                    upB  := g.born
+                if ceW <= close and (na(dnCE) or ceW > dnCE)
+                    dnCE := ceW
+                    dnB  := g.born
+        if not na(upCE) and not na(dnCE)
+            ehPx = (upCE + dnCE) / 2
+            ehLn := line.new(math.max(upB, dnB) - 1, ehPx, bar_index + gap_off, ehPx, color = eh_col, style = line.style_solid, width = 1)
+            ehLb := label.new(bar_index + gap_off, ehPx, "EH", style = label.style_label_left, color = color.new(color.black, 100), textcolor = eh_col, size = size.small)
+
+bool bsl_taken = false
+bool ssl_taken = false
+bool ext_taken = false
+
+if liqs.size() > 0
+    for i = liqs.size() - 1 to 0
+        l = liqs.get(i)
+        swept = l.isHigh ? high > l.price : low < l.price
+        if swept
+            if on_sweep == "Borrar" or max_swept == 0 or not histOK
+                deleteLiq(l)
+            else
+                l.ln.set_x2(bar_index)
+                l.ln.set_style(line.style_dotted)
+                l.ln.set_color(swept_col)
+                if not na(l.lb)
+                    if on_sweep == "Atenuar sin etiqueta"
+                        l.lb.delete()
+                        l.lb := na
+                    else
+                        cx = math.round((l.ln.get_x1() + bar_index) / 2)
+                        bool clash = false
+                        for s in sweptLiqs
+                            if not na(s.lb) and s.isHigh == l.isHigh and math.abs(s.price - l.price) < lbl_gap * atr and math.abs(s.lb.get_x() - cx) < 30
+                                clash := true
+                                break
+                        if clash
+                            l.lb.delete()
+                            l.lb := na
+                        else
+                            l.lb.set_xy(cx, l.price)
+                            l.lb.set_style(l.isHigh ? label.style_label_down : label.style_label_up)
+                            l.lb.set_text(l.kind)
+                            l.lb.set_textcolor(swept_col)
+                sweptLiqs.push(l)
+                if sweptLiqs.size() > max_swept
+                    deleteLiq(sweptLiqs.shift())
+            liqs.remove(i)
+            if liqPrio(l.kind) >= 3
+                ext_taken := true
+            if l.isHigh
+                bsl_taken := true
+            else
+                ssl_taken := true
+        else
+            l.ln.set_x2(bar_index + 2)
+            if not na(l.lb)
+                l.lb.set_x(bar_index + 2)
+
+if bsl_taken
+    lastBslSweep := bar_index
+if ssl_taken
+    lastSslSweep := bar_index
+if ext_taken
+    lastExtSweep := bar_index
+
+sslRecent = not na(lastSslSweep) and bar_index - lastSslSweep <= seqBars
+bslRecent = not na(lastBslSweep) and bar_index - lastBslSweep <= seqBars
+
+bool cisd_bull = false
+bool cisd_bear = false
+
+isBullC = close > open
+isBearC = close < open
+locHi   = ta.highest(high, cisd_look)
+locLo   = ta.lowest(low, cisd_look)
+
+if isBullC and not (close[1] > open[1])
+    upRunOpen := open
+    upRunX    := bar_index
+if isBearC and not (close[1] < open[1])
+    dnRunOpen := open
+    dnRunX    := bar_index
+if isBullC
+    lastUpBar := bar_index
+if isBearC
+    lastDnBar := bar_index
+
+trigUp = cisd_sweep ? bsl_taken : high >= locHi
+trigDn = cisd_sweep ? ssl_taken : low <= locLo
+if trigUp and not na(lastUpBar) and bar_index - lastUpBar <= 2
+    refUpOpen := upRunOpen
+    refUpX    := upRunX
+    refUpBar  := bar_index
+    refUpHigh := high
+if trigDn and not na(lastDnBar) and bar_index - lastDnBar <= 2
+    refDnOpen := dnRunOpen
+    refDnX    := dnRunX
+    refDnBar  := bar_index
+    refDnLow  := low
+
+if not na(refUpOpen)
+    refUpHigh := math.max(refUpHigh, high)
+if not na(refDnOpen)
+    refDnLow := math.min(refDnLow, low)
+
+if not na(refUpOpen) and bar_index - refUpBar > cisdBars
+    refUpOpen := na
+if not na(refDnOpen) and bar_index - refDnBar > cisdBars
+    refDnOpen := na
+
+kzOKc = not cisd_kz or not kzActive or inKZ
+
+if not na(refUpOpen) and bar_index > refUpX and close < refUpOpen
+    rngOK  = refUpHigh - refUpOpen >= cisd_rng * atr
+    bodyOK = switch cisd_str
+        "Cualquier cierre" => true
+        "Cuerpo ≥ 50%"     => isBearC and (open - close) >= 0.5 * (high - low)
+        => isBearC and candle_range > std
+    if rngOK and bodyOK and kzOKc
+        cisd_bear := true
+        cEvt      := 4
+        cEvtDir   := -1
+        if show_cisd
+            drawBreak(refUpX, refUpOpen, false, "CISD", cisd_dn_col, line.style_dotted)
+        refUpOpen := na
+    else if not rngOK
+        refUpOpen := na
+
+if not na(refDnOpen) and bar_index > refDnX and close > refDnOpen
+    rngOK  = refDnOpen - refDnLow >= cisd_rng * atr
+    bodyOK = switch cisd_str
+        "Cualquier cierre" => true
+        "Cuerpo ≥ 50%"     => isBullC and (close - open) >= 0.5 * (high - low)
+        => isBullC and candle_range > std
+    if rngOK and bodyOK and kzOKc
+        cisd_bull := true
+        cEvt      := 4
+        cEvtDir   := 1
+        if show_cisd
+            drawBreak(refDnX, refDnOpen, true, "CISD", cisd_up_col, line.style_dotted)
+        refDnOpen := na
+    else if not rngOK
+        refDnOpen := na
+
+bool ifvg_up   = false
+bool ifvg_down = false
+
+if zones.size() > 0
+    for i = zones.size() - 1 to 0
+        f = zones.get(i)
+        fce = (f.top + f.btm) / 2
+        fReached = dol_fvg_lvl == "CE (50%)" ? (hiRef >= fce and loRef <= fce) : (hiRef >= f.btm and loRef <= f.top)
+        if not f.touched and bar_index > f.born and fReached
+            f.touched := true
+            lastIrl   := bar_index
+        if closedThrough(f)
+            if f.inv < max_inv
+                f.inv   := f.inv + 1
+                f.bull  := not f.bull
+                f.aplus := (f.bull ? (sslRecent and htfUpOK) : (bslRecent and htfDnOK)) and kzCond
+                paintZone(f)
+                f.bx.set_right(bar_index)
+                if not na(f.ce)
+                    f.ce.set_x2(bar_index)
+                if f.bull
+                    ifvg_up := true
+                else
+                    ifvg_down := true
+            else
+                if on_dead == "Borrar" or max_dead == 0 or not histOK
+                    deleteZone(f)
+                else
+                    f.bx.set_right(bar_index)
+                    f.bx.set_bgcolor(dead_col)
+                    f.bx.set_border_color(zone_brd == "Todos" ? dead_col : color.new(color.black, 100))
+                    f.bx.set_border_width(1)
+                    f.bx.set_text_color(dead_col)
+                    if not na(f.ce)
+                        f.ce.set_x2(bar_index)
+                        f.ce.set_color(dead_col)
+                    deadZones.push(f)
+                    if deadZones.size() > max_dead
+                        deleteZone(deadZones.shift())
+                zones.remove(i)
+        else if extend_fvg
+            f.bx.set_right(bar_index + fvg_ahead)
+            if not na(f.ce)
+                f.ce.set_x2(bar_index + fvg_ahead)
+
+bool mss_up   = false
+bool mss_dn   = false
+bool choch_up = false
+bool choch_dn = false
+bool setup_up = false
+bool setup_dn = false
+
+if not shBroken and not na(shP) and close > shP
+    shBroken := true
+    isRev = dir != 1
+    upg   = not isRev and not na(chochUpBar) and bar_index - chochUpBar <= seqBars and dispUpOK
+    isMss = (isRev or upg) and (dispUpOK or not mss_disp)
+    if isMss
+        mss_up     := true
+        mssUpBar   := bar_index
+        mssUpAplus := sslRecent and kzCond and htfUpOK
+        chochUpBar := na
+        if show_ote and (ote_scope == "Todos los MSS" or mssUpAplus)
+            newOte(true, shX)
+        if show_mss
+            drawBreak(shX, shP, true, "MSS" + absorbSwept(shP, true, shX), mss_up_col, line.style_solid)
+        if mssUpAplus
+            setup_up := true
+            for f in zones
+                if f.bull and f.inv == 0 and f.born >= lastSslSweep and not f.aplus
+                    f.aplus := true
+                    paintZone(f)
+    else if isRev
+        choch_up   := true
+        chochUpBar := bar_index
+        if show_choch
+            drawBreak(shX, shP, true, "CHoCH" + absorbSwept(shP, true, shX), color.new(mss_up_col, 25), line.style_dashed)
+    else if show_bos
+        drawBreak(shX, shP, true, "BOS" + absorbSwept(shP, true, shX), color.new(mss_up_col, 50), line.style_dashed)
+    cEvt    := isMss ? 2 : isRev ? 3 : 1
+    cEvtDir := 1
+    chochDnBar := na
+    dir := 1
+
+if not slBroken and not na(slP) and close < slP
+    slBroken := true
+    isRev = dir != -1
+    upg   = not isRev and not na(chochDnBar) and bar_index - chochDnBar <= seqBars and dispDnOK
+    isMss = (isRev or upg) and (dispDnOK or not mss_disp)
+    if isMss
+        mss_dn     := true
+        mssDnBar   := bar_index
+        mssDnAplus := bslRecent and kzCond and htfDnOK
+        chochDnBar := na
+        if show_ote and (ote_scope == "Todos los MSS" or mssDnAplus)
+            newOte(false, slX)
+        if show_mss
+            drawBreak(slX, slP, false, "MSS" + absorbSwept(slP, false, slX), mss_dn_col, line.style_solid)
+        if mssDnAplus
+            setup_dn := true
+            for f in zones
+                if not f.bull and f.inv == 0 and f.born >= lastBslSweep and not f.aplus
+                    f.aplus := true
+                    paintZone(f)
+    else if isRev
+        choch_dn   := true
+        chochDnBar := bar_index
+        if show_choch
+            drawBreak(slX, slP, false, "CHoCH" + absorbSwept(slP, false, slX), color.new(mss_dn_col, 25), line.style_dashed)
+    else if show_bos
+        drawBreak(slX, slP, false, "BOS" + absorbSwept(slP, false, slX), color.new(mss_dn_col, 50), line.style_dashed)
+    cEvt    := isMss ? 2 : isRev ? 3 : 1
+    cEvtDir := -1
+    chochUpBar := na
+    dir := -1
+
+if oteList.size() > 0
+    for i = oteList.size() - 1 to 0
+        o = oteList.get(i)
+        bool dead = o.bull ? close < o.s : close > o.s
+        if dead
+            deleteOte(o)
+            oteList.remove(i)
+        else
+            if bar_index > o.born and not o.locked
+                if (o.bull and high > o.e) or (not o.bull and low < o.e)
+                    o.e  := o.bull ? high : low
+                    o.ex := bar_index
+                l62 = oteLevel(o, 0.62)
+                if (o.bull and low <= l62) or (not o.bull and high >= l62)
+                    o.locked := true
+            paintOte(o)
+
+kz_ok    = kz_filter == "Todas" or not kzActive or inKZ[1]
+new_bull = disp_mid and bull_mid and bull_gap and kz_ok
+new_bear = disp_mid and not bull_mid and bear_gap and kz_ok
+
+if show_fvg and (new_bull or new_bear)
+    float top = new_bull ? low     : low[2]
+    float btm = new_bull ? high[2] : high
+    bool ap   = new_bull ? (mssUpAplus and bar_index - mssUpBar <= 2) : (mssDnAplus and bar_index - mssDnBar <= 2)
+    int  xr   = bar_index + (extend_fvg ? fvg_ahead : 0)
+    box  bx   = box.new(bar_index - 2, top, xr, btm, text_size = size.tiny, text_halign = text.align_right)
+    line ln   = show_ce ? line.new(bar_index - 2, (top + btm) / 2, xr, (top + btm) / 2, style = line.style_dashed) : na
+    z = DispFVG.new(bx, ln, top, btm, new_bull, 0, bar_index, ap)
+    paintZone(z)
+    zones.push(z)
+    if zones.size() > max_fvg
+        deleteZone(zones.shift())
+
+ph  = ta.pivothigh(high, piv_len, piv_len)
+pl  = ta.pivotlow(low, piv_len, piv_len)
+eph = ta.pivothigh(high, erl_len, erl_len)
+epl = ta.pivotlow(low, erl_len, erl_len)
+qph = ta.pivothigh(high, eq_len, eq_len)
+qpl = ta.pivotlow(low, eq_len, eq_len)
+mph = ta.pivothigh(high, mss_len, mss_len)
+mpl = ta.pivotlow(low, mss_len, mss_len)
+
+bool eq_high_new = false
+bool eq_low_new  = false
+
+if not na(mph)
+    shP := mph
+    shX := bar_index - mss_len
+    shBroken := false
+
+if not na(mpl)
+    slP := mpl
+    slX := bar_index - mss_len
+    slBroken := false
+
+if not na(qph)
+    x = bar_index - eq_len
+    [k, qx, qp] = findEqual(phs, qph, x, true, atr)
+    if k != ""
+        removeLiq(qx, "BSL")
+        addStruct(qx, math.max(qph, qp), true, k)
+        eq_high_new := true
+        eqXH.push(x)
+        if eqXH.size() > 40
+            eqXH.shift()
+    phs.push(Piv.new(qph, x))
+    if phs.size() > 40
+        phs.shift()
+
+if not na(qpl)
+    x = bar_index - eq_len
+    [k, qx, qp] = findEqual(pls, qpl, x, false, atr)
+    if k != ""
+        removeLiq(qx, "SSL")
+        addStruct(qx, math.min(qpl, qp), false, k)
+        eq_low_new := true
+        eqXL.push(x)
+        if eqXL.size() > 40
+            eqXL.shift()
+    pls.push(Piv.new(qpl, x))
+    if pls.size() > 40
+        pls.shift()
+
+if not na(ph)
+    x = bar_index - piv_len
+    if show_bsl and not hasLiqAt(x, true) and not eqXH.includes(x)
+        addStruct(x, ph, true, "BSL")
+
+if not na(pl)
+    x = bar_index - piv_len
+    if show_ssl and not hasLiqAt(x, false) and not eqXL.includes(x)
+        addStruct(x, pl, false, "SSL")
+
+if show_erl and not na(eph)
+    x = bar_index - erl_len
+    removeLiq(x, "BSL")
+    addStruct(x, eph, true, "ERL")
+
+if show_erl and not na(epl)
+    x = bar_index - erl_len
+    removeLiq(x, "SSL")
+    addStruct(x, epl, false, "ERL")
+
+if barstate.islast and liq_txt and liqs.size() > 1
+    array<float> prices = array.new<float>()
+    for l in liqs
+        prices.push(l.price)
+    idxs = prices.sort_indices(order.ascending)
+    int last = -1
+    for j in idxs
+        l = liqs.get(j)
+        if not na(l.lb)
+            l.lb.set_text(l.kind)
+            if last >= 0 and math.abs(l.price - liqs.get(last).price) < lbl_gap * atr
+                p = liqs.get(last)
+                if liqPrio(l.kind) > liqPrio(p.kind)
+                    p.lb.set_text("")
+                    last := j
+                else
+                    l.lb.set_text("")
+            else
+                last := j
+
+dolKey(int d, float p) =>
+    (d == 1 ? "U|" : "D|") + str.tostring(p, format.mintick)
+
+delivDir = cEvtDir != 0 ? cEvtDir : dir
+
+var string tgtKey    = ""
+var float  gDol      = na
+var string gDolTxt   = ""
+var int    gDolDir   = 0
+var array<float>  oPx   = array.new<float>()
+var array<int>    oDir  = array.new<int>()
+var array<string> oLbl  = array.new<string>()
+var string closedKey = ""
+var float  closedPx  = na
+var int    closedDir = 0
+var string closedTxt = ""
+var line   dolLn     = na
+var label  dolLb     = na
+var array<line>  ladLines  = array.new<line>()
+var array<label> ladLabels = array.new<label>()
+
+addEq(array<Cand> cands, bool on, string tf, float qu, float qd) =>
+    if on and timeframe.in_seconds(tf) > chartSecs
+        if not na(qu) and qu > close
+            cands.push(Cand.new(qu, 1, "EQH " + tfLabel(tf), false))
+        if not na(qd) and qd < close
+            cands.push(Cand.new(qd, -1, "EQL " + tfLabel(tf), false))
+    true
+
+dolPick(array<float> outPx, array<int> outDir, array<string> outTxt, array<string> outKey, array<bool> outIrl) =>
+    wantDir = dol_dir == "Entrega" ? delivDir : dol_dir == "Estructura" ? dir : 0
+    useCE   = dol_fvg_lvl == "CE (50%)"
+    useIrl  = dol_irl or dol_sel == "Ciclo ERL ↔ IRL"
+    array<Cand> cands = array.new<Cand>()
+    for l in liqs
+        cands.push(Cand.new(l.price, l.isHigh ? 1 : -1, l.kind, false))
+    if useIrl
+        for f in zones
+            if f.inv == 0 and not f.touched and (f.btm > close or f.top < close)
+                up = f.btm > close
+                cands.push(Cand.new(useCE ? (f.top + f.btm) / 2 : up ? f.btm : f.top, up ? 1 : -1, "FVG★", true))
+        for h in hfvgs
+            if dol_hfvg and not h.reached and (h.btm > close or h.top < close)
+                up = h.btm > close
+                cands.push(Cand.new(useCE ? (h.top + h.btm) / 2 : up ? h.btm : h.top, up ? 1 : -1, (h.inv ? "IFVG " : "FVG ") + h.tf, true))
+        for g in gaps
+            if not g.reached and (g.btm > close or g.top < close)
+                up = g.btm > close
+                cands.push(Cand.new(useCE ? (g.top + g.btm) / 2 : up ? g.btm : g.top, up ? 1 : -1, g.kind, true))
+
+    if dol_hteq
+        addEq(cands, htf1_on, htf1, eh1, el1)
+        addEq(cands, htf2_on, htf2, eh2, el2)
+        addEq(cands, htf3_on, htf3, eh3, el3)
+        addEq(cands, htf4_on, htf4, eh4, el4)
+        addEq(cands, htf5_on, htf5, eh5, el5)
+
+    array<Cand> pool = array.new<Cand>()
+    for c in cands
+        dA = math.abs(c.price - close) / atr
+        if dA >= dol_min and (dol_max == 0 or dA <= dol_max) and (dol_dir == "Libre" or c.d == wantDir)
+            pool.push(c)
+
+    outPx.clear()
+    outDir.clear()
+    outTxt.clear()
+    outKey.clear()
+    outIrl.clear()
+    nOut = 1 + dol_ladder
+
+    if pool.size() > 0
+        if dol_sel == "Más cercano"
+            array<float> dists = array.new<float>()
+            for c in pool
+                dists.push(math.abs(c.price - close))
+            idxN = dists.sort_indices(order.ascending)
+            for j in idxN
+                if outPx.size() >= nOut
+                    break
+                c = pool.get(j)
+                outPx.push(c.price)
+                outDir.push(c.d)
+                outTxt.push(c.kind)
+                outIrl.push(c.irl)
+                outKey.push(dolKey(c.d, c.price))
+
+        else
+            lastErl = nz(lastExtSweep, -1)
+            wantIrl = lastErl >= 0 and lastErl > nz(lastIrl, -1)
+            array<float> dists = array.new<float>()
+            for c in pool
+                dists.push(math.abs(c.price - close))
+            idx = dists.sort_indices(order.ascending)
+            for pass = 0 to 1
+                fam = pass == 0 ? wantIrl : not wantIrl
+                for j in idx
+                    if outPx.size() >= nOut
+                        break
+                    c = pool.get(j)
+                    if c.irl == fam
+                        outPx.push(c.price)
+                        outDir.push(c.d)
+                        outTxt.push(c.kind + (c.irl ? " · IRL" : " · ERL"))
+                        outIrl.push(c.irl)
+                        outKey.push(dolKey(c.d, c.price))
+
+    true
+
+var array<float>  sPx  = array.new<float>()
+var array<int>    sDir = array.new<int>()
+var array<string> sTxt = array.new<string>()
+var array<string> sKey = array.new<string>()
+var array<bool>   sIrl = array.new<bool>()
+
+var string stKey = ""
+var float  stPx  = na
+var int    stDir = 0
+var int    stBar = na
+var bool   stIrl = false
+var string stLastHit = ""
+var int stHitE = 0
+var int stHitI = 0
+var int stMissE = 0
+var int stMissI = 0
+var int stBars  = 0
+
+statsOn = dol_stats and time >= last_bar_time - stats_days * 86400000
+if statsOn or barstate.islast
+    dolPick(sPx, sDir, sTxt, sKey, sIrl)
+if statsOn
+    if stKey != ""
+        bool stHit = stDir == 1 ? hiRef >= stPx : loRef <= stPx
+        if stHit
+            if stIrl
+                stHitI += 1
+            else
+                stHitE += 1
+            stBars += bar_index - stBar
+            stLastHit := stKey
+            stKey := ""
+        else if sKey.size() == 0 or sKey.get(0) != stKey
+            if stIrl
+                stMissI += 1
+            else
+                stMissE += 1
+            stKey := ""
+    if stKey == "" and sKey.size() > 0 and sKey.get(0) != stLastHit
+        stKey := sKey.get(0)
+        stPx  := sPx.get(0)
+        stDir := sDir.get(0)
+        stBar := bar_index
+        stIrl := sIrl.get(0)
+    else if stKey == "" and sKey.size() > 0
+        stLastHit := ""
+
+bool   dolNew = false
+bool   dolHit = false
+string hitMsg = ""
+string newMsg = ""
+
+if barstate.islast
+    if barstate.isconfirmed and not na(closedPx)
+        if closedDir == 1 ? high >= closedPx : low <= closedPx
+            dolHit := true
+            hitMsg := "DOL alcanzado: " + closedTxt + " @ " + str.tostring(closedPx, format.mintick) + " · " + syminfo.ticker + " " + timeframe.period
+
+    array<float>  outPx  = sPx
+    array<int>    outDir = sDir
+    array<string> outTxt = sTxt
+    array<string> outKey = sKey
+
+    gDol    := na
+    gDolDir := 0
+    gDolTxt := ""
+    tgtKey  := ""
+    if outPx.size() > 0
+        gDol    := outPx.get(0)
+        gDolDir := outDir.get(0)
+        gDolTxt := outTxt.get(0)
+        tgtKey  := outKey.get(0)
+    oPx.clear()
+    oDir.clear()
+    oLbl.clear()
+    if outPx.size() > 0
+        for k = 0 to outPx.size() - 1
+            oPx.push(outPx.get(k))
+            oDir.push(outDir.get(k))
+            oLbl.push(outTxt.get(k))
+
+    if barstate.isconfirmed
+        if dolSeeded and tgtKey != "" and tgtKey != closedKey
+            dolNew := true
+            newMsg := "Nuevo DOL " + (gDolDir == 1 ? "▲ " : "▼ ") + gDolTxt + " @ " + str.tostring(gDol, format.mintick) + " · " + syminfo.ticker + " " + timeframe.period
+        dolSeeded := true
+        closedKey := tgtKey
+        closedPx  := gDol
+        closedDir := gDolDir
+        closedTxt := gDolTxt
+
+    if not na(dolLn)
+        dolLn.delete()
+    if not na(dolLb)
+        dolLb.delete()
+    for ln in ladLines
+        ln.delete()
+    for lb in ladLabels
+        lb.delete()
+    ladLines.clear()
+    ladLabels.clear()
+    if show_dol and not na(gDol)
+        dolLn := line.new(bar_index + 8, gDol, bar_index + 24, gDol, color = dol_col, style = line.style_dashed, width = 2)
+        dolLb := label.new(bar_index + 24, gDol, "DOL " + (gDolDir == 1 ? "▲ " : "▼ ") + gDolTxt, style = label.style_label_left, color = dol_col, textcolor = dol_txt, size = size.small)
+        if outPx.size() > 1
+            for k = 1 to outPx.size() - 1
+                p = outPx.get(k)
+                ladLines.push(line.new(bar_index + 8, p, bar_index + 24, p, color = color.new(dol_col, 40), style = line.style_dotted, width = 1))
+                ladLabels.push(label.new(bar_index + 24, p, "DOL " + str.tostring(k + 1) + " " + (outDir.get(k) == 1 ? "▲ " : "▼ ") + outTxt.get(k), style = label.style_label_left, color = color.new(color.black, 100), textcolor = color.new(dol_col, 20), size = size.tiny))
+
+dolSwept(int dd, float dl, float hh, float ll) =>
+    na(dl) ? false : dd == 1 ? hh > dl : dd == -1 ? ll < dl : false
+
+htfPos = switch htf_pos
+    "Arriba derecha"   => position.top_right
+    "Abajo derecha"    => position.bottom_right
+    "Arriba izquierda" => position.top_left
+    => position.bottom_left
+
+htfSize = switch htf_sz
+    "Diminuto" => size.tiny
+    "Normal"   => size.normal
+    => size.small
+
+var table htfT = table.new(htfPos, 5, 14, bgcolor = tbl_bg, frame_color = tbl_frame, frame_width = 1, border_width = 0)
+
+fmtDist(float x) =>
+    (x >= 0 ? "+" : "−") + str.tostring(math.abs(x), format.mintick)
+
+htfRow(int r, string tfTxt, int d0, int e0, int ed0, bool isChart, float dl, bool swept) =>
+    d  = nz(d0)
+    e  = nz(e0)
+    ed = nz(ed0)
+    eTxt = e == 2 ? "MSS" : e == 3 ? "CHoCH" : e == 1 ? "BOS" : e == 4 ? "CISD" : "—"
+    if e != 0
+        eTxt := eTxt + (ed == 1 ? " ▲" : ed == -1 ? " ▼" : "")
+    eCol = e != 0 and ed != 0 and ed != d ? (ed == 1 ? mss_up_col : mss_dn_col) : tbl_dim
+    htfT.cell(0, r, tfTxt, text_color = isChart ? tbl_dim : tbl_txt, text_size = htfSize, text_halign = text.align_left)
+    htfT.cell(1, r, d == 1 ? "▲ Alcista" : d == -1 ? "▼ Bajista" : "—", text_color = d == 1 ? mss_up_col : d == -1 ? mss_dn_col : tbl_dim, text_size = htfSize, text_halign = text.align_left)
+    htfT.cell(2, r, eTxt, text_color = eCol, text_size = htfSize, text_halign = text.align_center)
+    if htf_dol
+        dTxt = na(dl) ? "—" : (swept ? "✓ " : "") + str.tostring(dl, format.mintick)
+        htfT.cell(3, r, dTxt, text_color = na(dl) or swept ? tbl_dim : dol_col, text_size = htfSize, text_halign = text.align_right)
+        htfT.cell(4, r, na(dl) or swept ? "" : fmtDist(dl - close), text_color = tbl_dim, text_size = htfSize, text_halign = text.align_right)
+    d
+
+addDol(array<float> px, array<string> nm, bool on, string tf, float dl, bool swept) =>
+    if on and timeframe.in_seconds(tf) > timeframe.in_seconds() and not na(dl) and not swept
+        int idx = -1
+        if px.size() > 0
+            for i = 0 to px.size() - 1
+                if math.abs(px.get(i) - dl) < syminfo.mintick
+                    idx := i
+                    break
+        if idx >= 0
+            nm.set(idx, nm.get(idx) + "/" + tfLabel(tf))
+        else
+            px.push(dl)
+            nm.push(tfLabel(tf))
+
+var array<line>  hdLines  = array.new<line>()
+var array<label> hdLabels = array.new<label>()
+
+if barstate.islast
+    sw1 = dolSwept(dolDirOf(s1, ed1), dl1, hh1, ll1)
+    sw2 = dolSwept(dolDirOf(s2, ed2), dl2, hh2, ll2)
+    sw3 = dolSwept(dolDirOf(s3, ed3), dl3, hh3, ll3)
+    sw4 = dolSwept(dolDirOf(s4, ed4), dl4, hh4, ll4)
+    sw5 = dolSwept(dolDirOf(s5, ed5), dl5, hh5, ll5)
+
+    if show_htf
+        htfT.cell(0, 0, "TF",         text_color = tbl_dim, bgcolor = tbl_head, text_size = htfSize, text_halign = text.align_left)
+        htfT.cell(1, 0, "Estructura", text_color = tbl_dim, bgcolor = tbl_head, text_size = htfSize, text_halign = text.align_left)
+        htfT.cell(2, 0, "Último",     text_color = tbl_dim, bgcolor = tbl_head, text_size = htfSize, text_halign = text.align_center)
+        if htf_dol
+            htfT.cell(3, 0, "DOL",   text_color = tbl_dim, bgcolor = tbl_head, text_size = htfSize, text_halign = text.align_right)
+            htfT.cell(4, 0, "Dist.", text_color = tbl_dim, bgcolor = tbl_head, text_size = htfSize, text_halign = text.align_right)
+        int r   = 1
+        int nUp = 0
+        int nDn = 0
+        if htf5_on and timeframe.in_seconds(htf5) > chartSecs
+            d = htfRow(r, tfLabel(htf5), s5, e5, ed5, false, dl5, sw5)
+            nUp += d == 1 ? 1 : 0
+            nDn += d == -1 ? 1 : 0
+            r += 1
+        if htf4_on and timeframe.in_seconds(htf4) > chartSecs
+            d = htfRow(r, tfLabel(htf4), s4, e4, ed4, false, dl4, sw4)
+            nUp += d == 1 ? 1 : 0
+            nDn += d == -1 ? 1 : 0
+            r += 1
+        if htf3_on and timeframe.in_seconds(htf3) > chartSecs
+            d = htfRow(r, tfLabel(htf3), s3, e3, ed3, false, dl3, sw3)
+            nUp += d == 1 ? 1 : 0
+            nDn += d == -1 ? 1 : 0
+            r += 1
+        if htf2_on and timeframe.in_seconds(htf2) > chartSecs
+            d = htfRow(r, tfLabel(htf2), s2, e2, ed2, false, dl2, sw2)
+            nUp += d == 1 ? 1 : 0
+            nDn += d == -1 ? 1 : 0
+            r += 1
+        if htf1_on and timeframe.in_seconds(htf1) > chartSecs
+            d = htfRow(r, tfLabel(htf1), s1, e1, ed1, false, dl1, sw1)
+            nUp += d == 1 ? 1 : 0
+            nDn += d == -1 ? 1 : 0
+            r += 1
+        htfRow(r, tfLabel(timeframe.period) + " ·", dir, cEvt, cEvtDir, true, gDol, false)
+        r += 1
+        nT = nUp + nDn
+        alignTxt = nT == 0 ? "—" : nUp == nT ? "Todo ▲" : nDn == nT ? "Todo ▼" : "▲ " + str.tostring(nUp) + "  ▼ " + str.tostring(nDn)
+        alignCol = nT > 0 and nUp == nT ? mss_up_col : nT > 0 and nDn == nT ? mss_dn_col : tbl_txt
+        htfT.cell(0, r, "HTF", text_color = tbl_dim, bgcolor = tbl_head, text_size = htfSize, text_halign = text.align_left)
+        htfT.cell(1, r, alignTxt, text_color = alignCol, bgcolor = tbl_head, text_size = htfSize, text_halign = text.align_left)
+        htfT.cell(2, r, "", bgcolor = tbl_head, text_size = htfSize)
+        if htf_dol
+            htfT.cell(3, r, "", bgcolor = tbl_head, text_size = htfSize)
+            htfT.cell(4, r, "", bgcolor = tbl_head, text_size = htfSize)
+        r += 1
+
+        if show_dolbox
+            nO = oPx.size()
+            for k = 0 to dol_ladder
+                hasK = k < nO
+                kCol = hasK and oDir.get(k) == 1 ? mss_up_col : hasK ? mss_dn_col : tbl_dim
+                isTop = k == 0
+                color bgK = isTop ? tbl_head : na
+                htfT.cell(0, r, isTop ? "DOL" : "DOL " + str.tostring(k + 1), text_color = tbl_dim, bgcolor = bgK, text_size = htfSize, text_halign = text.align_left)
+                htfT.cell(1, r, hasK ? (oDir.get(k) == 1 ? "▲ " : "▼ ") + oLbl.get(k) : (isTop ? "Sin DOL" : ""), text_color = kCol, bgcolor = bgK, text_size = htfSize, text_halign = text.align_left)
+                htfT.cell(2, r, "", bgcolor = bgK, text_size = htfSize)
+                htfT.cell(3, r, hasK ? str.tostring(oPx.get(k), format.mintick) : "", text_color = isTop ? dol_col : tbl_dim, bgcolor = bgK, text_size = htfSize, text_halign = text.align_right)
+                htfT.cell(4, r, hasK ? str.tostring(math.abs(oPx.get(k) - close) / atr, "0.0") + " ATR" : "", text_color = tbl_dim, bgcolor = bgK, text_size = htfSize, text_halign = text.align_right)
+                r += 1
+            if dol_stats
+                stH = stHitE + stHitI
+                stN = stH + stMissE + stMissI
+                nE  = stHitE + stMissE
+                nI  = stHitI + stMissI
+                htfT.cell(0, r, "Aciertos", text_color = tbl_dim, text_size = htfSize, text_halign = text.align_left)
+                htfT.cell(1, r, stN > 0 ? str.tostring(100.0 * stH / stN, "#") + " %  (" + str.tostring(stH) + "/" + str.tostring(stN) + ")" : "—", text_color = tbl_txt, text_size = htfSize, text_halign = text.align_left)
+                htfT.cell(2, r, "", text_size = htfSize)
+                htfT.cell(3, r, "ERL " + (nE > 0 ? str.tostring(100.0 * stHitE / nE, "#") + "%" : "—"), text_color = tbl_dim, text_size = htfSize, text_halign = text.align_right)
+                htfT.cell(4, r, "IRL " + (nI > 0 ? str.tostring(100.0 * stHitI / nI, "#") + "%" : "—"), text_color = tbl_dim, text_size = htfSize, text_halign = text.align_right)
+                r += 1
+                htfT.cell(0, r, "Tarda", text_color = tbl_dim, text_size = htfSize, text_halign = text.align_left)
+                htfT.cell(1, r, stH > 0 ? "~" + str.tostring(stBars / stH, "#") + " velas hasta tocarlo" : "—", text_color = tbl_dim, text_size = htfSize, text_halign = text.align_left)
+                htfT.cell(2, r, "", text_size = htfSize)
+                htfT.cell(3, r, "", text_size = htfSize)
+                htfT.cell(4, r, "", text_size = htfSize)
+                r += 1
+
+    for ln in hdLines
+        ln.delete()
+    for lb in hdLabels
+        lb.delete()
+    hdLines.clear()
+    hdLabels.clear()
+    if htf_dolLn
+        array<float>  px = array.new<float>()
+        array<string> nm = array.new<string>()
+        addDol(px, nm, htf5_on, htf5, dl5, sw5)
+        addDol(px, nm, htf4_on, htf4, dl4, sw4)
+        addDol(px, nm, htf3_on, htf3, dl3, sw3)
+        addDol(px, nm, htf2_on, htf2, dl2, sw2)
+        addDol(px, nm, htf1_on, htf1, dl1, sw1)
+        if px.size() > 0
+            for i = 0 to px.size() - 1
+                p = px.get(i)
+                hdLines.push(line.new(bar_index + 40, p, bar_index + 60, p, color = color.new(dol_col, 30), style = line.style_dotted, width = 1))
+                hdLabels.push(label.new(bar_index + 60, p, nm.get(i) + " DOL", style = label.style_label_left, color = color.new(color.black, 100), textcolor = dol_col, size = size.tiny))
+
+alertcondition(new_bull,    "FVG displacement alcista",    "Nueva FVG de displacement ALCISTA en {{ticker}} ({{interval}})")
+alertcondition(new_bear,    "FVG displacement bajista",    "Nueva FVG de displacement BAJISTA en {{ticker}} ({{interval}})")
+alertcondition(ifvg_up,     "IFVG alcista",                "Inversión → IFVG ALCISTA en {{ticker}} ({{interval}})")
+alertcondition(ifvg_down,   "IFVG bajista",                "Inversión → IFVG BAJISTA en {{ticker}} ({{interval}})")
+alertcondition(bsl_taken,   "Liquidez compradora barrida", "Liquidez superior barrida en {{ticker}} ({{interval}})")
+alertcondition(ssl_taken,   "Liquidez vendedora barrida",  "Liquidez inferior barrida en {{ticker}} ({{interval}})")
+alertcondition(eq_high_new, "Nuevos máximos iguales",      "Nuevo EQH / REH en {{ticker}} ({{interval}})")
+alertcondition(eq_low_new,  "Nuevos mínimos iguales",      "Nuevo EQL / REL en {{ticker}} ({{interval}})")
+alertcondition(mss_up,      "MSS alcista",                 "MSS ALCISTA con displacement en {{ticker}} ({{interval}})")
+alertcondition(mss_dn,      "MSS bajista",                 "MSS BAJISTA con displacement en {{ticker}} ({{interval}})")
+alertcondition(setup_up,    "Setup A+ alcista",            "Barrido SSL → MSS alcista: setup A+ en {{ticker}} ({{interval}})")
+alertcondition(setup_dn,    "Setup A+ bajista",            "Barrido BSL → MSS bajista: setup A+ en {{ticker}} ({{interval}})")
+alertcondition(choch_up,    "CHoCH alcista",               "CHoCH ALCISTA (giro sin displacement) en {{ticker}} ({{interval}})")
+alertcondition(choch_dn,    "CHoCH bajista",               "CHoCH BAJISTA (giro sin displacement) en {{ticker}} ({{interval}})")
+alertcondition(cisd_bull,   "CISD alcista",                "CISD ALCISTA en {{ticker}} ({{interval}})")
+alertcondition(cisd_bear,   "CISD bajista",                "CISD BAJISTA en {{ticker}} ({{interval}})")
+alertcondition(dolNew,      "Nuevo DOL",                   "Nuevo DOL en {{ticker}} ({{interval}})")
+alertcondition(dolHit,      "DOL alcanzado",               "DOL alcanzado en {{ticker}} ({{interval}})")
+
+if dolHit
+    alert(hitMsg, alert.freq_once_per_bar_close)
+if dolNew
+    alert(newMsg, alert.freq_once_per_bar_close)

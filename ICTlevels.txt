@@ -13,7 +13,11 @@
 //  - Unbroken session max/min get tiny text labels
 // - Object budget: day count is capped so lines/labels never exceed the 500 limits (warning in the
 // top-right table)
-//  - EQH / EQL levels (equal pivot highs/lows within an ATR tolerance, removed when swept)
+//  - EQH / EQL levels (equal pivot highs/lows within an ATR tolerance, removed when swept), also a
+//    pivot that matches an earlier unswept 3-candle swing (equal, or the swing a few points beyond it)
+//  - Premarket high / low drawn as red lines whenever its quadrants or stddevs are drawn
+//  - TGIF: 20% / 30% retracement levels of a weekly displacement candle without its final wick, on
+//    Friday, or on Monday when price did not get there on Friday; shown only while they apply
 //  - Performance: only active zones are updated per bar, ended zones are only monitored for sweeps,
 // right-edge extension and table work happen only on the last bar, history is limited to a time
 // window
@@ -111,6 +115,26 @@ string oplnsty = getstyle(input.string("dashed", "", options = ["solid", "dashed
      group = G_DAYS, inline = "open"))
 int opwid = input.int(1, "", options = [1, 2, 3], group = G_DAYS, inline = "open")
 color opcolor = input.color(color.black, "", group = G_DAYS, inline = "open")
+
+const string G_TG = "TGIF"
+bool dotgif = input.bool(true, "TGIF levels %", group = G_TG, inline = "tgif",
+     tooltip = "ICT TGIF: when the week candle made a displacement and has not formed its final wick yet, "
+     + "a retracement of 20% - 30% of the week range is expected on Friday, or on Monday when it did not "
+     + "happen on Friday. The levels are drawn only on those days and only while that applies: from the "
+     + "week high down (bullish week, red) or from the week low up (bearish week, green).")
+float tgp1 = input.float(0.2, "", minval = 0.01, maxval = 1.0, step = 0.05, group = G_TG, inline = "tgif")
+float tgp2 = input.float(0.3, "", minval = 0.01, maxval = 1.0, step = 0.05, group = G_TG, inline = "tgif")
+float tgbody = input.float(0.6, "TGIF displacement: body of the week x range", minval = 0.1, maxval = 1.0,
+     step = 0.05, group = G_TG, inline = "tgif2",
+     tooltip = "The week candle is a displacement when its body is at least this fraction of its range, and "
+     + "it has no final wick yet when price is still closer to the extreme than the first TGIF level.")
+color tgupcol = input.color(color.green, "colors: up", group = G_TG, inline = "tgif3")
+color tgdncol = input.color(color.red, "down", group = G_TG, inline = "tgif3")
+string tgsty = getstyle(input.string("dashed", "", options = ["solid", "dashed", "dotted"],
+     group = G_TG, inline = "tgif3"))
+int tgwid = input.int(2, "", options = [1, 2, 3], group = G_TG, inline = "tgif3")
+string tglblsize = input.string("normal", "text size", options = ["tiny", "small", "normal", "large", "huge"],
+     group = G_TG)
 
 const string G_ZONES = "Session Settings"
 bool doses = input.bool(true, "Draw sessions, keep", group = G_ZONES, inline = "ses",
@@ -238,6 +262,11 @@ float eqtol = input.float(0.10, "tolerance x ATR", minval = 0.0, step = 0.01, gr
      inline = "eq3", tooltip = "max distance between two pivots, as a fraction of "
      + "ATR(14) of the same timeframe")
 int eqkeep = input.int(5, "keep per side", minval = 1, maxval = 20, group = G_EQ, inline = "eq3")
+bool doeq3 = input.bool(true, "also with 3-candle swings, max points beyond", group = G_EQ,
+     inline = "eq3b", tooltip = "A new pivot also forms an EQH (EQL) with an earlier, unswept 3-candle "
+     + "swing high (low) that has exactly its price or is at most this many points above it (below it, for "
+     + "lows). The level is drawn at the swing price, from the swing.")
+float eq3pts = input.float(3.0, "", minval = 0.0, step = 0.25, group = G_EQ, inline = "eq3b")
 color eqhcol = input.color(color.green, "EQH", group = G_EQ, inline = "eq4")
 color eqlcol = input.color(color.red, "EQL", group = G_EQ, inline = "eq4")
 string eqhlsty = getstyle(input.string("solid", "line", options = ["solid", "dashed", "dotted"],
@@ -272,6 +301,7 @@ int rdx = tfsecs <= 60 ? 4 : 2
 
 string lblsz = getsize(eqlblsize)
 string dlblsz = getsize(dlblsize)
+string tglsz = getsize(tglblsize)
 string pmlsz = getsize(pmlblsize)
 string slblsz = getsize(slblsize)
 string tkr = str.upper(syminfo.ticker)
@@ -318,12 +348,14 @@ int lnGaps = dogaps ? gapKinds * 2 * ngapsEff : 0
 int lnRth = dogaps and dorthog ? 4 * ngapsEff + 2 * rthogpo3num + 8 : 0
 int lnSes = doses ? 2 * nsesEff : 0
 int lnPre = preOn ? 4 * nsesEff : 0
-int lnPmx = preOn ? pmkeep * ((dopmq ? 3 : 0) + (dopmpo3 ? 2 * pmpo3num : 0)) : 0
+int lnPmx = preOn ? pmkeep * ((dopmq ? 3 : 0) + (dopmpo3 ? 2 * pmpo3num : 0) + (dopmq or dopmpo3 ? 2 : 0))
+     : 0
 int lnEq = doeqhl ? (doeqd ? 4 : 2) * eqkeep : 0
 int lbSes = doses and doseslbl ? 2 * nsesEff : 0
 int lbPre = preOn and doseslbl ? 2 * nsesEff : 0
-int lnReserve = lnMonths + lnGaps + lnRth + lnSes + lnPre + lnPmx + lnEq + 10
-int lbReserve = lnMonths + lnGaps + lnRth + lbSes + lbPre + lnPmx + lnEq + 10
+int lnTg = dotgif ? 2 : 0
+int lnReserve = lnMonths + lnGaps + lnRth + lnSes + lnPre + lnPmx + lnEq + lnTg + 10
+int lbReserve = lnMonths + lnGaps + lnRth + lbSes + lbPre + lnPmx + lnEq + lnTg + 10
 int lnPerDay = (dolines ? 1 : 0) + (dodmaxmin ? 2 : 0) + (doeq ? 1 : 0) + (doopen ? 1 : 0)
 int lbPerDay = (doeq ? 1 : 0) + (doopen ? 1 : 0) + (dodaylbl and dodmaxmin ? 2 : 0)
 int daysByLn = lnPerDay > 0 ? math.floor((500 - lnReserve) / lnPerDay) : ndays
@@ -631,6 +663,19 @@ method pmdraw(Zone z) =>
                          "PMKT -" + str.tostring(i) + "dev", pmcolor, pmlsz)
                     z.sdlines.push(l3)
                     z.sdlabels.push(b3)
+        // high and low of the range, red solid lines, whenever quadrants or stddevs are drawn
+        bool anyq = not na(z.qlines) and z.qlines.size() > 0
+        bool anysd = not na(z.sdlines) and z.sdlines.size() > 0
+        if anyq or anysd
+            if na(z.qlines)
+                z.qlines := array.new<line>()
+                z.qlabels := array.new<label>()
+            [lh, bh] = mkLL(x0, x1, z.hi, pmcolor, line.style_solid, pmwid, "PMKT hi " + nm, pmcolor, pmlsz)
+            z.qlines.push(lh)
+            z.qlabels.push(bh)
+            [ll, bl] = mkLL(x0, x1, z.lo, pmcolor, line.style_solid, pmwid, "PMKT lo " + nm, pmcolor, pmlsz)
+            z.qlines.push(ll)
+            z.qlabels.push(bl)
     true
 
 method kill(Zone z) =>
@@ -860,6 +905,108 @@ if inWin and tfok
             premarkets.shift().kill()
     runActive()
     runMon()
+
+// ============================================================ TGIF
+// Week candle (from newWeek) tracked here. On the first bar of Friday the week so far is tested: a
+// displacement (body >= tgbody x range) whose close is still nearer the extreme than the first level
+// (no final wick) arms the levels, measured from the week high (bullish, retracement down) or low
+// (bearish, retracement up). On Friday they follow new week extremes until price reaches the first
+// level, then stay fixed. When the week closes displaced and the retracement did not happen on Friday,
+// the levels of the final week apply on Monday (until Tuesday starts). Otherwise they are removed when
+// the day ends.
+tgEval(float h, float l, float o, float c) =>
+    float r = h - l
+    int d = 0
+    if r > 0
+        if c - o >= tgbody * r and h - c < tgp1 * r
+            d := 1
+        else if o - c >= tgbody * r and c - l < tgp1 * r
+            d := -1
+    d
+
+var float twO = na      // week open, high, low
+var float twH = na
+var float twL = na
+var int tgDir = 0       // 1: bullish week, retracement down; -1: bearish week, retracement up; 0: none
+var bool tgMon = false  // levels carried to Monday
+var bool tgHit = false  // the first level was reached (the levels stay fixed)
+var float tgX = na      // extreme and range the levels are measured from
+var float tgR = na
+var int tgT0 = na       // start of the lines
+var line tgL1 = na
+var line tgL2 = na
+var label tgB1 = na
+var label tgB2 = na
+
+if inWin and tfok and dotgif
+    bool clr = false
+    if newWeek
+        int d = na(twO) ? 0 : tgEval(twH, twL, twO, close[1])
+        bool carry = d != 0 and not (tgDir == d and tgHit)
+        clr := true
+        tgDir := 0
+        tgMon := false
+        tgHit := false
+        if carry
+            tgDir := d
+            tgMon := true
+            tgX := d == 1 ? twH : twL
+            tgR := twH - twL
+            tgT0 := time
+        twO := open
+        twH := high
+        twL := low
+    else if not na(twO)
+        if newDay and dow == dayofweek.friday
+            clr := true
+            tgDir := tgEval(twH, twL, twO, close[1])
+            tgMon := false
+            tgHit := false
+            tgT0 := time
+        else if newDay and tgDir != 0 and not (tgMon and dow == dayofweek.monday)
+            // Friday or Monday is over (Monday levels start with the week, before Monday's midnight)
+            clr := true
+            tgDir := 0
+            tgMon := false
+        twH := math.max(twH, high)
+        twL := math.min(twL, low)
+    if clr
+        rmLine(tgL1)
+        rmLine(tgL2)
+        rmLabel(tgB1)
+        rmLabel(tgB2)
+        tgL1 := na
+        tgL2 := na
+        tgB1 := na
+        tgB2 := na
+    if tgDir != 0
+        if not tgMon and not tgHit
+            tgX := tgDir == 1 ? twH : twL
+            tgR := twH - twL
+        float v1 = tgX - tgDir * tgp1 * tgR
+        float v2 = tgX - tgDir * tgp2 * tgR
+        color c = tgDir == 1 ? tgdncol : tgupcol
+        int x1 = tright(xoff)
+        if na(tgL1)
+            [l1, b1] = mkLL(tgT0, x1, v1, c, tgsty, tgwid, "TGIF-" + str.tostring(tgp1 * 100, "#.#") + "%", c,
+                 tglsz)
+            [l2, b2] = mkLL(tgT0, x1, v2, c, tgsty, tgwid, "TGIF-" + str.tostring(tgp2 * 100, "#.#") + "%", c,
+                 tglsz)
+            tgL1 := l1
+            tgB1 := b1
+            tgL2 := l2
+            tgB2 := b2
+        else
+            tgL1.set_y1(v1)
+            tgL1.set_y2(v1)
+            tgL1.set_x2(x1)
+            tgB1.set_xy(x1, v1)
+            tgL2.set_y1(v2)
+            tgL2.set_y2(v2)
+            tgL2.set_x2(x1)
+            tgB2.set_xy(x1, v2)
+        if not tgHit and (tgDir == 1 ? low <= v1 : high >= v1)
+            tgHit := true
 
 // ============================================================ NDOG / NWOG
 // create the lines, labels and rectangle of a gap
@@ -1316,14 +1463,70 @@ drawEq(array<Piv> arr, string txt, color c) =>
                 v.ln.set_xy2(x, v.p)
                 v.lb.set_xy(x, v.p)
     true
+// 3-candle swings (one candle on each side), kept until price takes them
+float ph3 = ta.pivothigh(high, 1, 1)
+float pl3 = ta.pivotlow(low, 1, 1)
+var array<float> sh3p = array.new<float>()
+var array<int> sh3t = array.new<int>()
+var array<float> sl3p = array.new<float>()
+var array<int> sl3t = array.new<int>()
+
+sweep3(array<float> ps, array<int> ts, bool isHigh) =>
+    int i = ps.size() - 1
+    while i >= 0
+        if isHigh ? high > ps.get(i) : low < ps.get(i)
+            ps.remove(i)
+            ts.remove(i)
+        i -= 1
+    true
+
+add3(array<float> ps, array<int> ts, float p, int t) =>
+    ps.push(p)
+    ts.push(t)
+    if ps.size() > 60
+        ps.shift()
+        ts.shift()
+    true
+
+// the pivot just added at time t (price p) becomes an EQH / EQL when an earlier unswept 3-candle swing
+// has the same price or is at most eq3pts beyond it (above for highs, below for lows). The level is the
+// swing price, drawn from the swing.
+eq3(array<Piv> arr, array<float> ps, array<int> ts, float p, int t, bool isHigh) =>
+    if arr.size() > 0
+        Piv v = arr.last()
+        if v.t == t and not v.eq
+            int n = ps.size()
+            if n > 0
+                for i = n - 1 to 0
+                    float q = ps.get(i)
+                    int qt = ts.get(i)
+                    float d = isHigh ? q - p : p - q
+                    if qt < t and d >= 0 and d <= eq3pts
+                        v.eq := true
+                        v.p := q
+                        v.t := qt
+                        trimPivs(arr)
+                        break
+    true
+
 if inWin and tfok and doeqhl
     float tol = eqtol * nz(atrv, 0.0)
     sweepPivs(hpv, true, tol)
     sweepPivs(lpv, false, tol)
+    sweep3(sh3p, sh3t, true)
+    sweep3(sl3p, sl3t, false)
     if not na(ph)
         addPiv(hpv, ph, pivT, true, tol)
+        if doeq3
+            eq3(hpv, sh3p, sh3t, ph, pivT, true)
     if not na(pl)
         addPiv(lpv, pl, pivT, false, tol)
+        if doeq3
+            eq3(lpv, sl3p, sl3t, pl, pivT, false)
+    if not na(ph3)
+        add3(sh3p, sh3t, ph3, time[1])
+    if not na(pl3)
+        add3(sl3p, sl3t, pl3, time[1])
 
 // daily swings: previous completed daily bar only (lookahead_on with [1]), so nothing repaints
 [dph, dpl, dpt, datr, dtm] = request.security(syminfo.tickerid, "D",
