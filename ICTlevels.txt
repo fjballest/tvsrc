@@ -73,7 +73,8 @@ int monwid = input.int(3, "", options = [1, 2, 3], group = G_M, inline = "mms")
 
 const string G_DAYS = "Day Settings"
 int ndays = input.int(60, "Number of days (capped automatically by the object budget)", minval = 1,
-     group = G_DAYS)
+     group = G_DAYS, tooltip = "Days drawn. The 500 line / label limits cap this number: with the default settings, "
+     + "charts of 5m and lower are limited to 46 days (no cap warning is shown for the day cap on those charts).")
 bool dolines = input.bool(true, "day vertical lines", group = G_DAYS, inline = "dayln")
 string daylnsty = getstyle(input.string("dotted", "", options = ["solid", "dashed", "dotted"],
      group = G_DAYS, inline = "dayln"))
@@ -361,7 +362,8 @@ int lbPerDay = (doeq ? 1 : 0) + (doopen ? 1 : 0) + (dodaylbl and dodmaxmin ? 2 :
 int daysByLn = lnPerDay > 0 ? math.floor((500 - lnReserve) / lnPerDay) : ndays
 int daysByLb = lbPerDay > 0 ? math.floor((500 - lbReserve) / lbPerDay) : ndays
 int ndaysEff = math.max(1, math.min(ndays, math.min(daysByLn, daysByLb)))
-bool capped = ndaysEff < ndays or nses > nsesEff or ngaps > ngapsEff
+// the day cap is expected on 5m and lower charts (46 days with the defaults): no warning for it there
+bool capped = (ndaysEff < ndays and tfsecs > 300) or nses > nsesEff or ngaps > ngapsEff
 
 // ============================================================ processing window (history is
 // limited for speed)

@@ -53,7 +53,7 @@ Inputs are grouped by type of level. Related controls share a row with `inline`.
 | Wick CE | Draw, keep, minimum wick as a percentage of the candle range (default 30); line style and width; upper and lower wick labels |
 | FVGs and wick CE by timeframe | Draw; plus N next higher timeframes; 15m, 1H, 4H, D, W tick boxes; keep per timeframe and minimum size; bull and bear colors per timeframe; outline style and width; no fill (default on) and transparency; formation marker; CE box and its style; labels with TF, FVG/IFVG and direction parts; label size, position and vertical anchor; wick CE for 1H and 4H |
 
-The by-timeframe group has several defaults chosen on purpose. It is off by default, the fill is off, the CE box has zero height and the label position is Inside right. The label anchor is the CE of the FVG unless set to High or Low.
+The by-timeframe group has several defaults chosen on purpose. It is on by default (1H and 4H ticked), the fill is off, the CE box has zero height and the label position is Inside right. The label anchor is the CE of the FVG unless set to High or Low.
 
 ## Data structures
 

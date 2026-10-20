@@ -537,7 +537,7 @@ method oteStep(OteTrack t) =>
                 else
                     m := mid >= bLo and mid <= bHi
                 bool tap = t.dir == -1 ? high >= t.zlo : low <= t.zhi
-                if m and tap and not t.fired and time != t.ctime
+                if m and tap and not t.fired and time != t.ctime and barstate.isconfirmed
                     t.fired := true
                     s := t.dir
             if t.dir == -1
@@ -618,7 +618,7 @@ if not na(lastshortfvg)
 
 bool bullLeave = false  // this candle confirms an IFVG+ (price leaves it upwards)
 bool bearLeave = false
-if not na(bullifvg) and not na(bullconfirm) and close < bullifvg.lo
+if not na(bullifvg) and not na(bullconfirm) and barstate.isconfirmed and close < bullifvg.lo
     bullconfirm := na
     gBull.gCancel()
 if not na(bullifvg) and barstate.isconfirmed and close > bullifvg.hi and na(bullconfirm)
@@ -626,7 +626,7 @@ if not na(bullifvg) and barstate.isconfirmed and close > bullifvg.hi and na(bull
     bullUsed := false
     gBull.gConfirm()
     bullLeave := true
-if not na(bearifvg) and not na(bearconfirm) and close > bearifvg.hi
+if not na(bearifvg) and not na(bearconfirm) and barstate.isconfirmed and close > bearifvg.hi
     bearconfirm := na
     gBear.gCancel()
 if not na(bearifvg) and barstate.isconfirmed and close < bearifvg.lo and na(bearconfirm)

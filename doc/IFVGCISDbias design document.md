@@ -102,6 +102,20 @@ Doji candles (close equal to open) are neither up nor down: they never set a ref
 
 On a change of state, if a continuation happened since the last change, the run starts again: `flips = 1` and `sTop`, `sBot` are the broken open and the new reference open. Otherwise `flips` grows and the span widens to include both opens. When `flips` reaches `lockN`, the range locks with `rTop = sTop` and `rBot = sBot`.
 
+### Debug companion: DeliveryCISD
+
+`DeliveryCISD.txt` ("Delivery CISD" on the chart) runs the same delivery state machine on the chart timeframe, so the DLV cell of the chart timeframe can be checked candle by candle. Apart from the extra bar bookkeeping it needs for drawing (`refBar`, `pBar`, `pNewBar`, `seqBar`), its logic is line for line the body of `deliveryCode()`. Instead of running inside `request.security`, it runs under `barstate.isconfirmed`, which gives the same closed-candle result.
+
+It draws:
+
+- A segment at the level broken by each CISD, from the candle that set that level to the candle that confirmed the CISD. For a range break, the segment starts at the first candle of the flip sequence.
+- A triangle on the confirming candle (below for bullish, above for bearish).
+- Alerts on bullish and bearish CISD, which IFVGCISDbias does not have.
+
+It has no FVG size, timeframe or table inputs. Its delivery inputs match those of IFVGCISDbias with one exception: **the inner-candle range defaults to High-Low there and to Body here.** With the defaults, the two scripts can disagree. Set both to the same value when debugging.
+
+Any change to the delivery logic has to be made in both files.
+
 ## Table
 
 `table.new` is called once with its size fixed from the inputs at that time. The size along the timeframe axis is the number of visible timeframes plus the header, and the other axis is one plus the number of state rows. `put(slot, r, ...)` maps a timeframe slot and a row to a cell and swaps the coordinates for the vertical layout. Slot -1 is the header and row -1 is the timeframe label.
@@ -130,6 +144,7 @@ All cells are written on `barstate.islast` only.
 - Weekly and daily states need enough history on those timeframes. On a short chart the first columns can stay neutral.
 - The table holds no history: it shows the current state only, so the states cannot be backtested from the chart.
 - There are always eight `request.security` calls, even when timeframes are hidden.
+- The delivery logic is duplicated in DeliveryCISD, and the inner-range defaults already differ between the two.
 
 ### Extension points
 

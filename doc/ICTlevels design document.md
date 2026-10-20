@@ -64,6 +64,7 @@ Inputs are grouped by module, and related controls share a row with `inline`. Co
 | Time & Settings | Zone (Auto, US, EU); compute for historic data use (`visible`); offset for margin labels (`xoff`, bars between the last bar and the labels); show object cap warning (`showcap`) |
 | Month Settings | Draw max/min/close of the last 3 months; colors for max, min and close; line style and width |
 | Day Settings | Number of days (`ndays`, capped by the object budget); day and week vertical lines; day max/min colors, style and width; label unbroken day max/min and its size; REH/REL labels with a tolerance in daily ATR; equilibrium line; day open (midnight open) line |
+| TGIF | TGIF levels (`dotgif`, on) with the two retracement fractions (`tgp1` / `tgp2`, 0.2 / 0.3); the week body needed for a displacement (`tgbody`, 0.6); up / down colors, style and width; text size (`tglblsize`, normal) |
 | Session Settings | Draw sessions and how many to keep (`nses`); session rectangles and their transparency; no rectangles at or under a timeframe (default 5m); session max/min colors, style and width; label unbroken session max/min and its size; Asia, London and NY colors on one row |
 | Gaps and Ranges | Draw NDOG/NWOG/RTHOG and how many to keep (`ngaps`); separate NDOG, NWOG and RTHOG toggles; RTHOG quadrants and stddevs with their minimum sizes and count; gap rectangles; combine gaps with a tolerance in daily ATR; line style, width and color for NDOG, NWOG, RTHOG (old and current), quadrant and stddev lines; extend old RTHOG lines |
 | Premarket Range | Draw premarket range; number of ranges that get quadrants and stddevs; Auto or Manual range with a session input (default 0700-0900 in `tz`); quadrants and stddevs with minimum sizes; stddev count; line color (red by default), width and the quadrant, CE and stddev styles; label size; tolerance for combining labels with RTHOG |
@@ -125,13 +126,17 @@ On `newDay` a `Zone` with `isday` set is created. The previous day is closed by 
 
 `markRel` implements REHs and RELs. It compares every pair of unbroken day highs (and lows) within a tolerance of `reltol` times the daily ATR. Within a cluster the highest high keeps its label and reads "day REHs" (mode 1), the others lose it (mode 2). Lows work the same way in reverse. The lines are never hidden.
 
+### TGIF
+
+ICT's TGIF ("thank God it's Friday"): when the week candle made a displacement and has not formed its final wick, a retracement of 20% - 30% of the week range is expected on Friday, or on Monday when it did not happen on Friday. The week candle is tracked from `newWeek` (`twO`, `twH`, `twL`). `tgEval` calls it a displacement when its body is at least `tgbody` of its range and the close is still nearer the extreme than the first level (`tgp1` of the range), which means the final wick has not formed. On the first bar of Friday the week so far is tested; if it qualifies, `TGIF-20%` and `TGIF-30%` are drawn from the start of Friday, measured down from the week high in red (bullish week) or up from the week low in green (bearish week). On Friday they follow new week extremes until price reaches the first level, then stay fixed. When the week closes displaced and the retracement did not happen on Friday (the Friday levels were not armed or not reached), the levels of the final week are drawn on Monday, from the start of the new week until Tuesday. Outside those days the levels are removed, so they show only while they apply. They use two lines and two labels of the object budget (`lnTg`).
+
 ### Sessions
 
 For every `ZoneInfo` in `zinfos`, `starts()` fires on the bar that contains the start instant and creates a zone. `ends()` fires on the bar that contains the end instant, or when the session was left (data gaps), and works for overnight windows because it runs on `tsec` modulo a day. While a zone is in `actz`, `upd()` extends its high and low and records the bar times of the extremes. A session level is labelled only until it is taken.
 
 ### Premarket range
 
-The range is a `Zone` from `premarket`, drawn with start and end vertical lines. Its window is `0700-0900` in `tz` by default, or the Auto times (07:00-09:00 for US, 06:30-08:30 for EU), or a manual session string. On the last bar the newest `pmkeep` ranges call `pmdraw`, which builds quadrants at 25%, 50% and 75% of the range when a quarter of it exceeds the minimum size, and stddev lines above and below the range. The stddev unit is the range divided by 8, 4, 2 or 1, taking the first that exceeds the minimum, and `pmpo3num` lines are drawn per side. Older ranges call `pmclear`.
+The range is a `Zone` from `premarket`, drawn with start and end vertical lines. Its window is `0700-0900` in `tz` by default, or the Auto times (07:00-09:00 for US, 06:30-08:30 for EU), or a manual session string. On the last bar the newest `pmkeep` ranges call `pmdraw`, which builds quadrants at 25%, 50% and 75% of the range when a quarter of it exceeds the minimum size, and stddev lines above and below the range. The stddev unit is the range divided by 8, 4, 2 or 1, taking the first that exceeds the minimum, and `pmpo3num` lines are drawn per side. Whenever any quadrant or stddev line is drawn, `pmdraw` also draws the range high and low as solid lines in the premarket color (red by default) and width, labelled "PMKT hi" and "PMKT lo"; they live in `qlines` and are cleared with the rest. Older ranges call `pmclear`.
 
 ### NDOG and NWOG
 
@@ -152,6 +157,8 @@ The gap runs from the settlement of the last regular session bar (`mktClose`) to
 ### EQH and EQL
 
 Pivots come from `ta.pivothigh` and `ta.pivotlow` on the chart timeframe and, with `doeqd`, from a daily `request.security` call that reads only the previous completed daily bar (`[1]` with `lookahead_on`), so nothing repaints. The tolerance is `eqtol` times the ATR of the same timeframe. `addPiv` merges a new pivot into an existing one within tolerance and marks it `eq`, keeping the more extreme price. `sweepPivs` removes a pivot when the price takes it: an unconfirmed candidate gets the tolerance as slack, a confirmed equal level none. `trimPivs` keeps `eqkeep` equal levels and at most 30 candidates per side. Only equal levels are drawn, by `drawEq`.
+
+With `doeq3`, 3-candle swings (`ta.pivothigh` / `ta.pivotlow` with one bar on each side) are also kept, at most 60 per side, and `sweep3` drops them once price trades beyond them. When a new chart pivot is added as a candidate, `eq3` looks for an earlier unswept 3-candle swing with exactly its price, or at most `eq3pts` points beyond it (above for highs, below for lows). On a match the pivot becomes an equal level at the swing price and time. This catches equal lows such as a small swing low followed later by a pivot low at the same price, which the ATR tolerance and the pivot length can miss.
 
 ### Months
 

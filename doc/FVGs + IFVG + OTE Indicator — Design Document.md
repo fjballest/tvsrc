@@ -43,7 +43,7 @@ Per-bar pipeline, in source order:
 
 ## Inputs
 
-The settings dialog has six sections, ordered so that what to draw and which FVGs to keep come first. Inputs that share an `inline` id sit on one line. Defaults are in brackets.
+The settings dialog has seven sections, ordered so that what to draw and which FVGs to keep come first. Inputs that share an `inline` id sit on one line. Defaults are in brackets.
 
 | Section | Inputs | Effect |
 | --- | --- | --- |
@@ -51,8 +51,9 @@ The settings dialog has six sections, ordered so that what to draw and which FVG
 | FVG Settings | `visible` Historic compute \[off\], `dofvgalert`; `minfvg` \[3\], `maxfvg` \[10000\], `maxfvgs` keep \[200\]; `dupTol` merge tolerance \[10%\], `flL` / `flR` sweep pivots \[3 / 3\]; `drawStyle` \[Box\]; C.E. height / width / style; FVG colors | Size limits are in points. `dupTol = 0` turns merging off. `drawStyle` is Box, Box no fill, or Segments (hi / lo / C.E.). |
 | 1st Presented FVGs | `fpfvgtime` \[0930\], `tz` \[Auto\], `nfp` keep \[6\]; day / week / inverse colors; `doifp` \[off\] | Session open for the 1PFVG; the week variant (Monday) has its own color. |
 | Wick Settings | `nwicks` \[30\], `minwick` \[20\], `wickdx` \[0 = auto\], style, color, `dowickalert` | Wick C.E. segments and their bounce alerts. |
-| IFVG Settings | Alerts, signals, labels; `keepIFVG` + `keepMax` \[off / 20\]; `ifvgswings` \[off\], significant swing, swing labels; `pivL` / `pivR` \[10 / 3\]; `atrLen` \[14\], `minATR` \[4\]; IFVG colors, transparency, text size and alignment | `ifvgswings` switches from the close-mode logic to the swing logic. `pivL` / `pivR` also set the pivots that find the leg before the FVG for OTE. |
+| IFVG Settings | Alerts, signals, labels; label parts `lblTf` OTE TF, `lblSign` + / -, `lblAp` A+ \[all on\]; `keepIFVG` + `keepMax` \[on / 20\]; `deConf` IFVG confirmation \[Close\]; `deInv` inversion rules \[off\], `deMaxInv` \[1\], `deDead` invalidated IFVG \[Fade\] + color; `ifvgswings` \[off\], significant swing, swing labels; `pivL` / `pivR` \[10 / 3\]; `atrLen` \[14\], `minATR` \[4\]; IFVG colors, transparency, text size and alignment | `ifvgswings` switches from the close-mode logic to the swing logic. `pivL` / `pivR` also set the pivots that find the leg before the FVG for OTE. |
 | IFVG + OTE | `useOTE`, `oteOnly`, `showOTEsig`; `oteMin` / `oteMax` \[0.62 / 0.79\], `oteMode` \[Overlap\]; prior-leg rejection (`oteRej`, `oteRejAny`, `oteRejCap`); `oteHtf1`, `oteHtf2`, `oteHtfL` / `oteHtfR` \[5 / 2\]; band draw, offset \[5\], width \[8\]; band, border and text colors | `oteMode` is Overlap, Fully inside or C.E. inside. The band is drawn `oteOffset` candles right of the last candle and is `oteWidth` candles wide. |
+| Delivery Engine (Nuno) | `deDisp` displacement FVGs only \[off\], `deDispType` \[Open to Close\], `deStdLen` / `deStdX` \[100 / 4\], `deDispBar` \[off\] + color, `deFlag` + `deFlagW` \[off / 3\]; `deAplus` A+ setups \[off\], `deLiqLen` / `deSeqWin` \[5 / 50\], `deMssLen` \[3\], `deMssX` / `deMssWin` \[2 / 2\], `deKz` \[on\], `deHtfOn` + `deHtf` \[off / 60\] | Features of Nuno's Delivery Engine V20. See "Delivery Engine features". |
 
 Two values are not inputs but globals next to the filter inputs: `flN = 1` (FVGs shown after a sweep) and `flWin = 25` (the mid-arm window, as % of the arm length on each side of its middle).
 
@@ -267,6 +268,26 @@ On higher timeframes the origin is moved to the latest higher-timeframe pivot wh
 ### Bands and signals
 
 Bands are drawn right of the last candle, `oteOffset` candles away and `oteWidth` candles wide, and are moved every bar. A band is yellow while the IFVG matches the OTE and gray while it does not. When a group raises a signal, `oteSig` is -1 or 1, a diamond is plotted if `showOTEsig` is on, the IFVG label becomes "IFVG± OTE \<timeframes>", and the OTE alert fires.
+
+## Delivery Engine features
+
+These come from Nuno's Delivery Engine (DeliveryEngine.txt, V20, updated to V29) and are all off by default, except the confirmation mode, which defaults to the original close rule. The state is computed in a block placed before the FVGs are created, tagged `[DE]` in the code.
+
+### Displacement filter
+
+`deRange` is the candle range, open to close or high to low. A candle is a displacement candle when `deRange` exceeds `deStdX` times the standard deviation of the last `deStdLen` ranges. With `deDisp`, an FVG is created only when its middle candle (`[2]` on the detection bar) is a displacement candle. This applies to drawn FVGs and IFVG candidates; 1PFVGs are exempt. When `deDispBar` is on \[off\], the middle candle of each displacement FVG is colored (offset -1, as in V29), with or without `deDisp`. With `deFlag` \[off\], FVGs whose middle candle is a displacement candle (`FVG.disp`) are drawn with border width `deFlagW` \[3\] (`bw`), also with or without `deDisp`.
+
+### Confirmation and inversion rules
+
+`deConf` = Full body requires both open and close beyond the FVG to confirm an IFVG (`upBreak` / `dnBreak`), in close and swing mode. With `deInv` (close mode only), each later close through the zone inverts it again instead of cancelling the confirmation: inversion 1 is the IFVG, inversion 2 is an IFVG in the other direction labelled "×2", and so on up to `deMaxInv`. The next close through invalidates it: `deKill` fades the box (`deDead` = Fade, the box stops growing) or restores the plain FVG. Each inversion raises the IFVG signal and alert in its direction. OTE is tracked only for the first inversion.
+
+### A+ setups
+
+Swing liquidity is pivots of `deLiqLen` bars on each side, kept until price trades beyond them; `deLastBsl` / `deLastSsl` are the bars of the last sweeps. An IFVG is A+ when it is confirmed within `deSeqWin` bars after a sweep of the opposite liquidity (IFVG+ after a swing low is taken), inside a killzone (`deKz`, ICTlevels sessions in the 1PFVG time zone, ignored above 15m) and, with `deHtfOn`, with the structure of `deHtf` in the same direction (`deStruct`, last closed HTF candle). The chart structure uses its own swings of `deMssLen` bars on each side \[3\] (V29; set it to `deLiqLen` for the V20 behaviour). An MSS is a close beyond the last swing high / low against the structure with a displacement candle (`deMssX` standard deviations) in its direction among the last `deMssWin` candles. A break against the structure without displacement is a CHoCH; a later break in the same direction with displacement, within `deSeqWin` bars, is taken as the MSS. When an MSS meets the same A+ conditions, the FVGs in its direction born since the sweep, and the ones created in the next candles, are tagged A+ on their boxes (`FVG.aplus`).
+
+### Labels
+
+`ifvgTxt` builds the IFVG labels: "IFVG" plus the sign (`lblSign`), the inversion count, "OTE" with its timeframes (`lblTf`) and "A+" (`lblAp`). With all parts on, the labels read as before plus the A+ tag.
 
 ## Drawing, alerts, limits and known risks
 
