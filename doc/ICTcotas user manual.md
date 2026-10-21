@@ -99,7 +99,7 @@ A Fair Value Gap is a three-candle pattern where the wicks of the first and thir
 
 The **CE** (consequent encroachment) is the midpoint of the gap.
 
-With **extend FVG range to include VIs with candle 2** on (default), the FVG is widened when the first or third candle also forms a volume imbalance with the middle candle (body gap with overlapping wicks, at least the VI **min size**). The FVG then covers the gap plus that body gap, and the CE is recomputed. The VI itself is still drawn separately in the Volume Imbalances layer.
+With **extend FVG range to include VIs with candle 2** on (default), the FVG is widened when the first or third candle also has a body gap with the middle candle: a volume imbalance, or a gap when the wicks do not overlap either (at least the VI **min size**). The FVG then covers the gap plus that body gap, and the CE is recomputed. The VI itself is still drawn separately in the Volume Imbalances layer.
 
 ### Inversion (IFVG)
 
@@ -287,7 +287,7 @@ Fills use these colors with the transparency set in each section.
 | FVG becomes IFVG on a close through it | on | Enables inversion (section 4). When off, FVGs are removed by the General mitigation rule like any other level |
 | label | IFVG | Name used for inverted FVGs (also in by-timeframe labels) |
 | overlapping FVGs | Most recent | Most recent, Enclosing or Keep all (section 4). Also applies to the by-timeframe layer |
-| extend FVG range to include VIs with candle 2 | on | Widens an FVG to include a VI between its middle candle and its first or third candle. Also applies to the by-timeframe layer |
+| extend FVG range to include VIs with candle 2 | on | Widens an FVG to include the body gap (VI or gap) between its middle candle and its first or third candle. Also applies to the by-timeframe layer |
 
 ### Volume Imbalances
 

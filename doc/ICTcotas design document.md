@@ -102,7 +102,7 @@ Detection runs only when a higher timeframe candle completes. The candle triple 
 
 ### Extending the range with volume imbalances
 
-With `fvgvi` on, a bullish FVG is widened when candle 1 or candle 3 forms a volume imbalance with candle 2. The two cases are the gap between the body tops and bottoms of candle 2 and candle 3, and between candle 1 and candle 2. The VI counts only if the wicks of the two candles still overlap and the gap is at least `vimin`. The FVG then takes the lower of the two lows and the higher of the two highs. Bearish FVGs are the mirror image. The VIs are still drawn as VIs on their own.
+With `fvgvi` on, a bullish FVG is widened when candle 1 or candle 3 forms a volume imbalance with candle 2. The two cases are the gap between the body tops and bottoms of candle 2 and candle 3, and between candle 1 and candle 2. Any body gap of at least `vimin` counts, whether the wicks of the two candles overlap (a VI) or not (a gap, as when candle 1 opens above candle 2's high), the same rule FVGS+IFVG+OTE uses for its suspension blocks. The FVG then takes the lower of the two lows and the higher of the two highs. Bearish FVGs are the mirror image. The VIs are still drawn as VIs on their own (that layer keeps the strict rule, wicks overlapping).
 
 ### Volume imbalances
 

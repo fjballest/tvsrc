@@ -109,8 +109,8 @@ string fvgovl = input.string("Most recent", "overlapping FVGs",
      + "none includes all of them, the newest wins). Keep all draws everything.")
 
 bool fvgvi = input.bool(true, "extend FVG range to include VIs with candle 2", group = G_FVG,
-     inline = "f8", tooltip = "When candle 1 or candle 3 of an FVG forms a volume "
-     + "imbalance with the middle candle, that VI is included "
+     inline = "f8", tooltip = "When the body of candle 1 or candle 3 of an FVG does not overlap the body of the middle "
+     + "candle (a volume imbalance, or a gap when the wicks do not overlap either), that area is included "
      + "in the FVG range (hi/lo/CE/rectangle). The VIs are " + "still drawn on their own as usual.")
 
 const string G_VI = "Volume Imbalances"
@@ -496,7 +496,9 @@ wickStep(int tfi, int side, bool q, float sz, float lo, float hi, int t) =>
         cur.wsize := sz
     true
 
-// FVGs of one completed candle triple (1 newest, 3 oldest), with the VI extension
+// FVGs of one completed candle triple (1 newest, 3 oldest), with the VI extension: any gap between the
+// body of candle 2 and the body of candle 1 or 3 widens the range, also when the wicks do not overlap
+// (a gap), as in FVGS+IFVG+OTE
 addFvgs(int kind, int tfi, float minsz, float o1, float h1, float l1, float c1,
      float o2, float h2, float l2, float c2, float h3, float l3, float o3, float c3,
      int t2, int tform) =>
@@ -510,10 +512,10 @@ addFvgs(int kind, int tfi, float minsz, float o1, float h1, float l1, float c1,
         float flo = h3
         float fhi = l1
         if fvgvi
-            if botP > top3 and l2 <= h3 and botP - top3 >= vimin
+            if botP > top3 and botP - top3 >= vimin
                 flo := math.min(flo, top3)
                 fhi := math.max(fhi, botP)
-            if botC > topP and l1 <= h2 and botC - topP >= vimin
+            if botC > topP and botC - topP >= vimin
                 flo := math.min(flo, topP)
                 fhi := math.max(fhi, botC)
         Lvl nb = addLvl(kind, tfi, 1, flo, fhi, t2)
@@ -523,10 +525,10 @@ addFvgs(int kind, int tfi, float minsz, float o1, float h1, float l1, float c1,
         float flo = h1
         float fhi = l3
         if fvgvi
-            if topP < bot3 and h2 >= l3 and bot3 - topP >= vimin
+            if topP < bot3 and bot3 - topP >= vimin
                 flo := math.min(flo, topP)
                 fhi := math.max(fhi, bot3)
-            if topC < botP and h1 >= l2 and botP - topC >= vimin
+            if topC < botP and botP - topC >= vimin
                 flo := math.min(flo, topC)
                 fhi := math.max(fhi, botP)
         Lvl ns = addLvl(kind, tfi, -1, flo, fhi, t2)
