@@ -289,6 +289,17 @@ Swing liquidity is pivots of `deLiqLen` bars on each side, kept until price trad
 
 `ifvgTxt` builds the IFVG labels: "IFVG" plus the sign (`lblSign`), the inversion count, "OTE" with its timeframes (`lblTf`) and "A+" (`lblAp`). With all parts on, the labels read as before plus the A+ tag.
 
+## Breakers
+
+Self-contained block after `updKept()`, marked `[BRK]` (it can be removed without touching the rest). Inputs in the **Breakers** group, just before the Delivery Engine group.
+
+- **Swings:** `ta.pivothigh` / `ta.pivotlow` with `brkLen` on each side; the last two pivot highs and lows are kept (price and bar).
+- **Formation:** on a new pivot low lower than the previous one, with the last pivot high between them, a bullish breaker is added. Its zone (`brkZone`) is the high / low of the up-close candle at the pivot high bar or the nearest one before it (not before the first low); in *Whole sequence* mode the consecutive up-close candles before it are added. Bearish is the mirror (higher pivot high, down-close candles at the pivot low). The search is limited to 300 bars.
+- **Type `Breaker`:** `dir`, zone `hi` / `lo`, `t` (time of the first zone candle), `broken`, and its drawing `bx` (box) / `ml` (mid line). `brkAdd` keeps the last `brkKeep` per direction.
+- **Life cycle (confirmed bars):** a close beyond the zone in the breaker direction sets `broken` and `bkBar`; then a pivot high above `hi` (bullish) / pivot low below `lo` (bearish) whose bar is at or after `bkBar` sets `swung`; after that, a close through the other side removes it (also before the swing) and a candle reaching back into the zone is a pullback.
+- **Tagging (`brkTag`):** on a pullback, live FVGs of `lfvgs` (bullish breaker) or `sfvgs` (bearish), and the confirmed IFVG of the trade direction (`bullifvg` / `bearifvg` in close mode, `swFvg` in swing mode), that overlap the zone set the new FVG field `brk` and draw the breaker: a dashed box over the zone and a line at its mid, from `t` to the current bar, once (not extended). A drawn breaker is no longer tested for pullbacks; while the pullback goes on it is deleted (box, line and array entry) when a candle, the drawing one included, trades beyond its far side: low below `lo` (bullish), high above `hi` (bearish). A close out of the zone in the breaker direction ends the pullback: the entry is removed from the array and the drawing stays. Line width input `brkW`. `brkBox` turns the drawing off; the state then follows the new field `tagged` (first matching pullback seen) instead of the box. `brkTag(f, b, ib)` also marks them: with `ib` (the IFVG box: `ifvgBox` for `bullifvg` / `swFvg`, `ifvgBoxb` for `bearifvg`) the box text is set to bold (`text.format_bold`, kept when the text changes later); for a plain FVG (`ib` na) that is unmitigated, not an IFVG box (`cand` / `kept`) and has no A+ text, the box text is set to `b+` / `b-` with the IFVG text size and alignment.
+- **Not copied** to ICTScalp (labels only, no effect on signals).
+
 ## Drawing, alerts, limits and known risks
 
 ### Drawing

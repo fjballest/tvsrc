@@ -7,6 +7,14 @@
 //   - A+ setups: IFVG right after a sweep of the opposite swing liquidity (killzone, HTF structure), and FVGs
 //     born from an MSS with displacement after such a sweep; tagged A+ on the boxes
 // Label parts: the IFVG labels can show or hide the OTE timeframes, the +/- sign and the A+ tag.
+// [BRK] Breakers: bullish = low, high, lower low (zone: the last up-close candle making the high, or the whole
+//   sequence of up-close candles there); bearish = high, low, higher high (last down-close candle(s) making the
+//   low). Once price closes beyond the zone, makes a swing high (bullish) / low (bearish) beyond it and pulls
+//   back to it while a live FVG / IFVG of the trade direction
+//   overlaps the zone, the breaker is drawn as a dashed rectangle (with its mid line) from its candle(s) to that
+//   pullback. The label of an overlapping IFVG turns bold; an overlapping unlabeled FVG gets b+ / b-.
+//   The rectangle is removed if the pullback itself trades below the breaker low (bullish) / above its
+//   high (bearish) before price closes out of the zone again; otherwise it stays for reference.
 
 // draw fvgs of the current timeframe including volume gaps
 // when using m5,4,3,2,1, track last 1PFVGs
@@ -242,6 +250,31 @@ oteBandCol = input.color(color.new(color.yellow, 85), "Colors: band", group = G_
 oteHighlight = input.color(color.yellow, "border", group = G_OTE, inline = "oc")
 oteTextCol = input.color(color.black, "text", group = G_OTE, inline = "oc")
 
+// Breakers =========
+G_BRK = "Breakers"
+brkOn = input.bool(true, "Breakers at FVG / IFVG pullbacks", group = G_BRK,
+    tooltip = "Bullish breaker: a low, a high and a lower low; after a close above the zone, price pulls back to "
+    + "it (long). Bearish breaker: a high, a low and a higher high; after a close below the zone, price pulls "
+    + "back to it (short). Before the pullback, price has to make a swing high above the zone (bullish) / a "
+    + "swing low below it (bearish), with the swing length below. When, on the pullback, a live bullish FVG or confirmed IFVG+ (long) or bearish FVG "
+    + "or IFVG- (short) overlaps the zone, the breaker is drawn as a dashed rectangle with its mid line, from "
+    + "its candle(s) to that pullback. The label of an overlapping IFVG+ / IFVG- turns bold and an "
+    + "overlapping unlabeled, unmitigated bullish / bearish FVG gets b+ / b-. The rectangle is removed if the pullback itself trades below the breaker low "
+    + "(bullish) / above its high (bearish) before price closes out of the zone again; otherwise it stays.")
+brkMode = input.string("Last candle", "Zone", options = ["Last candle", "Whole sequence"], group = G_BRK,
+    inline = "bm", tooltip = "Last candle: the last up-close candle making the high (bullish) / down-close "
+    + "candle making the low (bearish). Whole sequence: that candle and the consecutive up-close / down-close "
+    + "candles before it.")
+brkLen = input.int(3, "Swing length / keep", minval = 1, maxval = 20, group = G_BRK, inline = "bl",
+    tooltip = "Pivot length (left and right) of the lows and highs, and breakers kept per direction.")
+brkKeep = input.int(3, "", minval = 1, maxval = 10, group = G_BRK, inline = "bl")
+brkBox = input.bool(true, "Rectangle", group = G_BRK, inline = "bc",
+    tooltip = "Draw the breaker rectangle and its mid line. The bold IFVG labels and the b+ / b- labels are "
+    + "set either way.")
+brkCol = input.color(color.fuchsia, "", group = G_BRK, inline = "bc")
+brkSty = getstyle(input.string("dashed", "", options = ["solid", "dashed", "dotted"], group = G_BRK, inline = "bc"))
+brkW = input.int(1, "width", minval = 1, maxval = 4, group = G_BRK, inline = "bc")
+
 // Delivery Engine (from Nuno's Delivery Engine V20) =========
 G_DE = "Delivery Engine (Nuno)"
 
@@ -372,6 +405,7 @@ type FVG
     bool shown = false // FVG is in the drawn arrays
     bool aplus = false // [DE] A+ FVG (born from an A+ MSS)
     bool disp = false // [DE] middle candle is a displacement candle
+    bool brk = false // [BRK] tagged at a breaker pullback
 
 
 // [DE] border width: thicker for flagged displacement FVGs
@@ -1677,6 +1711,158 @@ if doifvg and not ifvgswings and deInv and barstate.isconfirmed
                 sig := sig == 0 ? d : sig
 
 updKept()
+
+// [BRK] Breakers =================================================
+type Breaker
+    int dir         // 1 bullish (long after the pullback), -1 bearish
+    float hi        // zone
+    float lo
+    int t           // time of the first candle of the zone
+    bool broken = false
+    int bkBar = na  // bar of the close beyond the zone
+    bool swung = false  // a swing beyond the zone formed after the break (needed for the pullback)
+    bool tagged = false // first pullback with a matching FVG / IFVG seen
+    box bx = na     // drawn at that pullback (when the rectangle is on)
+    line ml = na    // mid line
+
+var array<Breaker> brks = array.new<Breaker>()
+float bPH = ta.pivothigh(high, brkLen, brkLen)
+float bPL = ta.pivotlow(low, brkLen, brkLen)
+var float bLastH = na   // last two pivot highs / lows (price, bar)
+var int bLastHb = na
+var float bPrevH = na
+var int bPrevHb = na
+var float bLastL = na
+var int bLastLb = na
+var float bPrevL = na
+var int bPrevLb = na
+
+// zone from candle k bars back: the up-close (dir 1) / down-close (dir -1) candle there or the nearest one
+// before it (not before bar 'from'), plus the consecutive ones before it in "Whole sequence" mode
+brkZone(int dir, int k0, int from) =>
+    float zh = na
+    float zl = na
+    int zt = na
+    int kmax = math.min(bar_index - from, 300)
+    int k = k0
+    while k <= kmax and na(zt)
+        if (close[k] - open[k]) * dir > 0
+            zh := high[k]
+            zl := low[k]
+            zt := time[k]
+        k += 1
+    if not na(zt) and brkMode == "Whole sequence"
+        while k <= kmax and (close[k] - open[k]) * dir > 0
+            zh := math.max(zh, high[k])
+            zl := math.min(zl, low[k])
+            zt := time[k]
+            k += 1
+    [zh, zl, zt]
+
+brkAdd(int dir, float zh, float zl, int zt) =>
+    brks.push(Breaker.new(dir, zh, zl, zt))
+    int cnt = 0
+    for b in brks
+        if b.dir == dir
+            cnt += 1
+    if cnt > brkKeep
+        for i = 0 to brks.size() - 1
+            if brks.get(i).dir == dir
+                brks.remove(i)
+                break
+    true
+
+// breaker b drawn up to this candle when FVG / IFVG f overlaps it on the pullback (once); ib: the IFVG box
+// when f is the confirmed IFVG (its label turns bold), else na (a plain unlabeled FVG gets b+ / b-)
+brkTag(FVG f, Breaker b, box ib) =>
+    if not na(f) and f.hi >= b.lo and f.lo <= b.hi
+        f.brk := true
+        if not na(ib)
+            ib.set_text_formatting(text.format_bold)
+        else if na(f.end) and not f.cand and not f.kept and not (f.aplus and lblAp) and not na(f.rect)
+            f.rect.set_text(b.dir == 1 ? "b+" : "b-")
+            f.rect.set_text_size(ifvgtsz)
+            f.rect.set_text_halign(ifvgha)
+            f.rect.set_text_valign(ifvgva)
+        float mid = (b.hi + b.lo) / 2
+        if not b.tagged
+            b.tagged := true
+            if brkBox
+                b.bx := box.new(b.t, b.hi, time, b.lo, xloc = xloc.bar_time, border_color = brkCol,
+                    border_style = brkSty, border_width = brkW, bgcolor = color.new(brkCol, 100))
+                b.ml := line.new(b.t, mid, time, mid, xloc = xloc.bar_time, color = brkCol, style = brkSty,
+                    width = brkW)
+    true
+
+if brkOn and barstate.isconfirmed
+    if not na(bPL)
+        bPrevL := bLastL
+        bPrevLb := bLastLb
+        bLastL := bPL
+        bLastLb := bar_index - brkLen
+        // bullish: low, high, lower low (the high between the two lows)
+        if not na(bPrevL) and bLastL < bPrevL and not na(bLastHb) and bLastHb > bPrevLb and bLastHb < bLastLb
+            [zh, zl, zt] = brkZone(1, bar_index - bLastHb, bPrevLb)
+            if not na(zt)
+                brkAdd(1, zh, zl, zt)
+    if not na(bPH)
+        bPrevH := bLastH
+        bPrevHb := bLastHb
+        bLastH := bPH
+        bLastHb := bar_index - brkLen
+        // bearish: high, low, higher high (the low between the two highs)
+        if not na(bPrevH) and bLastH > bPrevH and not na(bLastLb) and bLastLb > bPrevHb and bLastLb < bLastHb
+            [zh, zl, zt] = brkZone(-1, bar_index - bLastLb, bPrevHb)
+            if not na(zt)
+                brkAdd(-1, zh, zl, zt)
+    if brks.size() > 0
+        for i = brks.size() - 1 to 0
+            Breaker b = brks.get(i)
+            if b.tagged
+                // drawn, pullback still going on: removed when it trades beyond the far side; once price closes
+                // out of the zone in the breaker direction the rectangle stays for reference
+                if (b.dir == 1 and low < b.lo) or (b.dir == -1 and high > b.hi)
+                    if not na(b.bx)
+                        b.bx.delete()
+                        b.ml.delete()
+                    brks.remove(i)
+                else if (b.dir == 1 and close > b.hi) or (b.dir == -1 and close < b.lo)
+                    brks.remove(i)
+            else if not b.broken
+                if (b.dir == 1 and close > b.hi) or (b.dir == -1 and close < b.lo)
+                    b.broken := true
+                    b.bkBar := bar_index
+            else if not b.swung
+                // after the break: wait for a swing high above the zone (bullish) / low below it (bearish)
+                if b.dir == 1 and not na(bPH) and bar_index - brkLen >= b.bkBar and bPH > b.hi
+                    b.swung := true
+                else if b.dir == -1 and not na(bPL) and bar_index - brkLen >= b.bkBar and bPL < b.lo
+                    b.swung := true
+                else if (b.dir == 1 and close < b.lo) or (b.dir == -1 and close > b.hi)
+                    brks.remove(i)  // closed through the other side before the swing: invalidated
+            else if (b.dir == 1 and close < b.lo) or (b.dir == -1 and close > b.hi)
+                brks.remove(i)  // closed through the other side: invalidated
+            else if (b.dir == 1 and low <= b.hi) or (b.dir == -1 and high >= b.lo)
+                // pullback into the zone: tag the FVGs / IFVGs of the trade direction that overlap it
+                array<FVG> fs0 = b.dir == 1 ? lfvgs : sfvgs
+                for f in fs0
+                    if na(f.end)
+                        brkTag(f, b, na)
+                if b.dir == 1
+                    if not ifvgswings and not na(bullconfirm)
+                        brkTag(bullifvg, b, ifvgBox)
+                    if ifvgswings and ifsdir == 1 and not na(ifsconfirm)
+                        brkTag(swFvg, b, ifvgBox)
+                else
+                    if not ifvgswings and not na(bearconfirm)
+                        brkTag(bearifvg, b, ifvgBoxb)
+                    if ifvgswings and ifsdir == -1 and not na(ifsconfirm)
+                        brkTag(swFvg, b, ifvgBox)
+                if b.tagged and ((b.dir == 1 and low < b.lo) or (b.dir == -1 and high > b.hi))
+                    if not na(b.bx)
+                        b.bx.delete()
+                        b.ml.delete()
+                    brks.remove(i)
 
 // [OTE] signals: IFVG retraced into and matches the OTE band =================
 int bearOteSig = gBear.gStep()

@@ -26,7 +26,7 @@ The indicator raises alerts for IFVG signals, OTE IFVG signals and, optionally, 
 1. Add "FVGs+IFVG+OTE5" to the chart.
 2. Use an intraday execution chart. For the full feature set on NQ or DAX use **1m or 3m** (1PFVGs are only tracked up to 3m) or **5m** (higher timeframe OTE on 15m and 1h).
 3. Start with the defaults: all FVGs drawn, 1PFVGs, wick C.E. and IFVGs on, close-mode IFVGs, OTE detection on the chart and the next two higher timeframes, IFVG alerts on, all Delivery Engine features off.
-4. Create one TradingView alert with the condition **"Any alert() function call"** on this indicator (see section 11). That alert delivers the IFVG and OTE IFVG messages.
+4. Create one TradingView alert with the condition **"Any alert() function call"** on this indicator (see section 12). That alert delivers the IFVG and OTE IFVG messages.
 5. If the chart is too busy, change **Draw** to `IFVGs` (only IFVG boxes and OTE bands) or `1PFVGs+IFVGs`, or set **FVG filter** to `sweeps`.
 
 ### Recommended setups
@@ -320,7 +320,31 @@ If you type your own TZ (for example Europe/Berlin), the New York hours are used
 
 The A+ sequence is the ICT delivery model: liquidity is taken (sweep), price shifts structure with displacement (MSS), and the FVG or IFVG left by that shift is the entry. Use the A+ tag to pick which IFVGs to trade, and the HTF option to trade only in the direction of the higher timeframe.
 
-## 10. Settings reference
+## 10. Breakers
+
+This feature is on by default. It may be removed in a future version.
+
+### What it is
+
+- **Bullish breaker:** a swing low, a swing high, then a lower swing low. The breaker zone is the last up-close candle making the high (searched from the swing high back towards the first low). With **Zone** set to *Whole sequence*, it also includes the consecutive up-close candles before that one.
+- **Bearish breaker:** a swing high, a swing low, then a higher swing high. The zone is the last down-close candle making the low, or the whole sequence of down-close candles there.
+- Swings are pivots with **Swing length** (3) candles on each side, so a breaker is known 3 candles after its second low / high.
+
+### Entries and the breaker rectangle
+
+- **Long:** price closes above a bullish breaker zone, makes a swing high above it (a pivot of **Swing length** candles, formed after the break), and then pulls back into the zone (a low at or below the zone high).
+- **Short:** price closes below a bearish breaker zone, makes a swing low below it, and then pulls back into the zone (a high at or above the zone low).
+- A small move beyond the zone and straight back is not a pullback: without that swing the breaker keeps waiting.
+- When, on a pullback candle, a live bullish FVG or the confirmed `IFVG+` (long), or a live bearish FVG or the confirmed `IFVG-` (short), overlaps the zone, the breaker is drawn: a dashed rectangle over the zone, with its mid line, from the breaker candle(s) to that pullback candle. It is drawn once and not extended.
+- On that pullback, the label of an overlapping confirmed `IFVG+` (bullish breaker) or `IFVG-` (bearish breaker) turns **bold**, and an overlapping unmitigated FVG of the same direction that has no label (not an IFVG, no `A+`) gets the label `b+` (bullish) or `b-` (bearish).
+- A drawn breaker is removed (rectangle and mid line deleted) only if the pullback itself trades below its low (bullish) or above its high (bearish), before a candle closes out of the zone again in the breaker direction. Otherwise the rectangle stays on the chart for reference.
+- A breaker not drawn yet is dropped when, after the break, a candle closes through the other side of its zone. Only the last **keep** (3) breakers of each direction are followed.
+
+### How to use it
+
+An FVG or IFVG inside a breaker rectangle sits on a breaker that price has just come back to, after breaking it. Use the tag to prefer IFVG entries backed by a breaker in the direction of the trade.
+
+## 11. Settings reference
 
 Inputs on one line in the settings dialog are listed together; a field without its own label is shown as "(2nd field)" and so on. Sizes are in price points.
 
@@ -418,6 +442,15 @@ Inputs on one line in the settings dialog are listed together; a field without i
 | Band: draw / start / width | On / 5 / 8 | Draw the OTE bands, starting this many candles right of the last candle, this many candles wide. |
 | Colors: band / border / text | Yellow 85% / Yellow / Black | Matching band fill, OTE IFVG border and band border, band text. |
 
+### Breakers
+
+| Label | Default | What it does |
+| --- | --- | --- |
+| Breakers at FVG / IFVG pullbacks | on | Finds breakers and draws those that an FVG / IFVG overlaps on the pullback (section 10) |
+| Zone | Last candle | *Last candle*: the last up-close (bullish) / down-close (bearish) candle making the high / low. *Whole sequence*: that candle and the consecutive ones of the same color before it |
+| Swing length / keep | 3 / 3 | Pivot length (left and right) of the swings, and breakers followed per direction |
+| Rectangle, (color), (style), width | on / fuchsia / dashed / 1 | Draw the breaker rectangle and its mid line, with this color, line style and width. Off: nothing is drawn, but the bold IFVG labels and the b+ / b- labels are still set |
+
 ### Delivery Engine (Nuno)
 
 | Label | Default | What it does |
@@ -434,7 +467,7 @@ Inputs on one line in the settings dialog are listed together; a field without i
 | A+ only inside killzones | On | Sweep-to-IFVG / MSS inside Asia, London, NY AM or NY PM. Ignored above 15m. |
 | A+ only with the HTF structure | Off, `60` | Only A+ when the structure of that timeframe agrees. Ignored when not higher than the chart. |
 
-## 11. Alerts
+## 12. Alerts
 
 All alerts use Pine's `alert()` function. In TradingView, create an alert on this indicator with the condition **"Any alert() function call"**. Each message fires at most once per bar.
 
@@ -453,7 +486,7 @@ All alerts use Pine's `alert()` function. In TradingView, create an alert on thi
 
 A prior-leg OTE rejection fires on the confirming candle, so `LONG IFVG` and `LONG IFVG+OTE` can arrive together.
 
-## 12. Limits, performance and repainting
+## 13. Limits, performance and repainting
 
 ### Object limits
 
@@ -479,7 +512,7 @@ A prior-leg OTE rejection fires on the confirming candle, so `LONG IFVG` and `LO
 
 The script makes three `request.security` calls (two OTE ladder timeframes and the HTF structure). Mapping a higher-timeframe swing to the chart and measuring the prior leg can scan thousands of candles, which may slow loading on long histories with many FVGs. If the indicator is slow, turn off **Historic compute**, reduce **keep**, or switch off the higher-timeframe trackers.
 
-## 13. Troubleshooting and FAQ
+## 14. Troubleshooting and FAQ
 
 **I see no 1PFVG.** The chart must be a minute chart of 3m or lower, and an FVG must form within the session hour (09:30 - 09:59 New York, 09:00 - 09:59 Madrid for DAX). Check **TZ**: with `Auto`, non-DAX symbols use New York. If your DAX symbol is not detected (ticker or description without `DAX`, `FDX` or `Germany`), set TZ to `Europe/Madrid` and Time to `0900`.
 
@@ -507,7 +540,7 @@ The script makes three `request.security` calls (two OTE ladder timeframes and t
 
 **A+ never appears.** **A+ setups** must be on; with **A+ only inside killzones** the event must be inside a killzone in the 1PFVG TZ; with **A+ only with the HTF structure** the HTF must agree. The sweep must be at most **within** (50) candles before.
 
-## 14. Glossary
+## 15. Glossary
 
 | Term | Meaning |
 | --- | --- |
