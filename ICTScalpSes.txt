@@ -25,6 +25,10 @@
 //    wick through the level with the whole body on the trade side of it
 //  - Agreement of the rightmost columns of the bias table (chart timeframe first)
 //  - Wait until the delivery of the chart timeframe matches the direction of the trade
+//  - Breakers (the breakers of FVGs+IFVG+OTE): the IFVG must overlap a breaker of the trade direction,
+//    and / or the entry is on a chart FVG of the trade direction right above (long) / below (short) an
+//    IFVG with a breaker, or on any FVG with a breaker; the entry candle closes at or beyond the CE of
+//    the FVG / IFVG used
 //  - Took liquidity: a short-term high (short) or low (long) was taken shortly before the entry
 //    (short-term pivots and sweep rule of the FVG filter of FVGs+IFVG+OTE)
 //  - Time: only inside a time interval, and / or only inside the ICT killzones (the Asia, London,
@@ -85,6 +89,33 @@ bool liqOn = input.bool(true, "Took liquidity", group = G_E, inline = "liq",
 int liqLook = input.int(20, "within", minval = 1, maxval = 500, group = G_E, inline = "liq")
 flL = input.int(3, "pivots L, R", minval = 1, group = G_E, inline = "liq")
 flR = input.int(3, "", minval = 1, group = G_E, inline = "liq")
+
+const string G_BRK = "Breakers"
+bool brkUse = input.bool(false, "Breakers", group = G_BRK,
+     tooltip = "Bullish breaker: a low, a high and a lower low; the zone is the last up-close candle making the "+
+         "high (or the whole up-close sequence there). Bearish breaker: a high, a low and a higher high (down-close "+
+         "candle(s) making the low). A breaker counts once price has closed beyond the zone (above for bullish, "+
+         "below for bearish) and then made a swing high / low beyond it; a close through the other side of the "+
+         "zone removes it. The rules of FVGs+IFVG+OTE. With breakers on, every entry candle has to close at or "+
+         "beyond the CE of the FVG / IFVG used (at or above for longs, at or below for shorts).")
+bool brkReq = input.bool(true, "IFVG entries need a breaker", group = G_BRK,
+     tooltip = "The IFVG of an IFVG entry overlaps a breaker of the trade direction (IFVG+ / bullish breaker, "+
+         "IFVG- / bearish breaker). Off: IFVG entries as without breakers (plus the CE close), and the "+
+         "breaker FVG entries below are added.")
+bool brkAdj = input.bool(true, "FVG next to an IFVG with a breaker", group = G_BRK,
+     tooltip = "Long: a bullish FVG formed after the confirmed IFVG+, right above it (bottom inside the IFVG+ "+
+         "or at most one IFVG height above its top), when the IFVG+ overlaps a bullish breaker. Entry on a "+
+         "candle that comes back into the FVG and closes at or above its CE. Short: the mirror (bearish FVG "+
+         "right below an IFVG- with a bearish breaker). One entry per FVG; a close beyond its far side removes it.")
+bool brkFvg = input.bool(false, "FVGs with a breaker", group = G_BRK,
+     tooltip = "Also any bullish FVG that overlaps a bullish breaker (long), or bearish FVG that overlaps a "+
+         "bearish breaker (short), with the same entry rule.")
+string brkMode = input.string("Last candle", "Zone", options = ["Last candle", "Whole sequence"], group = G_BRK,
+     tooltip = "Last candle: the last up-close candle making the high (bullish) / down-close candle making the "+
+         "low (bearish). Whole sequence: that candle and the consecutive up-close / down-close candles before it.")
+int brkLen = input.int(3, "Swing length / keep", minval = 1, maxval = 20, group = G_BRK, inline = "bl",
+     tooltip = "Pivot length (left and right) of the lows and highs, and breakers kept per direction.")
+int brkKeep = input.int(3, "", minval = 1, maxval = 10, group = G_BRK, inline = "bl")
 
 const string G_SES = "Session / day high or low taken"
 bool sesOn = input.bool(true, "Sessions, keep last", group = G_SES, inline = "ses",
@@ -296,6 +327,7 @@ type FVG
     int sbar
     float c2hi  // high of candle 2 (middle candle of the FVG)
     float c2lo  // low of candle 2
+    bool used = false   // breaker FVG entry taken
 
 FVG lastlongfvg = na
 FVG lastshortfvg = na
@@ -1190,9 +1222,162 @@ biasAgree(int dir) =>
                 cnt += 1
     cnt >= biasMin
 
+// ============================================================ breakers (FVGs+IFVG+OTE, state only)
+type Breaker
+    int dir         // 1 bullish (long), -1 bearish (short)
+    float hi        // zone
+    float lo
+    bool broken = false
+    int bkBar = na  // bar of the close beyond the zone
+    bool swung = false  // a swing beyond the zone formed after the break: entries allowed
+
+var array<Breaker> brks = array.new<Breaker>()
+float bPH = ta.pivothigh(high, brkLen, brkLen)
+float bPL = ta.pivotlow(low, brkLen, brkLen)
+var float bLastH = na   // last two pivot highs / lows (price, bar)
+var int bLastHb = na
+var float bPrevH = na
+var int bPrevHb = na
+var float bLastL = na
+var int bLastLb = na
+var float bPrevL = na
+var int bPrevLb = na
+
+// zone from candle k bars back: the up-close (dir 1) / down-close (dir -1) candle there or the nearest one
+// before it (not before bar 'from'), plus the consecutive ones before it in "Whole sequence" mode
+brkZone(int dir, int k0, int from) =>
+    float zh = na
+    float zl = na
+    bool found = false
+    int kmax = math.min(bar_index - from, 300)
+    int k = k0
+    while k <= kmax and not found
+        if (close[k] - open[k]) * dir > 0
+            zh := high[k]
+            zl := low[k]
+            found := true
+        k += 1
+    if found and brkMode == "Whole sequence"
+        while k <= kmax and (close[k] - open[k]) * dir > 0
+            zh := math.max(zh, high[k])
+            zl := math.min(zl, low[k])
+            k += 1
+    [zh, zl, found]
+
+brkAdd(int dir, float zh, float zl) =>
+    brks.push(Breaker.new(dir, zh, zl))
+    int cnt = 0
+    for b in brks
+        if b.dir == dir
+            cnt += 1
+    if cnt > brkKeep
+        for i = 0 to brks.size() - 1
+            if brks.get(i).dir == dir
+                brks.remove(i)
+                break
+    true
+
+if brkUse and barstate.isconfirmed
+    if not na(bPL)
+        bPrevL := bLastL
+        bPrevLb := bLastLb
+        bLastL := bPL
+        bLastLb := bar_index - brkLen
+        // bullish: low, high, lower low (the high between the two lows)
+        if not na(bPrevL) and bLastL < bPrevL and not na(bLastHb) and bLastHb > bPrevLb and bLastHb < bLastLb
+            [zh, zl, ok] = brkZone(1, bar_index - bLastHb, bPrevLb)
+            if ok
+                brkAdd(1, zh, zl)
+    if not na(bPH)
+        bPrevH := bLastH
+        bPrevHb := bLastHb
+        bLastH := bPH
+        bLastHb := bar_index - brkLen
+        // bearish: high, low, higher high (the low between the two highs)
+        if not na(bPrevH) and bLastH > bPrevH and not na(bLastLb) and bLastLb > bPrevHb and bLastLb < bLastHb
+            [zh, zl, ok] = brkZone(-1, bar_index - bLastLb, bPrevHb)
+            if ok
+                brkAdd(-1, zh, zl)
+    if brks.size() > 0
+        for i = brks.size() - 1 to 0
+            Breaker b = brks.get(i)
+            if not b.broken
+                if (b.dir == 1 and close > b.hi) or (b.dir == -1 and close < b.lo)
+                    b.broken := true
+                    b.bkBar := bar_index
+            else if (b.dir == 1 and close < b.lo) or (b.dir == -1 and close > b.hi)
+                brks.remove(i)  // closed through the other side: invalidated
+            else if not b.swung
+                // after the break: a swing high above the zone (bullish) / low below it (bearish)
+                if b.dir == 1 and not na(bPH) and bar_index - brkLen >= b.bkBar and bPH > b.hi
+                    b.swung := true
+                else if b.dir == -1 and not na(bPL) and bar_index - brkLen >= b.bkBar and bPL < b.lo
+                    b.swung := true
+
+// a breaker of direction dir (broken, swing made after the break) overlaps f
+brkHas(int dir, FVG f) =>
+    bool r = false
+    if not na(f)
+        for b in brks
+            if b.dir == dir and b.swung and f.hi >= b.lo and f.lo <= b.hi
+                r := true
+    r
+
+// chart FVGs for the breaker FVG entries: bullish (long) / bearish (short), not used nor closed through yet
+var array<FVG> bkL = array.new<FVG>()
+var array<FVG> bkS = array.new<FVG>()
+
+// FVG of direction dir for a breaker entry on this candle: it comes back into the FVG and closes at or
+// beyond its CE; the FVG is right above (long) / below (short) the confirmed IFVG of that direction with a
+// breaker, or (FVGs with a breaker) overlaps a breaker itself
+brkFind(int dir) =>
+    FVG m = na
+    array<FVG> fs = dir == 1 ? bkL : bkS
+    FVG iv = dir == 1 ? bullifvg : bearifvg
+    bool ivOk = brkAdj and not na(iv) and not na(dir == 1 ? bullconfirm : bearconfirm) and brkHas(dir, iv)
+    if fs.size() > 0
+        for i = fs.size() - 1 to 0
+            FVG f = fs.get(i)
+            if na(m) and not f.used and (dir == 1 ? low <= f.hi and close >= f.ce : high >= f.lo and close <= f.ce)
+                float ih = ivOk ? iv.hi - iv.lo : na
+                bool adj = ivOk and f.sbar > iv.sbar and (dir == 1
+                     ? f.hi > iv.hi and f.lo >= iv.lo and f.lo - iv.hi <= ih
+                     : f.lo < iv.lo and f.hi <= iv.hi and iv.lo - f.hi <= ih)
+                if adj or (brkFvg and brkHas(dir, f))
+                    m := f
+    m
+
+FVG brkFL = na
+FVG brkFS = na
+if brkUse and barstate.isconfirmed
+    if bkL.size() > 0
+        for i = bkL.size() - 1 to 0
+            if close < bkL.get(i).lo or bkL.get(i).used
+                bkL.remove(i)
+    if bkS.size() > 0
+        for i = bkS.size() - 1 to 0
+            if close > bkS.get(i).hi or bkS.get(i).used
+                bkS.remove(i)
+    if not na(lastlongfvg)
+        bkL.push(lastlongfvg)
+        if bkL.size() > 30
+            bkL.shift()
+    if not na(lastshortfvg)
+        bkS.push(lastshortfvg)
+        if bkS.size() > 30
+            bkS.shift()
+    if brkAdj or brkFvg
+        brkFL := brkFind(1)
+        brkFS := brkFind(-1)
+
 // ============================================================ entries
-bool trigShort = retMode ? bearRet and not bearUsed : bearLeave
-bool trigLong = retMode ? bullRet and not bullUsed : bullLeave
+// IFVG entry (OTE filter; with breakers: CE close and, if required, a breaker), or breaker FVG entry
+bool ifvgShort = (retMode ? bearRet and not bearUsed : bearLeave) and (not oteOnly or gBear.flagged)
+     and (not brkUse or (close <= bearifvg.ce and (not brkReq or brkHas(-1, bearifvg))))
+bool ifvgLong = (retMode ? bullRet and not bullUsed : bullLeave) and (not oteOnly or gBull.flagged)
+     and (not brkUse or (close >= bullifvg.ce and (not brkReq or brkHas(1, bullifvg))))
+bool trigShort = ifvgShort or not na(brkFS)
+bool trigLong = ifvgLong or not na(brkFL)
 
 // liquidity sweeps (FVG filter of FVGs+IFVG+OTE): a bar breaking the last confirmed short-term
 // high / low, tested against the levels known BEFORE this bar
@@ -1370,17 +1555,21 @@ plotshape(showSes and tookL, "Session / day low taken", shape.diamond, location.
      size = size.tiny)
 
 bool condShort = barstate.isconfirmed and trigShort
-     and (not oteOnly or gBear.flagged)
      and (not useHtf or (not na(lastRejBear) and bar_index - lastRejBear < htfLook))
      and (not useBias or biasAgree(-1))
      and (not liqOn or (not na(lastSweepH) and bar_index - lastSweepH < liqLook))
      and not na(lastSesH) and bar_index - lastSesH < sesLook
 bool condLong = barstate.isconfirmed and trigLong
-     and (not oteOnly or gBull.flagged)
      and (not useHtf or (not na(lastRejBull) and bar_index - lastRejBull < htfLook))
      and (not useBias or biasAgree(1))
      and (not liqOn or (not na(lastSweepL) and bar_index - lastSweepL < liqLook))
      and not na(lastSesL) and bar_index - lastSesL < sesLook
+
+// FVG of the entry: the IFVG, or the breaker FVG when only that one gives the entry
+bool brkEntS = condShort and not ifvgShort
+bool brkEntL = condLong and not ifvgLong
+FVG entS = brkEntS ? brkFS : bearifvg
+FVG entL = brkEntL ? brkFL : bullifvg
 
 // delivery of the chart timeframe: 1 bullish, -1 bearish, 0 undefined
 int dlvCur = nz(dCur, 1) % 3 - 1
@@ -1392,7 +1581,7 @@ bool goLong = false
 if condShort
     if not waitDlv or dlvCur == -1
         goShort := true
-    else
+    else if not brkEntS
         waitShort := bearconfirm
 else if barstate.isconfirmed and not na(waitShort)
     if na(bearconfirm) or bearconfirm != waitShort
@@ -1402,7 +1591,7 @@ else if barstate.isconfirmed and not na(waitShort)
 if condLong
     if not waitDlv or dlvCur == 1
         goLong := true
-    else
+    else if not brkEntL
         waitLong := bullconfirm
 else if barstate.isconfirmed and not na(waitLong)
     if na(bullconfirm) or bullconfirm != waitLong
@@ -1426,10 +1615,14 @@ if goShort
 if goLong
     waitLong := na
 
-if goShort and retMode
+if goShort and retMode and not brkEntS
     bearUsed := true
-if goLong and retMode
+if goLong and retMode and not brkEntL
     bullUsed := true
+if goShort and brkEntS
+    entS.used := true
+if goLong and brkEntL
+    entL.used := true
 
 // ============================================================ trades
 type Trade
@@ -1600,9 +1793,9 @@ newTrade(int dir, FVG f) =>
     true
 
 if showTrades and goShort
-    newTrade(-1, bearifvg)
+    newTrade(-1, entS)
 if showTrades and goLong
-    newTrade(1, bullifvg)
+    newTrade(1, entL)
 
 // results table of the simulated trades
 var table stats = table.new(statsPos == "Top right" ? position.top_right : statsPos == "Bottom right" ?

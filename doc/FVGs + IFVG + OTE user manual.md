@@ -13,7 +13,7 @@ The indicator works on the chart timeframe. It finds fair value gaps (FVGs) on y
 | Inverse 1PFVG | Optional: the first FVG of the opposite bias after the 1PFVG | Dark magenta box extended to the right |
 | Wick C.E. | Midpoint of a large upper or lower candle wick | Short black horizontal segment |
 | IFVG candidate | The latest bullish and bearish FVG, under watch for inversion | The FVG's own box restyled in IFVG colors, thicker border, no label |
-| IFVG | An FVG that a candle closed through | The same box with a label: `IFVG+` (bullish) or `IFVG-` (bearish) |
+| IFVG | An FVG that a candle closed through | The same box with a label: `IFVG+` (bullish) or `IFVG-` (bearish); bold at a breaker, bold with an arrow at a mitigation block |
 | OTE IFVG | An IFVG that matches the 0.62 - 0.79 retracement of a leg | Label `IFVG+ OTE 5m+15m` (timeframes that matched), yellow border |
 | OTE bands | The OTE zone of each tracked leg | Dashed boxes to the right of the last candle, one per timeframe |
 | A+ tag | Delivery Engine setup: IFVG or FVG right after a liquidity sweep / MSS | `A+` in the label or on the FVG box |
@@ -26,7 +26,7 @@ The indicator raises alerts for IFVG signals, OTE IFVG signals and, optionally, 
 1. Add "FVGs+IFVG+OTE5" to the chart.
 2. Use an intraday execution chart. For the full feature set on NQ or DAX use **1m or 3m** (1PFVGs are only tracked up to 3m) or **5m** (higher timeframe OTE on 15m and 1h).
 3. Start with the defaults: all FVGs drawn, 1PFVGs, wick C.E. and IFVGs on, close-mode IFVGs, OTE detection on the chart and the next two higher timeframes, IFVG alerts on, all Delivery Engine features off.
-4. Create one TradingView alert with the condition **"Any alert() function call"** on this indicator (see section 12). That alert delivers the IFVG and OTE IFVG messages.
+4. Create one TradingView alert with the condition **"Any alert() function call"** on this indicator (see section 13). That alert delivers the IFVG and OTE IFVG messages.
 5. If the chart is too busy, change **Draw** to `IFVGs` (only IFVG boxes and OTE bands) or `1PFVGs+IFVGs`, or set **FVG filter** to `sweeps`.
 
 ### Recommended setups
@@ -338,13 +338,38 @@ This feature is on by default. It may be removed in a future version.
 - When, on a pullback candle, a live bullish FVG or the confirmed `IFVG+` (long), or a live bearish FVG or the confirmed `IFVG-` (short), overlaps the zone, the breaker is drawn: a dashed rectangle over the zone, with its mid line, from the breaker candle(s) to that pullback candle. It is drawn once and not extended.
 - On that pullback, the label of an overlapping confirmed `IFVG+` (bullish breaker) or `IFVG-` (bearish breaker) turns **bold**, and an overlapping unmitigated FVG of the same direction that has no label (not an IFVG, no `A+`) gets the label `b+` (bullish) or `b-` (bearish).
 - A drawn breaker is removed (rectangle and mid line deleted) only if the pullback itself trades below its low (bullish) or above its high (bearish), before a candle closes out of the zone again in the breaker direction. Otherwise the rectangle stays on the chart for reference.
+- An IFVG confirmed later in the same place as an FVG of its direction that a breaker already tagged (the FVG overlaps the IFVG and is still live, or was mitigated after the IFVG's FVG started) gets the breaker too: its label turns bold.
 - A breaker not drawn yet is dropped when, after the break, a candle closes through the other side of its zone. Only the last **keep** (3) breakers of each direction are followed.
 
 ### How to use it
 
 An FVG or IFVG inside a breaker rectangle sits on a breaker that price has just come back to, after breaking it. Use the tag to prefer IFVG entries backed by a breaker in the direction of the trade.
 
-## 11. Settings reference
+## 11. Mitigation blocks
+
+Mitigation blocks work like breakers (section 10), with the opposite third swing: the structure failed instead of sweeping. They have their own **Mitigation blocks** group, on by default, and an orange rectangle.
+
+### What it is
+
+- **Bullish mitigation block:** a swing low, a swing high, then a **higher** swing low. The zone is at the high: the last up-close candle making it, or with **Zone** *Whole sequence* also the consecutive up-close candles before it.
+- **Bearish mitigation block:** a swing high, a swing low, then a **lower** swing high. The zone is at the low: the last down-close candle making it, or the whole down-close sequence there.
+- Swings are pivots with **Swing length** (3) candles on each side.
+
+### Entries and labels
+
+- **Long:** price closes above a bullish block's zone, makes a swing high above it, then pulls back into the zone. We expect it to continue up.
+- **Short:** price closes below a bearish block's zone, makes a swing low below it, then pulls back into the zone. We expect it to continue down.
+- On that pullback, a live FVG or the confirmed IFVG of the trade direction that overlaps the zone gets tagged:
+  - the label of an overlapping confirmed `IFVG+` turns **bold** and gets an up arrow (`IFVG+ ↑`); an `IFVG-` gets a down arrow (`IFVG- ↓`);
+  - an overlapping unmitigated FVG of the same direction with no label gets `M+` (bullish) or `M-` (bearish). If a breaker tagged the same FVG too (it had `b+` / `b-`, or gets it later), the label is `Mb+` / `Mb-`.
+- An IFVG confirmed later in the same place as an FVG of its direction that a mitigation block already tagged (`M+` / `M-` / `Mb+` / `Mb-`; the FVG overlaps the IFVG and is still live, or was mitigated after the IFVG's FVG started) gets the mitigation block too: bold label with the arrow.
+- The block is drawn once as a dashed rectangle with its mid line, from its candle(s) to that pullback. The rectangle is removed only if the pullback itself trades beyond the far side of the zone, otherwise it stays for reference. A block not drawn yet is dropped when a candle closes through the other side of its zone. Only the last **keep** (3) of each direction are followed.
+
+### How to use it
+
+An IFVG with an arrow sits on a mitigation block that price has broken and come back to. Prefer IFVG entries in the direction of the arrow.
+
+## 12. Settings reference
 
 Inputs on one line in the settings dialog are listed together; a field without its own label is shown as "(2nd field)" and so on. Sizes are in price points.
 
@@ -449,7 +474,20 @@ Inputs on one line in the settings dialog are listed together; a field without i
 | Breakers at FVG / IFVG pullbacks | on | Finds breakers and draws those that an FVG / IFVG overlaps on the pullback (section 10) |
 | Zone | Last candle | *Last candle*: the last up-close (bullish) / down-close (bearish) candle making the high / low. *Whole sequence*: that candle and the consecutive ones of the same color before it |
 | Swing length / keep | 3 / 3 | Pivot length (left and right) of the swings, and breakers followed per direction |
-| Rectangle, (color), (style), width | on / fuchsia / dashed / 1 | Draw the breaker rectangle and its mid line, with this color, line style and width. Off: nothing is drawn, but the bold IFVG labels and the b+ / b- labels are still set |
+| Rectangle, (color), (style), width | off / fuchsia / dashed / 1 | Draw the breaker rectangle and its mid line, with this color, line style and width. Off: nothing is drawn, but the bold IFVG labels and the b+ / b- labels are still set |
+| Flag candles | off | Color the breaker candle(s) with the rectangle color when it is tagged at the pullback, with or without the rectangle; removed together with the rectangle |
+| Shadow rectangle (same line as Flag candles) | off | Draw the breaker as a grey transparent rectangle without border instead of the dashed one, also when Rectangle is off; the mid line stays |
+
+### Mitigation blocks
+
+| Label | Default | What it does |
+| --- | --- | --- |
+| Mitigation blocks at FVG / IFVG pullbacks | on | Finds mitigation blocks and draws those that an FVG / IFVG overlaps on the pullback (section 11) |
+| Zone | Last candle | *Last candle*: the last up-close (bullish) / down-close (bearish) candle making the high / low. *Whole sequence*: that candle and the consecutive ones of the same color before it |
+| Swing length / keep | 3 / 3 | Pivot length (left and right) of the swings, and blocks followed per direction |
+| Rectangle, (color), (style), width | off / orange / dashed / 1 | Draw the rectangle and its mid line. Off: nothing is drawn, but the bold IFVG labels with arrows and the M+ / M- labels are still set |
+| Flag candles | off | Color the mitigation block candle(s) with the rectangle color when it is tagged at the pullback, with or without the rectangle; removed together with the rectangle |
+| Shadow rectangle (same line as Flag candles) | off | Draw the mitigation block as a grey transparent rectangle without border instead of the dashed one, also when Rectangle is off; the mid line stays |
 
 ### Delivery Engine (Nuno)
 
@@ -467,7 +505,7 @@ Inputs on one line in the settings dialog are listed together; a field without i
 | A+ only inside killzones | On | Sweep-to-IFVG / MSS inside Asia, London, NY AM or NY PM. Ignored above 15m. |
 | A+ only with the HTF structure | Off, `60` | Only A+ when the structure of that timeframe agrees. Ignored when not higher than the chart. |
 
-## 12. Alerts
+## 13. Alerts
 
 All alerts use Pine's `alert()` function. In TradingView, create an alert on this indicator with the condition **"Any alert() function call"**. Each message fires at most once per bar.
 
@@ -486,7 +524,7 @@ All alerts use Pine's `alert()` function. In TradingView, create an alert on thi
 
 A prior-leg OTE rejection fires on the confirming candle, so `LONG IFVG` and `LONG IFVG+OTE` can arrive together.
 
-## 13. Limits, performance and repainting
+## 14. Limits, performance and repainting
 
 ### Object limits
 
@@ -512,7 +550,7 @@ A prior-leg OTE rejection fires on the confirming candle, so `LONG IFVG` and `LO
 
 The script makes three `request.security` calls (two OTE ladder timeframes and the HTF structure). Mapping a higher-timeframe swing to the chart and measuring the prior leg can scan thousands of candles, which may slow loading on long histories with many FVGs. If the indicator is slow, turn off **Historic compute**, reduce **keep**, or switch off the higher-timeframe trackers.
 
-## 14. Troubleshooting and FAQ
+## 15. Troubleshooting and FAQ
 
 **I see no 1PFVG.** The chart must be a minute chart of 3m or lower, and an FVG must form within the session hour (09:30 - 09:59 New York, 09:00 - 09:59 Madrid for DAX). Check **TZ**: with `Auto`, non-DAX symbols use New York. If your DAX symbol is not detected (ticker or description without `DAX`, `FDX` or `Germany`), set TZ to `Europe/Madrid` and Time to `0900`.
 
@@ -540,7 +578,7 @@ The script makes three `request.security` calls (two OTE ladder timeframes and t
 
 **A+ never appears.** **A+ setups** must be on; with **A+ only inside killzones** the event must be inside a killzone in the 1PFVG TZ; with **A+ only with the HTF structure** the HTF must agree. The sweep must be at most **within** (50) candles before.
 
-## 15. Glossary
+## 16. Glossary
 
 | Term | Meaning |
 | --- | --- |
