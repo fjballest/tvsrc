@@ -100,7 +100,7 @@ IFVG labels are written inside the box, black, small, right-aligned and vertical
 
 The parts can be switched off with **Label parts: OTE TF**, **+ / -** and **A+**. With all three off an OTE IFVG reads `IFVG OTE`. **Labels** off hides all IFVG text (it is drawn fully transparent).
 
-OTE bands carry their own small text: the timeframe tag (for example `5m`) for the retrace band, and the timeframe tag plus `OTE` (for example `15m OTE`) for a prior-leg rejection band.
+OTE bands carry their own small text: the timeframe tag (for example `5m`) for the retrace band, and the timeframe tag plus `OTE` (for example `15m OTE`) for a prior-leg rejection band, followed by `↑` for a bullish IFVG (long) or `↓` for a bearish one (short), for example `5m ↑` or `15m OTE ↓`.
 
 Optional labels: `SWING HIGH` / `SWING LOW` (blue, swing mode with **Swing labels** on), and the `LONG` / `SHORT` and `OTE` markers (with **Show signals** and **Signals**).
 

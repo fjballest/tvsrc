@@ -1329,7 +1329,7 @@ method oteConfirm(OteTrack t) =>
                         border_color = oteHighlight,
                         border_style = line.style_dashed,
                         border_width = 1,
-                        text = t.tag + " OTE",
+                        text = t.tag + " OTE" + (t.dir == 1 ? " ↑" : " ↓"),
                         text_size = size.small,
                         text_color = oteTextCol,
                         text_halign = text.align_center)
@@ -1405,7 +1405,7 @@ method oteStep(OteTrack t) =>
                             border_color = bd,
                             border_style = line.style_dashed,
                             border_width = 1,
-                            text = t.tag,
+                            text = t.tag + (t.dir == 1 ? " ↑" : " ↓"),
                             text_size = size.tiny,
                             text_color = oteTextCol,
                             text_halign = text.align_left)
@@ -1416,6 +1416,7 @@ method oteStep(OteTrack t) =>
                         t.band.set_right(bar_index + oteOffset + oteWidth)
                         t.band.set_bgcolor(bg)
                         t.band.set_border_color(bd)
+                        t.band.set_text(t.tag + (t.dir == 1 ? " ↑" : " ↓"))
                 // price retraces back into the IFVG while it matches the OTE band
                 bool tap = t.dir == -1 ? high >= t.zlo : low <= t.zhi
                 if m and tap and not t.fired and time != t.ctime and barstate.isconfirmed
