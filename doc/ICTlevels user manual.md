@@ -164,7 +164,7 @@ Needs a chart timeframe of 5 minutes or lower.
 - **Pre-mkt hi / Pre-mkt lo** lines and labels, in the session max/min style, from the extreme to the bar that takes it, stopping at the market close (16:15 New York, 17:30 Madrid).
 - For the most recent range (or the last N ranges, setting "quadrants/stddevs for the last"):
   - **Quadrants**: lines at 25%, 50% and 75% of the range, labelled "PMKT dq", "PMKT ce" and "PMKT uq" with the date (for example "PMKT ce 20 Oct"). Drawn only when a quarter of the range is larger than the minimum size (default 20 points, so the range must be over 80 points).
-  - **Standard deviations**: lines above the high and below the low, labelled "PMKT +1dev", "PMKT -1dev", "PMKT +2dev" and so on, 4 per side by default. The step is the range divided by 8, 4, 2 or 1: the first of these that is larger than the minimum size (default 20 points). If even the whole range is not larger than the minimum, no deviations are drawn.
+  - **Standard deviations**: lines above the high and below the low, labelled "PMKT +1dev", "PMKT -1dev", "PMKT +2dev" and so on, 4 per side by default. The step is the range divided by 8, 4, 2 or 1: the first of these that is larger than the minimum size (default 20 points). If even the whole range is not larger than the minimum, no deviations are drawn. With **auto** on, the latest range gets more deviations while the day runs: from the end of the range until the market close, every deviation that price reaches is drawn, plus the next one on that side (at least the configured number, at most 40 per side).
   - **PMKT hi / PMKT lo**: whenever any quadrant or deviation line is drawn, the range high and low are also drawn as solid lines in the premarket color (red by default), labelled for example "PMKT hi 20 Oct".
   - These lines start a couple of bars before the end of the range (4 bars on 1m or lower, 2 bars otherwise) and extend to the right margin, but never past the market close of that day.
 
@@ -208,7 +208,7 @@ The regular trading hours opening gap is the range between the settlement of the
   - The open line is labelled "RTHOG hi" (gap up) or "RTHOG lo" (gap down) with the date; the settlement line is relabelled with the other one.
   - **CE**: the midpoint of the gap, "RTHOG ce 20 Oct".
   - **Quadrants**: 25% and 75% of the gap, "RTHOG dq" and "RTHOG uq", only when a quarter of the gap is larger than the minimum size (default 25 points, so the gap must be over 100 points).
-  - **Standard deviations**: "RTHOG +1dev", "RTHOG -1dev" and so on above the higher edge and below the lower edge, 4 per side by default, dotted. The step is the gap divided by 8, 4, 2 or 1, the first that is larger than the minimum size (default 25 points).
+  - **Standard deviations**: "RTHOG +1dev", "RTHOG -1dev" and so on above the higher edge and below the lower edge, 4 per side by default, dotted. The step is the gap divided by 8, 4, 2 or 1, the first that is larger than the minimum size (default 25 points). With **auto** on, from the open until the market close, every deviation that price reaches is drawn, plus the next one on that side (at least the configured number, at most 40 per side).
   - Optional rectangle between settlement and open.
 - **After the next close**: the gap becomes the previous one. It is redrawn in the "old" color (cyan #17E1DA) and loses its quadrants and deviations, keeping settlement, CE and open.
 - **Older gaps** are reduced to short ticks around the settlement and the open, labelled "rthog.cl", "rthog.ce" and "rthog.op" in black text. With "extend old RTHOG lines" the ticks at the open are extended to the right.
@@ -395,6 +395,7 @@ Settings are listed in the order they appear in the settings dialog. Several set
 | RTHOG stddevs | on | Draws standard deviation projections of the current RTHOG. |
 | min size | 25.0 | Minimum step in points; the step is the first of gap/8, gap/4, gap/2 or the whole gap that is larger than this, otherwise none are drawn. |
 | number of stddevs to draw above/below | 4 | Deviation lines per side. Keep it at 1 or more; to hide them, turn off "RTHOG stddevs". |
+| auto | off | Latest RTHOG, from the open until the market close: also every deviation reached by price plus the next one to be hit on each side (at most 40 per side). |
 | Draw gap rectangles | off | Draws shaded boxes for NDOG, NWOG and RTHOG gaps. |
 | transp | 90 | Transparency of the gap boxes. |
 | Combine gaps at similar levels | on | Draws nearby NDOGs (NWOGs) once with their outer levels ("NDOGx3"), and merges NDOGs into a NWOG at the same levels ("NWOG+NDOG"). |
@@ -426,6 +427,7 @@ Settings are listed in the order they appear in the settings dialog. Several set
 | PMKT stddevs | on | Draws standard deviation projections above and below the range. |
 | min size | 20.0 | Minimum step in points; the step is the first of range/8, range/4, range/2 or the whole range that is larger than this, otherwise none are drawn. |
 | number of stddevs to draw above/below | 4 (min 1) | Deviation lines per side. |
+| auto | off | Latest premarket range, from its end until the market close: also every deviation reached by price plus the next one to be hit on each side (at most 40 per side). |
 | line | red | Color of all PMKT lines and labels (hi, lo, quadrants, CE, deviations). |
 | (no label, width) | 2 | Width of the PMKT lines. |
 | quadrant | solid | Style of the 25% and 75% lines. |

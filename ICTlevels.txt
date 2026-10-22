@@ -16,6 +16,8 @@
 //  - EQH / EQL levels (equal pivot highs/lows within an ATR tolerance, removed when swept), also a
 //    pivot that matches an earlier unswept 3-candle swing (equal, or the swing a few points beyond it)
 //  - Premarket high / low drawn as red lines whenever its quadrants or stddevs are drawn
+//  - Automatic stddevs (optional): the latest RTHOG and premarket range get more stddev lines while the
+//    day runs (until the market close), so that every stddev price reached is drawn plus the next one
 //  - TGIF: 20% / 30% retracement levels of a weekly displacement candle without its final wick, on
 //    Friday, or on Monday when price did not get there on Friday; shown only while they apply
 //  - Performance: only active zones are updated per bar, ended zones are only monitored for sweeps,
@@ -175,7 +177,11 @@ bool dorthogpo3 = input.bool(true, "RTHOG stddevs", group = GRP_DOG, inline = "r
 float rthogpo3min = input.float(25.0, "min size", group = GRP_DOG, inline = "rp",
      tooltip = "min size of the steps to draw them (selects octants, "
      + "quadrants, half gap, whole gap or none)")
-int rthogpo3num = input.int(4, "number of stddevs to draw above/below", group = GRP_DOG)
+int rthogpo3num = input.int(4, "number of stddevs to draw above/below", group = GRP_DOG, inline = "rn")
+bool rthogauto = input.bool(false, "auto", group = GRP_DOG, inline = "rn",
+     tooltip = "Latest RTHOG only, from the open until the market close: more stddevs are drawn when price "
+     + "goes beyond them, so there are always at least the number above and also the next stddev to be hit "
+     + "on each side (at most 40 per side).")
 bool dogrect = input.bool(false, "Draw gap rectangles", inline = "gtransp", group = GRP_DOG)
 int grtransp = input.int(90, "transp", inline = "gtransp", group = GRP_DOG,
      tooltip = "transparency for the gap rectangles when drawn")
@@ -232,7 +238,11 @@ float pmpo3min = input.float(20.0, "min size", group = G_PM, inline = "pm3",
      tooltip = "min size of the steps to draw them (selects octants, quadrants, half range, "
      + "whole range or none)")
 int pmpo3num = input.int(4, "number of stddevs to draw above/below", minval = 1,
-     group = G_PM)
+     group = G_PM, inline = "pn")
+bool pmauto = input.bool(false, "auto", group = G_PM, inline = "pn",
+     tooltip = "Latest premarket range only, from its end until the market close: more stddevs are drawn when "
+     + "price goes beyond them, so there are always at least the number above and also the next stddev to "
+     + "be hit on each side (at most 40 per side).")
 color pmcolor = input.color(color.red, "line", group = G_PM, inline = "pm4")
 int pmwid = input.int(2, "", options = [1, 2, 3], group = G_PM, inline = "pm4")
 string pmqsty = getstyle(input.string("solid", "quadrant", options = ["solid", "dashed", "dotted"],
@@ -346,11 +356,11 @@ int ngapsEff = math.min(ngaps, 15)
 int gapKinds = (dondog ? 1 : 0) + (donwog ? 1 : 0)
 int lnMonths = domonth ? 9 : 0
 int lnGaps = dogaps ? gapKinds * 2 * ngapsEff : 0
-int lnRth = dogaps and dorthog ? 4 * ngapsEff + 2 * rthogpo3num + 8 : 0
+int lnRth = dogaps and dorthog ? 4 * ngapsEff + 2 * rthogpo3num + 8 + (rthogauto ? 12 : 0) : 0
 int lnSes = doses ? 2 * nsesEff : 0
 int lnPre = preOn ? 4 * nsesEff : 0
 int lnPmx = preOn ? pmkeep * ((dopmq ? 3 : 0) + (dopmpo3 ? 2 * pmpo3num : 0) + (dopmq or dopmpo3 ? 2 : 0))
-     : 0
+     + (pmauto and dopmpo3 ? 12 : 0) : 0
 int lnEq = doeqhl ? (doeqd ? 4 : 2) * eqkeep : 0
 int lbSes = doses and doseslbl ? 2 * nsesEff : 0
 int lbPre = preOn and doseslbl ? 2 * nsesEff : 0
@@ -422,6 +432,9 @@ type Zone
     array<label> qlabels = na
     array<line> sdlines = na    // premarket stddev lines, in the order +1, -1, +2, -2...
     array<label> sdlabels = na
+    array<string> sdnames = na  // their names: "+1", "-1"...
+    float xhi = na    // premarket range: highest high / lowest low from its end to the market close (auto)
+    float xlo = na
 
 type Gap
     string name
@@ -461,6 +474,9 @@ type RTHOG
     label dqlabel = na
     array<line> po3lines = na
     array<label> po3labels = na
+    array<string> po3names = na // names of the stddev lines: "+1", "-1"...
+    float xhi = na    // highest high / lowest low from the open to the market close (auto)
+    float xlo = na
     bool isold = false
 
 type Piv
@@ -597,6 +613,16 @@ if barstate.isfirst
     for i = 0 to 8
         mls.push(MonLn.new())
 
+// ============================================================ automatic stddevs
+// stddevs to draw on one side of a range: at least n; with auto, also every stddev reached by the extreme
+// ext (base: the range edge on that side, u: the step, sgn 1 above, -1 below) plus the next one
+sdCount(int n, bool auto, float base, float u, float ext, int sgn) =>
+    int r = n
+    if auto and not na(ext) and u > 0
+        int reached = math.max(0, int(math.floor((ext - base) * sgn / u)))
+        r := math.max(n, math.min(reached + 1, 40))
+    r
+
 // ============================================================ zones
 mkZone(string name, ZoneInfo zi = na) =>
     Zone z = Zone.new(name, time, open, high, low, time, time)
@@ -625,7 +651,7 @@ method pmclear(Zone z) =>
 
 // quadrants (25%, CE, 75%) and stddevs of the range, like the RTHOG ones. Drawn from a
 // couple of bars before the end of the range (or the last bar while it is forming)
-method pmdraw(Zone z) =>
+method pmdraw(Zone z, bool auto = false) =>
     z.pmclear()
     float r = z.hi - z.lo
     int x1 = na(z.tclose) ? tright(xoff) : math.min(tright(xoff), z.tclose)
@@ -656,15 +682,23 @@ method pmdraw(Zone z) =>
                 if na(z.sdlines)
                     z.sdlines := array.new<line>()
                     z.sdlabels := array.new<label>()
-                for i = 1 to pmpo3num
-                    [l2, b2] = mkLL(x0, x1, z.hi + i * u, pmcolor, pmpo3sty, pmwid,
-                         "PMKT +" + str.tostring(i) + "dev", pmcolor, pmlsz)
-                    z.sdlines.push(l2)
-                    z.sdlabels.push(b2)
-                    [l3, b3] = mkLL(x0, x1, z.lo - i * u, pmcolor, pmpo3sty, pmwid,
-                         "PMKT -" + str.tostring(i) + "dev", pmcolor, pmlsz)
-                    z.sdlines.push(l3)
-                    z.sdlabels.push(b3)
+                    z.sdnames := array.new<string>()
+                z.sdnames.clear()
+                int nu = sdCount(pmpo3num, auto, z.hi, u, z.xhi, 1)
+                int nd = sdCount(pmpo3num, auto, z.lo, u, z.xlo, -1)
+                for i = 1 to math.max(nu, nd)
+                    if i <= nu
+                        [l2, b2] = mkLL(x0, x1, z.hi + i * u, pmcolor, pmpo3sty, pmwid,
+                             "PMKT +" + str.tostring(i) + "dev", pmcolor, pmlsz)
+                        z.sdlines.push(l2)
+                        z.sdlabels.push(b2)
+                        z.sdnames.push("+" + str.tostring(i))
+                    if i <= nd
+                        [l3, b3] = mkLL(x0, x1, z.lo - i * u, pmcolor, pmpo3sty, pmwid,
+                             "PMKT -" + str.tostring(i) + "dev", pmcolor, pmlsz)
+                        z.sdlines.push(l3)
+                        z.sdlabels.push(b3)
+                        z.sdnames.push("-" + str.tostring(i))
         // high and low of the range, red solid lines, whenever quadrants or stddevs are drawn
         bool anyq = not na(z.qlines) and z.qlines.size() > 0
         bool anysd = not na(z.sdlines) and z.sdlines.size() > 0
@@ -1273,27 +1307,35 @@ method rpo3(RTHOG g) =>
         if na(g.po3lines)
             g.po3lines := array.new<line>()
             g.po3labels := array.new<label>()
+            g.po3names := array.new<string>()
+        g.po3names.clear()
         int x0 = g.tend - tfms * rdx
         int x1 = tright(xoff)
-        float pu = math.max(g.cl, g.op)
-        float pd = math.min(g.cl, g.op)
-        for i = 1 to rthogpo3num
-            pu += u
-            pd -= u
-            [l1, b1] = mkLL(x0, x1, pu, lrgapcolor, rgappo3lnsty, rgapwid, "RTHOG +"
-                 + str.tostring(i) + "dev", lrgapcolor)
-            g.po3lines.push(l1)
-            g.po3labels.push(b1)
-            [l2, b2] = mkLL(x0, x1, pd, lrgapcolor, rgappo3lnsty, rgapwid, "RTHOG -"
-                 + str.tostring(i) + "dev", lrgapcolor)
-            g.po3lines.push(l2)
-            g.po3labels.push(b2)
+        float pu0 = math.max(g.cl, g.op)
+        float pd0 = math.min(g.cl, g.op)
+        int nu = sdCount(rthogpo3num, rthogauto, pu0, u, g.xhi, 1)
+        int nd = sdCount(rthogpo3num, rthogauto, pd0, u, g.xlo, -1)
+        for i = 1 to math.max(nu, nd)
+            if i <= nu
+                [l1, b1] = mkLL(x0, x1, pu0 + i * u, lrgapcolor, rgappo3lnsty, rgapwid, "RTHOG +"
+                     + str.tostring(i) + "dev", lrgapcolor)
+                g.po3lines.push(l1)
+                g.po3labels.push(b1)
+                g.po3names.push("+" + str.tostring(i))
+            if i <= nd
+                [l2, b2] = mkLL(x0, x1, pd0 - i * u, lrgapcolor, rgappo3lnsty, rgapwid, "RTHOG -"
+                     + str.tostring(i) + "dev", lrgapcolor)
+                g.po3lines.push(l2)
+                g.po3labels.push(b2)
+                g.po3names.push("-" + str.tostring(i))
 
 // opening gap: called from 15 minutes before the open (hint, price = current close)
 // and on the open bar (final, price = open)
 method rends(RTHOG g, float opv) =>
     g.op := opv
     g.tend := time
+    g.xhi := high
+    g.xlo := low
     int x1 = tright(xoff)
     int x0 = g.tend - tfms * rdx
     string nm = timestr()
@@ -1397,6 +1439,18 @@ if rthOk
         RTHOG cg = rthogs.last()
         if not na(cg.cl) and (finalBar or rthOpenBar)
             cg.rends(rthOpenBar ? open : close)
+    // automatic stddevs: extremes of the day from the open (open bar included) until the close
+    if rthogauto and not mktClose and rthogs.size() > 0
+        RTHOG ag = rthogs.last()
+        if not na(ag.tend) and time > ag.tend
+            ag.xhi := math.max(ag.xhi, high)
+            ag.xlo := math.min(ag.xlo, low)
+// automatic stddevs: extremes of the latest premarket range from its end until the market close
+if preOn and pmauto and premarkets.size() > 0
+    Zone az = premarkets.last()
+    if not na(az.tend) and time > az.tend and (na(az.tclose) or time < az.tclose)
+        az.xhi := na(az.xhi) ? high : math.max(az.xhi, high)
+        az.xlo := na(az.xlo) ? low : math.min(az.xlo, low)
 
 // ============================================================ EQH / EQL
 float atrv = ta.atr(14)
@@ -1576,23 +1630,19 @@ drawMonth(int idx, float h, float l, float c, int t, int tc) =>
      lookahead = barmerge.lookahead_on)
 
 // ============================================================ RTHOG / premarket stddev labels
-// k-th stddev line in the order +1, -1, +2, -2...: "+2" or "-2"
-po3idx(int k) =>
-    (k % 2 == 0 ? "+" : "-") + str.tostring(int(k / 2) + 1)
-
 // stddev lines of the RTHOG and the premarket range at almost the same price share one
 // label: "RTHOG +2 PMKT +3". The other label is emptied.
 combinePo3(RTHOG g, Zone z, float tol) =>
-    if not na(g.po3labels) and not na(z.sdlabels)
+    if not na(g.po3labels) and not na(z.sdlabels) and not na(g.po3names) and not na(z.sdnames)
         for [k, l] in g.po3labels
-            l.set_text("RTHOG " + po3idx(k) + "dev")
+            l.set_text("RTHOG " + g.po3names.get(k) + "dev")
         for [k, l] in z.sdlabels
-            l.set_text("PMKT " + po3idx(k) + "dev")
+            l.set_text("PMKT " + z.sdnames.get(k) + "dev")
         array<bool> used = array.new<bool>(z.sdlabels.size(), false)
         for [k, l] in g.po3labels
             for [m, q] in z.sdlabels
                 if not used.get(m) and math.abs(l.get_y() - q.get_y()) <= tol
-                    l.set_text("RTHOG " + po3idx(k) + " PMKT " + po3idx(m))
+                    l.set_text("RTHOG " + g.po3names.get(k) + " PMKT " + z.sdnames.get(m))
                     q.set_text("")
                     used.set(m, true)
                     break
@@ -1626,7 +1676,7 @@ if finalBar and tfok
         int npm = premarkets.size()
         for [i, z] in premarkets
             if i >= npm - pmkeep
-                z.pmdraw()
+                z.pmdraw(pmauto and i == npm - 1)
             else
                 z.pmclear()
     float gtol = combtol * nz(datr, 0.0)
@@ -1637,6 +1687,10 @@ if finalBar and tfok
             g.gright(gtol)
         for g in wgaps
             g.gright(gtol)
+    if rthogauto and dorthogpo3 and rthogs.size() > 0
+        RTHOG lg = rthogs.last()
+        if not na(lg.tend) and not na(lg.op) and not na(lg.cl) and not lg.isold
+            lg.rpo3()
     for [i, g] in rthogs
         if i == rthogs.size() - 1
             g.right(lrgapcolor)
