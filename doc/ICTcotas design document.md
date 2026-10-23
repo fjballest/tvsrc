@@ -51,7 +51,7 @@ Inputs are grouped by type of level. Related controls share a row with `inline`.
 | Fair Value Gaps | Draw, keep (up to 20), minimum size; line style, width and CE style; show hi, lo, CE; no fill and transparency; label; IFVG inversion and its label; overlap rule (Most recent, Enclosing, Keep all); extend the range to include VIs with candle 2 |
 | Volume Imbalances | Draw, keep, minimum size; styles; show hi, lo, CE; no fill and transparency; label |
 | Wick CE | Draw, keep, minimum wick as a percentage of the candle range (default 30); line style and width; upper and lower wick labels |
-| FVGs and wick CE by timeframe | Draw; plus N next higher timeframes; 15m, 1H, 4H, D, W tick boxes; keep per timeframe and minimum size; bull and bear colors per timeframe; outline style and width; no fill (default on) and transparency; formation marker; CE box and its style; labels with TF, FVG/IFVG and direction parts; label size, position and vertical anchor; wick CE for 1H and 4H |
+| FVGs and wick CE by timeframe | Draw; plus N next higher timeframes; 15m, 1H, 4H, D, W tick boxes; keep per timeframe and minimum size; bull and bear colors per timeframe; outline style and width; no fill (default on) and transparency; formation marker; CE box and its style; labels with TF, FVG/IFVG and direction parts; label size, position and vertical anchor; wick CE for 1H and 4H; right margin layout (`mfmargin`, off) with offset (`mfmoff`, 4) and box width (`mfmw`, 4); extend levels (`mfext`, off) back `mfextn` (20) candles or to the FVG start (`mfextst`) |
 
 The by-timeframe group has several defaults chosen on purpose. It is on by default (1H and 4H ticked), the fill is off, the CE box has zero height and the label position is Inside right. The label anchor is the CE of the FVG unless set to High or Low.
 
@@ -182,6 +182,8 @@ Label text is built by `lbltxt` as the timeframe text, the level name, the optio
 - **Formation marker**: a vertical line from the high to the low at the formation time `tfm`, drawn only when `tfm` is not before the left edge.
 - **Label**: text made of the timeframe name, the FVG or IFVG name and the direction sign, each optional. Its horizontal position is the box left, center or right, or the right margin. Its vertical anchor is the high, the CE or the low. The label style is chosen to match the position, for example a right-aligned label for Inside right.
 
+**Right margin.** With `mfmargin` on, `drawMM` is used instead of `drawM`. The column of a timeframe is its rank among the enabled timeframes (`mfCol`), so the box spans from `tright(mfmoff + col * (mfmw + 1))` to `mfmw` bars after it, at the FVG high and low. It gets the CE box and a label centered in the box at the chosen anchor, on two lines so the boxes can be thin: the optional timeframe, then an up (bullish) or down (bearish) arrow from the current direction. With `mfext` on, the high, low and (with the CE box) the CE are drawn as lines in the `hiln`, `loln` and `celn` fields, from `mfextn` bars before the last bar (or the FVG start `t` with `mfextst`) to the left edge of the box. No formation marker is drawn.
+
 ### Updating
 
 Because lines, labels and boxes are created once and updated afterwards (`mkLine`, `mkLbl` and the setters in `draw` and `drawM`), the number of objects stays bounded by the keep limits. Each kind and timeframe holds at most its `keep` count, and the chart limits are set to 500 for lines, labels and boxes.
@@ -211,6 +213,7 @@ Every function that would otherwise return nothing ends in `true`, because Pine 
 | `kill(l)` | Marks a level dead and deletes all its objects |
 | `draw(l)` | Draws a level of kind 0, 1 or 2 |
 | `drawM(l)` | Draws a level of kind 3 |
+| `mfCol(i)`, `drawMM(l)` | Margin column of a timeframe; draws a level of kind 3 in the right margin |
 
 ### Detection and maintenance
 

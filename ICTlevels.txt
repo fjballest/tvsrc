@@ -127,10 +127,11 @@ bool dotgif = input.bool(true, "TGIF levels %", group = G_TG, inline = "tgif",
      + "week high down (bullish week, red) or from the week low up (bearish week, green).")
 float tgp1 = input.float(0.2, "", minval = 0.01, maxval = 1.0, step = 0.05, group = G_TG, inline = "tgif")
 float tgp2 = input.float(0.3, "", minval = 0.01, maxval = 1.0, step = 0.05, group = G_TG, inline = "tgif")
-float tgbody = input.float(0.6, "TGIF displacement: body of the week x range", minval = 0.1, maxval = 1.0,
-     step = 0.05, group = G_TG, inline = "tgif2",
-     tooltip = "The week candle is a displacement when its body is at least this fraction of its range, and "
-     + "it has no final wick yet when price is still closer to the extreme than the first TGIF level.")
+float tgnear = input.float(0.4, "TGIF displacement: price within x range of the high / low", minval = 0.05,
+     maxval = 0.5, step = 0.05, group = G_TG, inline = "tgif2",
+     tooltip = "The week candle is a displacement up (down) when price is between the week high (low) and this "
+     + "fraction of the week range below (above) it, whatever its body: a solid candle or one with a long "
+     + "wick on the other side both count.")
 color tgupcol = input.color(color.green, "colors: up", group = G_TG, inline = "tgif3")
 color tgdncol = input.color(color.red, "down", group = G_TG, inline = "tgif3")
 string tgsty = getstyle(input.string("dashed", "", options = ["solid", "dashed", "dotted"],
@@ -944,8 +945,8 @@ if inWin and tfok
 
 // ============================================================ TGIF
 // Week candle (from newWeek) tracked here. On the first bar of Friday the week so far is tested: a
-// displacement (body >= tgbody x range) whose close is still nearer the extreme than the first level
-// (no final wick) arms the levels, measured from the week high (bullish, retracement down) or low
+// displacement (price within tgnear x range of the week high / low, whatever the body) arms the
+// levels, measured from the week high (bullish, retracement down) or low
 // (bearish, retracement up). On Friday they follow new week extremes until price reaches the first
 // level, then stay fixed. When the week closes displaced and the retracement did not happen on Friday,
 // the levels of the final week apply on Monday (until Tuesday starts). Otherwise they are removed when
@@ -954,9 +955,9 @@ tgEval(float h, float l, float o, float c) =>
     float r = h - l
     int d = 0
     if r > 0
-        if c - o >= tgbody * r and h - c < tgp1 * r
+        if h - c <= tgnear * r
             d := 1
-        else if o - c >= tgbody * r and c - l < tgp1 * r
+        else if c - l <= tgnear * r
             d := -1
     d
 

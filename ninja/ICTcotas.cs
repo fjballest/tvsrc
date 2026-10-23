@@ -7,7 +7,7 @@
 // FVGs closed through become IFVGs. Mitigated levels are removed.
 //
 // Port of the TradingView Pine Script v6 indicator ICTcotas.txt by franjballest
-// (source md5 fc4173908fb48aa76f3a68c6e61162f5). Mozilla Public License 2.0.
+// (source md5 3b4d667d651333ff1aa2f9bb2ef16090). Mozilla Public License 2.0.
 //
 // Install:
 //   1. Copy this file to  Documents\NinjaTrader 8\bin\Custom\Indicators\ICTcotas.cs
@@ -292,6 +292,12 @@ namespace NinjaTrader.NinjaScript.Indicators
 				MfLabelAnchor = ICTcotasLabelAnchor.CE;
 				Wick1H = false;
 				Wick4H = false;
+				MfMargin = false;
+				MfMarginOffset = 4;
+				MfMarginWidth = 4;
+				MfExtend = false;
+				MfExtendBars = 20;
+				MfExtendToStart = false;
 			}
 			else if (State == State.Configure)
 			{
@@ -834,7 +840,12 @@ namespace NinjaTrader.NinjaScript.Indicators
 				if (l.Dead)
 					continue;
 				if (l.Kind == 3)
-					DrawM(l);
+				{
+					if (MfMargin)
+						DrawMM(l);
+					else
+						DrawM(l);
+				}
 				else
 					DrawL(l);
 			}
@@ -878,6 +889,50 @@ namespace NinjaTrader.NinjaScript.Indicators
 				Draw.Line(this, Tag(l, "cl"), false, sba, l.Ce, eba, l.Ce, c, s2, w);
 				if (ShowLabels)
 					DrawLabel(Tag(l, "cb"), eba, l.Ce, LblTxt(l, TextCE), c, lblFont, TextAlignment.Left);
+			}
+		}
+
+		// margin column of timeframe i: its rank among the enabled timeframes
+		private int MfCol(int i)
+		{
+			int c = 0;
+			for (int j = 0; j < i; j++)
+				if (mfOn[j])
+					c++;
+			return c;
+		}
+
+		// FVG by timeframe in the right margin: box in its timeframe column, CE line, arrow label, extended levels
+		private void DrawMM(Lvl l)
+		{
+			Brush c = TCol(l.Tfi, l.Dir);
+			int x0 = -(MfMarginOffset + MfCol(l.Tfi - 3) * (MfMarginWidth + 1));
+			int x1 = x0 - MfMarginWidth;
+
+			NinjaTrader.NinjaScript.DrawingTools.Rectangle r = Draw.Rectangle(this, Tag(l, "bx"), false,
+				x0, l.Hi, x1, l.Lo, c, MfNoFill ? Brushes.Transparent : c, MfNoFill ? 0 : 100 - MfTransparency);
+			if (r != null)
+				r.OutlineStroke = new Stroke(c, MfStyle, MfWidth);
+			if (MfShowCE)
+				Draw.Line(this, Tag(l, "cbx"), false, x0, l.Ce, x1, l.Ce, c, MfCEStyle, MfWidth);
+
+			if (MfExtend)
+			{
+				int xs = MfExtendToStart ? BarsAgoOf(l.T) : MfExtendBars;
+				Draw.Line(this, Tag(l, "hl"), false, xs, l.Hi, x0, l.Hi, c, MfStyle, MfWidth);
+				Draw.Line(this, Tag(l, "ll"), false, xs, l.Lo, x0, l.Lo, c, MfStyle, MfWidth);
+				if (MfShowCE)
+					Draw.Line(this, Tag(l, "cl"), false, xs, l.Ce, x0, l.Ce, c, MfCEStyle, MfWidth);
+			}
+
+			if (MfLabels)
+			{
+				double y = MfLabelAnchor == ICTcotasLabelAnchor.High ? l.Hi
+					: MfLabelAnchor == ICTcotasLabelAnchor.Low ? l.Lo : l.Ce;
+				// thin boxes: the timeframe on one line, the arrow on the next
+				string tfn = MfLabelShowTf ? MfNames[l.Tfi - 3] + "\n" : "";
+				string txt = tfn + (l.Dir == 1 ? "\u2191" : "\u2193");
+				DrawLabel(Tag(l, "lbl"), (x0 + x1) / 2, y, txt, c, mfFont, TextAlignment.Center);
 			}
 		}
 
@@ -1444,6 +1499,33 @@ namespace NinjaTrader.NinjaScript.Indicators
 		[NinjaScriptProperty]
 		[Display(Name = "Wick CE: 4H", Description = "Also compute the wick CE levels (needs Draw wick CE on) on 4H candles. Only used when the chart timeframe is 4H or lower.", GroupName = GMf, Order = 35)]
 		public bool Wick4H { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Draw in the right margin", Description = "Instead of over the candles, each FVG / IFVG is drawn as a box in the right margin, one column per timeframe (from the lowest), labeled with the timeframe and, on the next line, an up (bullish) or down (bearish) arrow.", GroupName = GMf, Order = 36)]
+		public bool MfMargin { get; set; }
+
+		[NinjaScriptProperty]
+		[Range(0, 200)]
+		[Display(Name = "Margin: offset", Description = "Bars between the last bar and the first column", GroupName = GMf, Order = 37)]
+		public int MfMarginOffset { get; set; }
+
+		[NinjaScriptProperty]
+		[Range(1, 50)]
+		[Display(Name = "Margin: width", Description = "Bars per box (and per column)", GroupName = GMf, Order = 38)]
+		public int MfMarginWidth { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Margin: extend levels", Description = "Lines from the high, low and CE (with CE box on) of each FVG back to the number of candles below, or to the start of the FVG", GroupName = GMf, Order = 39)]
+		public bool MfExtend { get; set; }
+
+		[NinjaScriptProperty]
+		[Range(1, 500)]
+		[Display(Name = "Extend: candles", GroupName = GMf, Order = 40)]
+		public int MfExtendBars { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Extend: to FVG start", GroupName = GMf, Order = 41)]
+		public bool MfExtendToStart { get; set; }
 
 		#endregion
 	}

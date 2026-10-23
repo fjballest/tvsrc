@@ -210,6 +210,14 @@ Ticked timeframes below the chart timeframe are ignored. Example: on a 5m chart 
 
 **at** picks the vertical anchor: High, CE (default) or Low. The label text is built from the parts you enable: timeframe (`1H`), type (`FVG` / `IFVG`) and direction (`+` / `-`), for example `4H FVG-`. The **bold** option in the Labels section also applies here.
 
+### Right margin layout
+
+With **Draw in the right margin** on, the boxes are drawn in the right margin instead of over the candles. Each enabled timeframe gets its own column, from the lowest timeframe on the left to the highest on the right. Each FVG or IFVG is a box at its own high and low, with its CE box, and a label centered in the box: the timeframe on one line and, below it, an up arrow (bullish) or a down arrow (bearish), so the boxes can be thin. An IFVG shows its new direction. The show TF option still applies (off leaves just the arrow); the FVG / IFVG, direction (+/-) and position options do not, and there is no formation marker.
+
+- **offset**: bars between the last bar and the first column (default 4).
+- **width**: bars per box; columns are one bar apart (default 4).
+- **extend levels** (off): draws the high, the low and (with CE box on) the CE of each FVG as lines from the left edge of its box back to **candles** bars before the last one (default 20), or back to the start of the FVG when **to FVG start** is checked.
+
 ### How to use it
 
 The 1H and 4H boxes are the intraday PD arrays for entries and targets inside the daily range: look for price to retrace into a 1H or 4H FVG in the direction of the D/W bias, and use the CE line as the reaction level. The formation marker shows how fresh a gap is. Ticking D or W here draws box versions of the same daily and weekly FVGs already shown as lines, so keep them off unless you prefer boxes.
@@ -352,6 +360,12 @@ Fills use these colors with the transparency set in each section.
 | at | CE | Vertical anchor of the label: High, CE or Low |
 | wick CE: 1H | off | Adds 1H wick CE lines (needs Draw wick CE on and a chart of 1H or lower) |
 | 4H | off | Adds 4H wick CE lines (needs Draw wick CE on and a chart of 4H or lower) |
+| Draw in the right margin | off | Draws the boxes in the right margin, one column per timeframe, labeled with the timeframe and an up / down arrow below it (section 7) |
+| offset | 4 | Bars between the last bar and the first margin column |
+| width | 4 | Bars per margin box |
+| extend levels | off | Margin only: lines from the high, low and CE of each FVG back into the chart |
+| candles | 20 | How far back the extended lines go, in candles before the last one |
+| to FVG start | off | Extend the lines to the start of each FVG instead |
 
 The by-timeframe timeframe names in labels (15m, 1H, 4H, D, W) are fixed; the **text: daily / weekly / monthly** inputs do not change them.
 

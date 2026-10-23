@@ -9,7 +9,7 @@
  * closed through become IFVGs. Mitigated levels are removed.
  *
  * Port of the TradingView Pine Script v6 indicator ICTcotas.txt
- * (md5 fc4173908fb48aa76f3a68c6e61162f5), (c) franjballest, Mozilla Public
+ * (md5 3b4d667d651333ff1aa2f9bb2ef16090), (c) franjballest, Mozilla Public
  * License 2.0 (https://mozilla.org/MPL/2.0/). Same logic, same inputs (as
  * camelCase parameters) and the same defaults.
  *
@@ -504,7 +504,13 @@ function buildConfig(p, chart) {
         mfLPos: str(p.mfLPos, "insideRight"),
         mfLVert: str(p.mfLVert, "ce"),
         wk1h: bool(p.wk1h, false),
-        wk4h: bool(p.wk4h, false)
+        wk4h: bool(p.wk4h, false),
+        mfMargin: bool(p.mfMargin, false),
+        mfMOff: clamp(Math.round(num(p.mfMOff, 4)), 0, 200),
+        mfMW: clamp(Math.round(num(p.mfMW, 4)), 1, 50),
+        mfExt: bool(p.mfExt, false),
+        mfExtN: clamp(Math.round(num(p.mfExtN, 20)), 1, 500),
+        mfExtSt: bool(p.mfExtSt, false)
     };
     // chart timeframe in seconds from the chart description, when time based
     c.fixedTfSecs = 0;
@@ -620,12 +626,43 @@ function drawMf(c, l, x, items) {
     }
 }
 
+// FVG by timeframe in the right margin (Pine drawMM): box in its timeframe column, CE line, arrow label,
+// extended levels
+function drawMfMargin(c, l, eng, lastIdx, items) {
+    const col = c.mfCol[l.tfi - 3][l.dir === 1 ? 0 : 1];
+    const k = "ictc" + l.id;
+    let cn = 0;
+    for (let j = 0; j < l.tfi - 3; j++) if (eng.mfEnabled(j)) cn++;
+    const x0 = lastIdx + c.mfMOff + cn * (c.mfMW + 1);
+    const x1 = x0 + c.mfMW;
+    if (!c.mfNoFill) items.push(rectItem(k + "fill", x0, l.hi, x1, l.lo, col, c.mfTr));
+    items.push(linesItem(k + "bx", [
+        seg(x0, l.hi, x1, l.hi), seg(x1, l.hi, x1, l.lo), seg(x1, l.lo, x0, l.lo), seg(x0, l.lo, x0, l.hi)
+    ], col, c.mfWid, c.mfSty));
+    if (c.mfShowCe) items.push(linesItem(k + "ce", [seg(x0, l.ce, x1, l.ce)], col, c.mfWid, c.mfCeSty));
+    if (c.mfExt) {
+        const xs = c.mfExtSt ? l.t : lastIdx - c.mfExtN;
+        items.push(linesItem(k + "ext", [seg(xs, l.hi, x0, l.hi), seg(xs, l.lo, x0, l.lo)], col, c.mfWid, c.mfSty));
+        if (c.mfShowCe) items.push(linesItem(k + "extce", [seg(xs, l.ce, x0, l.ce)], col, c.mfWid, c.mfCeSty));
+    }
+    if (c.mfLbl) {
+        const y = c.mfLVert === "high" ? l.hi : c.mfLVert === "low" ? l.lo : l.ce;
+        // thin boxes: the timeframe on one line, the arrow on the next
+        const tfn = c.mfLShowTf ? MF_NAMES[l.tfi - 3] + "\n" : "";
+        const txt = tfn + (l.dir === 1 ? "\u2191" : "\u2193");
+        items.push(textItem(k + "lb", Math.floor((x0 + x1) / 2), y, txt, col, c.mfLFont, c.lblBold, "center"));
+    }
+}
+
 function drawAll(c, eng, lastIdx, lastBar) {
     const x = lastIdx + c.xOff;
     const items = [];
     for (const l of eng.S.lvls) {
         if (l.dead) continue;
-        if (l.kind === 3) drawMf(c, l, x, items);
+        if (l.kind === 3) {
+            if (c.mfMargin) drawMfMargin(c, l, eng, lastIdx, items);
+            else drawMf(c, l, x, items);
+        }
         else drawLvl(c, l, x, items);
     }
     const tfs = eng.tfsecs();
@@ -837,7 +874,14 @@ module.exports = {
         }, "insideRight"),
         mfLVert: predef.paramSpecs.enum({ high: "High", ce: "CE", low: "Low" }, "ce"),
         wk1h: predef.paramSpecs.bool(false),
-        wk4h: predef.paramSpecs.bool(false)
+        wk4h: predef.paramSpecs.bool(false),
+        // right margin: one column per timeframe
+        mfMargin: predef.paramSpecs.bool(false),
+        mfMOff: int(4, 0),
+        mfMW: int(4, 1),
+        mfExt: predef.paramSpecs.bool(false),
+        mfExtN: int(20, 1),
+        mfExtSt: predef.paramSpecs.bool(false)
     },
     inputType: meta.InputType.BARS,
     areaChoice: meta.AreaChoice.OVERLAY,

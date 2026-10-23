@@ -11,7 +11,7 @@
  *   It draws levels only: no signals, no alerts, no plots.
  *
  *   It is a port of the TradingView Pine Script v6 indicator ICTlevels.txt
- *   (md5 bf7b48f7a2ad8e00ac2afd873528dc5f). Parameter names are the Pine variable names and the
+ *   (md5 cf504b3ce0772187f62209c70433ac15). Parameter names are the Pine variable names and the
  *   defaults are the Pine defaults; see "ICTlevels user manual.md" for what every level means.
  *
  * How to install
@@ -106,7 +106,7 @@ const PARAMS = {
     dotgif: ps.bool(true),
     tgp1: ps.number(0.2, 0.05, 0.01),
     tgp2: ps.number(0.3, 0.05, 0.01),
-    tgbody: ps.number(0.6, 0.05, 0.1),
+    tgnear: ps.number(0.4, 0.05, 0.05),
     tgupcol: ps.color(C_GREEN),
     tgdncol: ps.color(C_RED),
     tgsty: ps.enum(STYLES, "dashed"),
@@ -943,9 +943,9 @@ class ICTlevels {
         const r = h - l;
         let d = 0;
         if (r > 0) {
-            if (c - o >= P.tgbody * r && h - c < P.tgp1 * r) {
+            if (h - c <= P.tgnear * r) {
                 d = 1;
-            } else if (o - c >= P.tgbody * r && c - l < P.tgp1 * r) {
+            } else if (c - l <= P.tgnear * r) {
                 d = -1;
             }
         }

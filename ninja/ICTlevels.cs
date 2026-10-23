@@ -4,7 +4,7 @@
 // quadrants and standard deviations, premarket range, EQH/EQL, PO3 lines, TGIF levels, macros,
 // silver bullet and a session/macro status text. Draws levels only: no plots, no signals, no alerts.
 //
-// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 bf7b48f7a2ad8e00ac2afd873528dc5f),
+// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 cf504b3ce0772187f62209c70433ac15),
 // © franjballest, Mozilla Public License 2.0 (https://mozilla.org/MPL/2.0/).
 //
 // Install:
@@ -294,7 +294,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 				DoTgif = true;
 				TgP1 = 0.2;
 				TgP2 = 0.3;
-				TgBody = 0.6;
+				TgNear = 0.4;
 				TgUpColor = PineGreen;
 				TgDownColor = PineRed;
 				TgStyle = DashStyleHelper.Dash;
@@ -1383,9 +1383,9 @@ namespace NinjaTrader.NinjaScript.Indicators
 			int d = 0;
 			if (r > 0)
 			{
-				if (c - o >= TgBody * r && h - c < TgP1 * r)
+				if (h - c <= TgNear * r)
 					d = 1;
-				else if (o - c >= TgBody * r && c - l < TgP1 * r)
+				else if (c - l <= TgNear * r)
 					d = -1;
 			}
 			return d;
@@ -2398,9 +2398,9 @@ namespace NinjaTrader.NinjaScript.Indicators
 		public double TgP2 { get; set; }
 
 		[NinjaScriptProperty]
-		[Range(0.1, 1.0)]
-		[Display(Name = "TGIF displacement: body of the week x range", GroupName = "TGIF", Order = 404)]
-		public double TgBody { get; set; }
+		[Range(0.05, 0.5)]
+		[Display(Name = "TGIF displacement: price within x range of the high / low", Description = "The week is a displacement up (down) when price is between the week high (low) and this fraction of the week range below (above) it, whatever its body.", GroupName = "TGIF", Order = 404)]
+		public double TgNear { get; set; }
 
 		[NinjaScriptProperty]
 		[XmlIgnore]

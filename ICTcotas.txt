@@ -209,6 +209,17 @@ bool wk1h = input.bool(false, "wick CE: 1H", group = G_MF, inline = "m9",
      + "needs Draw wick CE on) on these timeframes. Only "
      + "timeframes equal to or higher than the chart timeframe are available.")
 bool wk4h = input.bool(false, "4H", group = G_MF, inline = "m9")
+bool mfmargin = input.bool(false, "Draw in the right margin", group = G_MF, inline = "mm1",
+     tooltip = "Instead of over the candles, each FVG / IFVG is drawn as a box in the right margin, one column "
+     + "per timeframe (from the lowest), labeled with the timeframe and, on the next line, an up (bullish) or down (bearish) arrow. Offset: bars "
+     + "between the last bar and the first column. Width: bars per box (and per column).")
+int mfmoff = input.int(4, "offset", minval = 0, maxval = 200, group = G_MF, inline = "mm1")
+int mfmw = input.int(4, "width", minval = 1, maxval = 50, group = G_MF, inline = "mm1")
+bool mfext = input.bool(false, "extend levels", group = G_MF, inline = "mm2",
+     tooltip = "Margin only: lines from the high, low and CE (with CE box on) of each FVG back to this many "
+     + "candles before the last one, or to the start of the FVG when \"to FVG start\" is checked.")
+int mfextn = input.int(20, "candles", minval = 1, maxval = 500, group = G_MF, inline = "mm2")
+bool mfextst = input.bool(false, "to FVG start", group = G_MF, inline = "mm2")
 
 // ============================================================ setup
 int tfsecs = timeframe.in_seconds()
@@ -384,6 +395,58 @@ method draw(Lvl l) =>
         l.celn := mkLine(l.celn, l.t, l.ce, x, c, s2, w)
         if dolbl
             l.celb := mkLbl(l.celb, x, l.ce, lbltxt(l, ptxtce), c)
+    true
+
+// margin column of timeframe i: its rank among the enabled timeframes
+mfCol(int i) =>
+    int c = 0
+    if i > 0
+        for j = 0 to i - 1
+            if mfEnabled(j)
+                c += 1
+    c
+
+// FVG by timeframe in the right margin: box in its timeframe column, CE box, arrow label, extended levels
+method drawMM(Lvl l) =>
+    color c = mfcol(l.tfi - 3, l.dir)
+    color bg = mfnofill ? transparent : color.new(c, mftr)
+    int x0 = tright(mfmoff + mfCol(l.tfi - 3) * (mfmw + 1))
+    int x1 = x0 + mfmw * tfms
+    if na(l.bx)
+        l.bx := box.new(x0, l.hi, x1, l.lo, xloc = xloc.bar_time, border_color = c,
+             border_style = mfsty, border_width = mfwid, bgcolor = bg)
+    else
+        l.bx.set_lefttop(x0, l.hi)
+        l.bx.set_rightbottom(x1, l.lo)
+        l.bx.set_border_color(c)
+        l.bx.set_bgcolor(bg)
+    if mfshowce
+        if na(l.cebx)
+            l.cebx := box.new(x0, l.ce, x1, l.ce, xloc = xloc.bar_time, border_color = c,
+                 border_style = mfcesty, border_width = mfwid, bgcolor = transparent)
+        else
+            l.cebx.set_lefttop(x0, l.ce)
+            l.cebx.set_rightbottom(x1, l.ce)
+            l.cebx.set_border_color(c)
+    if mfext
+        int xs = mfextst ? l.t : time - mfextn * tfms
+        l.hiln := mkLine(l.hiln, xs, l.hi, x0, c, mfsty, mfwid)
+        l.loln := mkLine(l.loln, xs, l.lo, x0, c, mfsty, mfwid)
+        if mfshowce
+            l.celn := mkLine(l.celn, xs, l.ce, x0, c, mfcesty, mfwid)
+    if mflbl
+        float y = mflvert == "High" ? l.hi : mflvert == "Low" ? l.lo : l.ce
+        // thin boxes: the timeframe on one line, the arrow on the next
+        string tfn = mflshowtf ? mfNames.get(l.tfi - 3) + "\n" : ""
+        string txt = tfn + (l.dir == 1 ? "↑" : "↓")
+        if na(l.celb)
+            l.celb := label.new(int((x0 + x1) / 2), y, txt, xloc = xloc.bar_time,
+                 style = label.style_label_center, color = transparent, textcolor = c, size = mflsz,
+                 text_formatting = lblbold ? text.format_bold : text.format_none)
+        else
+            l.celb.set_xy(int((x0 + x1) / 2), y)
+            l.celb.set_text(txt)
+            l.celb.set_textcolor(c)
     true
 
 // FVG by timeframe: outline box (optionally filled), CE box and label
@@ -641,7 +704,10 @@ runMit()
 if barstate.islast
     for l in lvls
         if l.kind == 3
-            l.drawM()
+            if mfmargin
+                l.drawMM()
+            else
+                l.drawM()
         else
             l.draw()
 
