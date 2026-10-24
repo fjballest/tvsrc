@@ -1,6 +1,8 @@
 // This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
 // © franjballest
 // [OTE] modified: IFVGs can now be filtered/flagged by ICT OTE (0.62 - 0.79 retracement of the leg)
+// [OTEF] plain FVGs flagged OTE too: leg from the last swing low (bullish) / high (bearish) before the FVG to the
+//   extreme since; the FVG is tagged OTE when price retraces into it while it matches the OTE band of that leg
 // [DE] Delivery Engine features (from Nuno's Delivery Engine V20, updated to V29), all off by default:
 //   - displacement filter: FVGs only when the middle candle range exceeds N standard deviations
 //   - inversion rules: full-body confirmation, several inversions per zone (IFVG x2...), invalidation
@@ -218,6 +220,11 @@ G_OTE = "IFVG + OTE (ICT Optimal Trade Entry)"
 
 useOTE = input.bool(true, "Detect OTE IFVGs", group = G_OTE, inline = "o1",
     tooltip = "Needs 'IFVGs'. Measures the leg of a confirmed IFVG and flags it as an OTE IFVG when it matches the OTE band.")
+oteFvg = input.bool(true, "Flag OTE FVGs", group = G_OTE, inline = "o0",
+    tooltip = "Plain FVGs too: the leg runs from the last swing low (bullish FVG) / high (bearish FVG) before the "
+    + "FVG to the highest high / lowest low since. When price retraces into the FVG while it matches the OTE band "
+    + "of that leg (retracement levels and match below), the FVG is labeled OTE. Chart timeframe swings "
+    + "(Swing pivot left / right); box styles only.")
 oteOnly = input.bool(false, "Alert only OTE", group = G_OTE, inline = "o1",
     tooltip = "Suppress the regular IFVG alerts; only OTE IFVG alerts fire.")
 showOTEsig = input.bool(false, "Signals", group = G_OTE, inline = "o1",
@@ -449,11 +456,85 @@ type FVG
     bool brk = false // [BRK] tagged at a breaker pullback
     int brkD = 0 // [BRK] direction of that breaker
     int mbD = 0 // [MB] direction of the mitigation block it was tagged at (1 bullish, -1 bearish), 0 none
+    int lblD = 0 // direction of the b / M / Mb label
+    bool ote = false // [OTEF] OTE FVG
+    float oLo = na // [OTEF] leg low / high: origin and extreme since the FVG
+    float oHi = na
 
 
 // [DE] border width: thicker for flagged displacement FVGs
 method bw(FVG f) =>
     deFlag and f.disp ? deFlagW : 1
+
+// label of a plain FVG box: A+, or the breaker / mitigation block tag (b+, M-, Mb+...), plus OTE
+fvgLbl(FVG f) =>
+    string t = ""
+    if f.aplus and lblAp
+        t := hideReg ? "" : "A+"
+    else if f.brk or f.mbD != 0
+        t := (f.brk and f.mbD != 0 ? "Mb" : f.brk ? "b" : "M") + (f.lblD == 1 ? "+" : "-")
+    if f.ote and not hideReg
+        t += (t == "" ? "" : " ") + "OTE"
+    t
+
+// [OTEF] swings of the chart timeframe for the leg origin
+var float otePL = na
+var int otePLb = na
+var float otePH = na
+var int otePHb = na
+float otePivL = ta.pivotlow(low, pivL, pivR)
+float otePivH = ta.pivothigh(high, pivL, pivR)
+if not na(otePivL)
+    otePL := otePivL
+    otePLb := bar_index - pivR
+if not na(otePivH)
+    otePH := otePivH
+    otePHb := bar_index - pivR
+
+// [OTEF] leg of a new FVG (candles [3] to [1]): origin = the lowest low (bullish) / highest high (bearish) from the
+// last swing before the FVG, extreme = the high / low of the FVG candles
+method oteInit(FVG f) =>
+    if oteFvg
+        int n = 3
+        if f.islong and not na(otePLb) and otePLb <= bar_index - 3
+            n := math.min(bar_index - otePLb, 4000)
+        else if not f.islong and not na(otePHb) and otePHb <= bar_index - 3
+            n := math.min(bar_index - otePHb, 4000)
+        float lo = low[1]
+        float hi = high[1]
+        for k = 1 to n
+            if f.islong
+                lo := math.min(lo, low[k])
+            else
+                hi := math.max(hi, high[k])
+        if f.islong
+            f.oLo := lo
+            f.oHi := math.max(high[1], high[2], high[3])
+        else
+            f.oHi := hi
+            f.oLo := math.min(low[1], low[2], low[3])
+
+// [OTEF] once per bar for a live FVG: true on the bar it retraces into the FVG while it matches the OTE band
+method oteFvgStep(FVG f) =>
+    bool hit = false
+    if oteFvg and not f.ote and not na(f.oLo) and not na(f.oHi)
+        float r = f.oHi - f.oLo
+        if r > 0 and barstate.isconfirmed
+            float bLo = f.islong ? f.oHi - oteMax * r : f.oLo + oteMin * r
+            float bHi = f.islong ? f.oHi - oteMin * r : f.oLo + oteMax * r
+            bool m = oteMode == "Overlap" ? f.hi >= bLo and f.lo <= bHi
+                 : oteMode == "Fully inside" ? f.lo >= bLo and f.hi <= bHi
+                 : f.ce >= bLo and f.ce <= bHi
+            bool tap = f.islong ? low <= f.hi : high >= f.lo
+            if m and tap
+                f.ote := true
+                hit := true
+        // keep extending the leg AFTER evaluating this bar
+        if f.islong
+            f.oHi := math.max(f.oHi, high)
+        else
+            f.oLo := math.min(f.oLo, low)
+    hit
 
 method kill(FVG f) =>
     if not na(f)
@@ -609,7 +690,7 @@ method restore(FVG f) =>
             f.rect.set_bgcolor(f.bgColor())
             f.rect.set_border_color(f.lnColor())
             f.rect.set_border_width(f.bw())
-            f.rect.set_text(f.aplus and lblAp and not hideReg ? "A+" : "")
+            f.rect.set_text(fvgLbl(f))
             f.rect.set_right(f.endsAt())
             f.rect.set_extend((f.isifp or f.isfp) ? extend.right : extend.none)
     true
@@ -900,7 +981,7 @@ if not na(deShP) and close > deShP
             if f.sbar >= deLastSsl and not f.aplus
                 f.aplus := true
                 if not na(f.rect) and not f.kept and lblAp and not hideReg
-                    f.rect.set_text("A+")
+                    f.rect.set_text(fvgLbl(f))
     deDir := 1
     deShP := na
 if not na(deSlP) and close < deSlP
@@ -918,7 +999,7 @@ if not na(deSlP) and close < deSlP
             if f.sbar >= deLastBsl and not f.aplus
                 f.aplus := true
                 if not na(f.rect) and not f.kept and lblAp and not hideReg
-                    f.rect.set_text("A+")
+                    f.rect.set_text(fvgLbl(f))
     deDir := -1
     deSlP := na
 if not na(deMPH)
@@ -973,6 +1054,7 @@ if true
     if fhi - flo > minfvg and fhi-flo < maxfvg and (not deDisp or deDispOK or isFPFVG())
         f = FVG.new(hi,lo,math.avg(hi,lo),true,timeat(-3))
         f.sbar := bar_index - 3 // [OTE]
+        f.oteInit() // [OTEF]
         f.aplus := deAplus and not na(deMssUpBar) and bar_index - deMssUpBar <= 3 // [DE]
         f.disp := deDispOK // [DE]
         lastlongfvg := f
@@ -999,6 +1081,7 @@ if true
     if fhi - flo > minfvg and fhi - flo < maxfvg and (not deDisp or deDispOK or isFPFVG())
         f = FVG.new(hi,lo,math.avg(hi,lo),false,timeat(-3))
         f.sbar := bar_index - 3 // [OTE]
+        f.oteInit() // [OTEF]
         f.aplus := deAplus and not na(deMssDnBar) and bar_index - deMssDnBar <= 3 // [DE]
         f.disp := deDispOK // [DE]
         lastshortfvg := f
@@ -1027,6 +1110,12 @@ updfvgs(array<FVG> fvgs) =>
             // check if filled
             if not isdone and f.isDone(open,close)
                 f.end := f.endsAt()
+            // [OTEF] retraced into while matching the OTE band of its leg (FVG shown as a plain FVG)
+            if not isdone and na(f.end) and na(f.dup) and f.oteFvgStep() and not na(f.rect) and not f.cand and not f.kept
+                f.rect.set_text(fvgLbl(f))
+                f.rect.set_text_size(ifvgtsz)
+                f.rect.set_text_halign(ifvgha)
+                f.rect.set_text_valign(ifvgva)
             et = f.endsAt()
             if stySeg
                 if na(f.hiln)
@@ -1048,8 +1137,8 @@ updfvgs(array<FVG> fvgs) =>
                     xloc = xloc.bar_time,
                     extend = (f.isifp or f.isfp) ? extend.right : extend.none,
                     border_style = line.style_solid)
-                if f.aplus and lblAp and not hideReg
-                    f.rect.set_text("A+")
+                if fvgLbl(f) != ""
+                    f.rect.set_text(fvgLbl(f))
                     f.rect.set_text_size(ifvgtsz)
                     f.rect.set_text_halign(ifvgha)
                     f.rect.set_text_valign(ifvgva)
@@ -1835,7 +1924,8 @@ brkTag(FVG f, Breaker b, box ib) =>
         if not na(ib)
             ib.set_text_formatting(text.format_bold)
         else if na(f.end) and not f.cand and not f.kept and not (f.aplus and lblAp) and not na(f.rect)
-            f.rect.set_text(f.mbD != 0 ? (b.dir == 1 ? "Mb+" : "Mb-") : (b.dir == 1 ? "b+" : "b-"))
+            f.lblD := b.dir
+            f.rect.set_text(fvgLbl(f))
             f.rect.set_text_size(ifvgtsz)
             f.rect.set_text_halign(ifvgha)
             f.rect.set_text_valign(ifvgva)
@@ -2019,7 +2109,8 @@ mbTag(FVG f, MBlock b, box ib, int which) =>
         else
             f.mbD := b.dir
             if na(f.end) and not f.cand and not f.kept and not (f.aplus and lblAp) and not na(f.rect)
-                f.rect.set_text(f.brk ? (b.dir == 1 ? "Mb+" : "Mb-") : (b.dir == 1 ? "M+" : "M-"))
+                f.lblD := b.dir
+                f.rect.set_text(fvgLbl(f))
                 f.rect.set_text_size(ifvgtsz)
                 f.rect.set_text_halign(ifvgha)
                 f.rect.set_text_valign(ifvgva)

@@ -2,7 +2,7 @@
 // FVGSIFVGOTE - Fair value gaps, 1st presented FVGs, inverse FVGs (IFVG) and ICT OTE, for NinjaTrader 8
 // ---------------------------------------------------------------------------------------------------------------------
 // Port of the TradingView Pine Script v6 indicator "FVGs+IFVG+OTE5" by franjballest
-// (source file FVGS+IFVG+OTE.txt, md5 d5c4461b0cfb5612a8ea566d3e950448). Mozilla Public License 2.0, as the original.
+// (source file FVGS+IFVG+OTE.txt, md5 293b404f326300851283fa50d741890f). Mozilla Public License 2.0, as the original.
 //
 // What it draws: FVG boxes (or no-fill boxes, or hi / lo / C.E. segments) with C.E. lines, the 1st presented FVG of the
 // session open (New York 09:30, or Madrid 09:00 for DAX) and its optional inverse, wick C.E. segments, IFVG candidates
@@ -135,6 +135,9 @@ namespace NinjaTrader.NinjaScript.Indicators
             public Fvg dup;
             public bool cand, own, shown, aplus, disp, brk;
             public int brkD, mbD;
+            public int lblD;                       // direction of the b / M / Mb label
+            public bool ote;                       // [OTEF] OTE FVG
+            public double oLo = double.NaN, oHi = double.NaN; // [OTEF] leg low / high
         }
 
         private sealed class PivSet
@@ -252,6 +255,8 @@ namespace NinjaTrader.NinjaScript.Indicators
         private double deShP, deSlP;
         private int deDir;
         private int? deMssUpBar, deMssDnBar, deChochUp, deChochDn;
+        private double otePL = double.NaN, otePH = double.NaN; // [OTEF] last chart swings
+        private int otePLb = -1, otePHb = -1;
         private double hsSh, hsSl;
         private int hsD;
         private bool deHtfUse;
@@ -376,6 +381,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                 IfvgTextHAlign = FioHAlign.Right;
                 IfvgTextVAlign = FioVAlign.Center;
                 DetectOte = true;
+                FlagOteFvgs = true;
                 AlertOnlyOte = false;
                 OteSignals = false;
                 OteLower = 0.62;
@@ -1139,6 +1145,74 @@ namespace NinjaTrader.NinjaScript.Indicators
 
         private int Bw(Fvg f) { return FlagDispFvgs && f.disp ? FlagDispWidth : 1; }
 
+        // label of a plain FVG box: A+, or the breaker / mitigation block tag (b+, M-, Mb+...), plus OTE
+        private string FvgLbl(Fvg f)
+        {
+            string t = "";
+            if (f.aplus && LabelAPlus)
+                t = hideReg ? "" : "A+";
+            else if (f.brk || f.mbD != 0)
+                t = (f.brk && f.mbD != 0 ? "Mb" : f.brk ? "b" : "M") + (f.lblD == 1 ? "+" : "-");
+            if (f.ote && !hideReg)
+                t += (t == "" ? "" : " ") + "OTE";
+            return t;
+        }
+
+        // [OTEF] leg of a new FVG (candles [3] to [1]): origin = the lowest low (bullish) / highest high (bearish)
+        // from the last swing before the FVG, extreme = the high / low of the FVG candles
+        private void OteInit(Fvg f)
+        {
+            if (!FlagOteFvgs) return;
+            int n = 3;
+            if (f.islong && otePLb >= 0 && otePLb <= bi - 3) n = Math.Min(bi - otePLb, 4000);
+            else if (!f.islong && otePHb >= 0 && otePHb <= bi - 3) n = Math.Min(bi - otePHb, 4000);
+            n = Math.Min(n, bi);
+            double lo = Lp(1), hi = Hp(1);
+            for (int k = 1; k <= n; k++)
+            {
+                if (f.islong) lo = Math.Min(lo, Lp(k));
+                else hi = Math.Max(hi, Hp(k));
+            }
+            if (f.islong)
+            {
+                f.oLo = lo;
+                f.oHi = Math.Max(Hp(1), Math.Max(Hp(2), Hp(3)));
+            }
+            else
+            {
+                f.oHi = hi;
+                f.oLo = Math.Min(Lp(1), Math.Min(Lp(2), Lp(3)));
+            }
+        }
+
+        // [OTEF] once per bar for a live FVG: true on the bar it retraces into the FVG while it matches the OTE band
+        private bool OteFvgStep(Fvg f)
+        {
+            bool hit = false;
+            if (FlagOteFvgs && !f.ote && !double.IsNaN(f.oLo) && !double.IsNaN(f.oHi))
+            {
+                double r = f.oHi - f.oLo;
+                if (r > 0)
+                {
+                    double bLo = f.islong ? f.oHi - OteUpper * r : f.oLo + OteLower * r;
+                    double bHi = f.islong ? f.oHi - OteLower * r : f.oLo + OteUpper * r;
+                    bool m = OteMatch == FioOteMode.Overlap ? f.hi >= bLo && f.lo <= bHi
+                        : OteMatch == FioOteMode.FullyInside ? f.lo >= bLo && f.hi <= bHi
+                        : f.ce >= bLo && f.ce <= bHi;
+                    bool tap = f.islong ? bl <= f.hi : bh >= f.lo;
+                    if (m && tap)
+                    {
+                        f.ote = true;
+                        hit = true;
+                    }
+                }
+                // keep extending the leg AFTER evaluating this bar
+                if (f.islong) f.oHi = Math.Max(f.oHi, bh);
+                else f.oLo = Math.Min(f.oLo, bl);
+            }
+            return hit;
+        }
+
         private void Kill(Fvg f)
         {
             if (f == null) return;
@@ -1241,7 +1315,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                     r.Bg = BgColor(f);
                     r.Bd = LnColor(f);
                     r.Bw = Bw(f);
-                    r.Txt = f.aplus && LabelAPlus && !hideReg ? "A+" : "";
+                    r.Txt = FvgLbl(f);
                     r.T2 = EndsAt(f);
                     SetExt(r, f.isifp || f.isfp);
                 }
@@ -1515,7 +1589,17 @@ namespace NinjaTrader.NinjaScript.Indicators
             {
                 Fvg f = fvgs[i];
                 // check if filled
+                bool isdone = f.end.HasValue;
                 if (!f.end.HasValue && IsDone(f, bo, bc)) f.end = EndsAt(f);
+                // [OTEF] retraced into while matching the OTE band of its leg (FVG shown as a plain FVG)
+                if (!isdone && !f.end.HasValue && f.dup == null && OteFvgStep(f) && f.rect != null && !f.cand && !f.kept)
+                {
+                    f.rect.Txt = FvgLbl(f);
+                    f.rect.Ts = ifvgTs;
+                    f.rect.Ha = ifvgHa;
+                    f.rect.Va = ifvgVa;
+                    Touch(f.rect);
+                }
                 DateTime et = EndsAt(f);
                 bool ext = f.isifp || f.isfp;
                 if (stySeg)
@@ -1538,9 +1622,9 @@ namespace NinjaTrader.NinjaScript.Indicators
                     f.rect.Bd = LnColor(f);
                     f.rect.Bw = Bw(f);
                     if (ext) SetExt(f.rect, true);
-                    if (f.aplus && LabelAPlus && !hideReg)
+                    if (FvgLbl(f) != "")
                     {
-                        f.rect.Txt = "A+";
+                        f.rect.Txt = FvgLbl(f);
                         f.rect.Ts = ifvgTs;
                         f.rect.Ha = ifvgHa;
                         f.rect.Va = ifvgVa;
@@ -2162,7 +2246,8 @@ namespace NinjaTrader.NinjaScript.Indicators
                 }
                 else if (!f.end.HasValue && !f.cand && !f.kept && !(f.aplus && LabelAPlus) && f.rect != null)
                 {
-                    f.rect.Txt = f.mbD != 0 ? (b.dir == 1 ? "Mb+" : "Mb-") : (b.dir == 1 ? "b+" : "b-");
+                    f.lblD = b.dir;
+                    f.rect.Txt = FvgLbl(f);
                     f.rect.Ts = ifvgTs;
                     f.rect.Ha = ifvgHa;
                     f.rect.Va = ifvgVa;
@@ -2199,7 +2284,8 @@ namespace NinjaTrader.NinjaScript.Indicators
                     f.mbD = b.dir;
                     if (!f.end.HasValue && !f.cand && !f.kept && !(f.aplus && LabelAPlus) && f.rect != null)
                     {
-                        f.rect.Txt = f.brk ? (b.dir == 1 ? "Mb+" : "Mb-") : (b.dir == 1 ? "M+" : "M-");
+                        f.lblD = b.dir;
+                        f.rect.Txt = FvgLbl(f);
                         f.rect.Ts = ifvgTs;
                         f.rect.Ha = ifvgHa;
                         f.rect.Va = ifvgVa;
@@ -2475,7 +2561,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                         if (deLastSsl.HasValue && f.sbar >= deLastSsl.Value && !f.aplus)
                         {
                             f.aplus = true;
-                            if (f.rect != null && !f.kept && LabelAPlus && !hideReg) BText(f.rect, "A+");
+                            if (f.rect != null && !f.kept && LabelAPlus && !hideReg) BText(f.rect, FvgLbl(f));
                         }
                     }
                 }
@@ -2498,7 +2584,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                         if (deLastBsl.HasValue && f.sbar >= deLastBsl.Value && !f.aplus)
                         {
                             f.aplus = true;
-                            if (f.rect != null && !f.kept && LabelAPlus && !hideReg) BText(f.rect, "A+");
+                            if (f.rect != null && !f.kept && LabelAPlus && !hideReg) BText(f.rect, FvgLbl(f));
                         }
                     }
                 }
@@ -2523,6 +2609,14 @@ namespace NinjaTrader.NinjaScript.Indicators
             {
                 hasfp = false;
                 hasifp = false;
+            }
+
+            // ---- [OTEF] chart swings for the leg origin of new FVGs
+            {
+                double pl = PivLo(b0, bi, SwingPivotLeft, SwingPivotRight);
+                double ph = PivHi(b0, bi, SwingPivotLeft, SwingPivotRight);
+                if (!double.IsNaN(pl)) { otePL = pl; otePLb = bi - SwingPivotRight; }
+                if (!double.IsNaN(ph)) { otePH = ph; otePHb = bi - SwingPivotRight; }
             }
 
             // ---- FVG detection (candles [1], [2], [3])
@@ -2550,6 +2644,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                         f.islong = true;
                         f.start = Tm(3);
                         f.sbar = bi - 3;
+                        OteInit(f); // [OTEF]
                         f.aplus = APlusSetups && deMssUpBar.HasValue && bi - deMssUpBar.Value <= 3;
                         f.disp = deDispOK;
                         lastlongfvg = f;
@@ -2572,6 +2667,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                         f.islong = false;
                         f.start = Tm(3);
                         f.sbar = bi - 3;
+                        OteInit(f); // [OTEF]
                         f.aplus = APlusSetups && deMssDnBar.HasValue && bi - deMssDnBar.Value <= 3;
                         f.disp = deDispOK;
                         lastshortfvg = f;
@@ -3438,6 +3534,10 @@ namespace NinjaTrader.NinjaScript.Indicators
         [NinjaScriptProperty]
         [Display(Name = "Detect OTE IFVGs", GroupName = "IFVG + OTE (ICT Optimal Trade Entry)", Order = 601, Description = "Needs IFVGs. Flags a confirmed IFVG as an OTE IFVG when it matches the OTE band.")]
         public bool DetectOte { get; set; }
+
+        [NinjaScriptProperty]
+        [Display(Name = "Flag OTE FVGs", GroupName = "IFVG + OTE (ICT Optimal Trade Entry)", Order = 600, Description = "Plain FVGs too: the leg runs from the last swing low (bullish FVG) / high (bearish FVG) before the FVG to the highest high / lowest low since. When price retraces into the FVG while it matches the OTE band of that leg (retracement levels and match below), the FVG is labeled OTE. Chart timeframe swings (Swing pivot left / right); box styles only.")]
+        public bool FlagOteFvgs { get; set; }
 
         [NinjaScriptProperty]
         [Display(Name = "Alert only OTE", GroupName = "IFVG + OTE (ICT Optimal Trade Entry)", Order = 602, Description = "Suppress the regular IFVG alerts; only OTE IFVG alerts fire.")]

@@ -52,7 +52,7 @@ The settings dialog has seven sections, ordered so that what to draw and which F
 | 1st Presented FVGs | `fpfvgtime` \[0930\], `tz` \[Auto\], `nfp` keep \[6\]; day / week / inverse colors; `doifp` \[off\] | Session open for the 1PFVG; the week variant (Monday) has its own color. |
 | Wick Settings | `nwicks` \[30\], `minwick` \[20\], `wickdx` \[0 = auto\], style, color, `dowickalert` | Wick C.E. segments and their bounce alerts. |
 | IFVG Settings | Alerts, signals, labels; label parts `lblTf` OTE TF, `lblSign` + / -, `lblAp` A+ \[all on\]; `keepIFVG` + `keepMax` \[on / 20\]; `deConf` IFVG confirmation \[Close\]; `deInv` inversion rules \[off\], `deMaxInv` \[1\], `deDead` invalidated IFVG \[Fade\] + color; `ifvgswings` \[off\], significant swing, swing labels; `pivL` / `pivR` \[10 / 3\]; `atrLen` \[14\], `minATR` \[4\]; IFVG colors, transparency, text size and alignment | `ifvgswings` switches from the close-mode logic to the swing logic. `pivL` / `pivR` also set the pivots that find the leg before the FVG for OTE. |
-| IFVG + OTE | `useOTE`, `oteOnly`, `showOTEsig`; `oteMin` / `oteMax` \[0.62 / 0.79\], `oteMode` \[Overlap\]; prior-leg rejection (`oteRej`, `oteRejAny`, `oteRejCap`); `oteHtf1`, `oteHtf2`, `oteHtfL` / `oteHtfR` \[5 / 2\]; band draw, offset \[5\], width \[8\]; band, border and text colors | `oteMode` is Overlap, Fully inside or C.E. inside. The band is drawn `oteOffset` candles right of the last candle and is `oteWidth` candles wide. |
+| IFVG + OTE | `oteFvg` \[on\], `useOTE`, `oteOnly`, `showOTEsig`; `oteMin` / `oteMax` \[0.62 / 0.79\], `oteMode` \[Overlap\]; prior-leg rejection (`oteRej`, `oteRejAny`, `oteRejCap`); `oteHtf1`, `oteHtf2`, `oteHtfL` / `oteHtfR` \[5 / 2\]; band draw, offset \[5\], width \[8\]; band, border and text colors | `oteMode` is Overlap, Fully inside or C.E. inside. The band is drawn `oteOffset` candles right of the last candle and is `oteWidth` candles wide. |
 | Delivery Engine (Nuno) | `deDisp` displacement FVGs only \[off\], `deDispType` \[Open to Close\], `deStdLen` / `deStdX` \[100 / 4\], `deDispBar` \[off\] + color, `deFlag` + `deFlagW` \[off / 3\]; `deAplus` A+ setups \[off\], `deLiqLen` / `deSeqWin` \[5 / 50\], `deMssLen` \[3\], `deMssX` / `deMssWin` \[2 / 2\], `deKz` \[on\], `deHtfOn` + `deHtf` \[off / 60\] | Features of Nuno's Delivery Engine V20. See "Delivery Engine features". |
 
 Two values are not inputs but globals next to the filter inputs: `flN = 1` (FVGs shown after a sweep) and `flWin = 25` (the mid-arm window, as % of the arm length on each side of its middle).
@@ -78,6 +78,8 @@ One object per detected FVG, whether or not it is drawn.
 | `cand` | Current IFVG candidate, not yet released. |
 | `own` | The box exists only because of the IFVG (the FVG itself is not drawn). |
 | `shown` | The FVG is in the drawn lists. |
+| `lblD` | Direction of the `b` / `M` / `Mb` label (the tagging breaker or block). |
+| `ote`, `oLo`, `oHi` | \[OTEF\] OTE FVG flag, and the leg low / high (origin and running extreme). |
 
 ### FltState
 
@@ -264,6 +266,10 @@ After confirmation, the leg is measured from its origin to the extreme reached s
 | Tap | `high >= zlo` | `low <= zhi` |
 
 On higher timeframes the origin is moved to the latest higher-timeframe pivot when that pivot is beyond the retrace extreme. The IFVG matches the band according to `oteMode`: any overlap, fully inside, or its midpoint inside. The signal fires when the IFVG matches and price taps back into it on a later bar than the confirmation, and not if the signal already fired for this IFVG. The extreme is updated after the bar is evaluated, so the bar being tested never defines its own leg.
+
+### OTE FVGs (`oteFvg`)
+
+Plain FVGs are flagged with chart-timeframe swings only. `otePL` / `otePH` keep the last pivot low / high of `pivL` / `pivR` (with their bars). When an FVG is created, `oteInit` sets the leg: for a bullish FVG, `oLo` is the lowest low from the last pivot low at or before the FVG start to candle \[1\] (the FVG candles alone when there is none) and `oHi` the highest high of the three FVG candles; mirrored for a bearish FVG. In `updfvgs`, `oteFvgStep` runs once per bar for every live FVG that is not a merged duplicate: the band is `oHi - oteMax * r` to `oHi - oteMin * r` (bullish) or `oLo + oteMin * r` to `oLo + oteMax * r` (bearish), matched with `oteMode` as for IFVGs; on a confirmed bar where the FVG matches and price taps into it, `ote` is set (once). The extreme is extended after the evaluation. The box text is built by `fvgLbl`: `A+`, or the `b` / `M` / `Mb` tag with the sign of `lblD`, then `OTE`; it is used wherever a plain FVG box gets its text (creation, A+ upgrade, breaker / block tags, restore after an IFVG candidate), so a restored box keeps its tags.
 
 ### Bands and signals
 

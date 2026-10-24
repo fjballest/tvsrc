@@ -13,7 +13,7 @@
  *   Mb+/Mb-, inheritance of the tags by IFVGs) and LONG / SHORT / OTE signal markers.
  *
  *   Port of the TradingView Pine Script v6 indicator "FVGS+IFVG+OTE.txt"
- *   (md5 d5c4461b0cfb5612a8ea566d3e950448, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
+ *   (md5 293b404f326300851283fa50d741890f, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
  *   input variable names (camelCase). See the design document (d.md) and user manual (m.md) for the logic.
  *
  * How to install
@@ -119,7 +119,7 @@ const PARAMS = [
     ["ifvgha", "e", "right", { left: "left", center: "center", right: "right" }],
     ["ifvgva", "e", "center", { top: "top", center: "center", bottom: "bottom" }],
     // IFVG + OTE
-    ["useOTE", "b", true], ["oteOnly", "b", false], ["showOTEsig", "b", false],
+    ["oteFvg", "b", true], ["useOTE", "b", true], ["oteOnly", "b", false], ["showOTEsig", "b", false],
     ["oteMin", "n", 0.62, [0.01, 0]], ["oteMax", "n", 0.79, [0.01, 0]],
     ["oteMode", "e", "overlap", { overlap: "Overlap", fullyInside: "Fully inside", ceInside: "C.E. inside" }],
     ["oteRej", "b", true], ["oteRejAny", "b", false], ["oteRejCap", "b", false],
@@ -362,6 +362,7 @@ class FVGSIFVGOTE {
         this.wicks = [];
         // FVGs
         this.lfvgs = []; this.sfvgs = []; this.fpfvgs = []; this.keptIf = []; this.pendF = [];
+        this.otePL = null; this.otePLb = null; this.otePH = null; this.otePHb = null; // [OTEF] last chart swings
         this.fs = { post: 1000000, stH: null, stL: null, stHbar: null, stLbar: null };
         this.hasfp = false; this.hasifp = false;
         // DE
@@ -647,7 +648,7 @@ class FVGSIFVGOTE {
                 for (const f of this.lfvgs) {
                     if (f.sbar !== null && this.deLastSsl !== null && f.sbar >= this.deLastSsl && !f.aplus) {
                         f.aplus = true;
-                        if (f.rect && !f.kept && P.lblAp && !this.hideReg) f.rect.text = "A+";
+                        if (f.rect && !f.kept && P.lblAp && !this.hideReg) f.rect.text = this.fvgLbl(f);
                     }
                 }
             }
@@ -666,7 +667,7 @@ class FVGSIFVGOTE {
                 for (const f of this.sfvgs) {
                     if (f.sbar !== null && this.deLastBsl !== null && f.sbar >= this.deLastBsl && !f.aplus) {
                         f.aplus = true;
-                        if (f.rect && !f.kept && P.lblAp && !this.hideReg) f.rect.text = "A+";
+                        if (f.rect && !f.kept && P.lblAp && !this.hideReg) f.rect.text = this.fvgLbl(f);
                     }
                 }
             }
@@ -677,6 +678,14 @@ class FVGSIFVGOTE {
         if (deMPL !== null) this.deSlP = deMPL;
         if (dePH !== null) { this.deBsl.push(dePH); if (this.deBsl.length > 50) this.deBsl.shift(); }
         if (dePL !== null) { this.deSsl.push(dePL); if (this.deSsl.length > 50) this.deSsl.shift(); }
+
+        // ---- [OTEF] chart swings for the leg origin of new FVGs
+        {
+            const pl = pivotLow(this.L, j, P.pivL, P.pivR);
+            const ph = pivotHigh(this.H, j, P.pivL, P.pivR);
+            if (pl !== null) { this.otePL = pl; this.otePLb = j - P.pivR; }
+            if (ph !== null) { this.otePH = ph; this.otePHb = j - P.pivR; }
+        }
 
         // ---- FVGs
         if (Math.floor(this.loc.mod / 60) !== this.fph) { this.hasfp = false; this.hasifp = false; }
@@ -689,6 +698,7 @@ class FVGSIFVGOTE {
                 if (fhi - flo > P.minfvg && fhi - flo < P.maxfvg && (!P.deDisp || deDispOK || isfpNow)) {
                     const f = this.newFVG(hi, lo, avg(hi, lo), islong, j - 3);
                     f.sbar = j - 3;
+                    this.oteInit(f); // [OTEF]
                     const mssBar = islong ? this.deMssUpBar : this.deMssDnBar;
                     f.aplus = P.deAplus && mssBar !== null && j - mssBar <= 3;
                     f.disp = deDispOK;
@@ -1022,8 +1032,55 @@ class FVGSIFVGOTE {
         return {
             hi, lo, ce, islong, start, end: null, rect: null, celine: null, isfp: false, iswfp: false, isifp: false,
             sbar: null, hiln: null, loln: null, kept: false, kdir: 0, dup: null, cand: false, own: false,
-            shown: false, aplus: false, disp: false, brk: false, brkD: 0, mbD: 0
+            shown: false, aplus: false, disp: false, brk: false, brkD: 0, mbD: 0,
+            lblD: 0, ote: false, oLo: null, oHi: null
         };
+    }
+    // label of a plain FVG box: A+, or the breaker / mitigation block tag (b+, M-, Mb+...), plus OTE
+    fvgLbl(f) {
+        let t = "";
+        if (f.aplus && this.P.lblAp) t = this.hideReg ? "" : "A+";
+        else if (f.brk || f.mbD !== 0) t = (f.brk && f.mbD !== 0 ? "Mb" : f.brk ? "b" : "M") + (f.lblD === 1 ? "+" : "-");
+        if (f.ote && !this.hideReg) t += (t === "" ? "" : " ") + "OTE";
+        return t;
+    }
+    // [OTEF] leg of a new FVG (candles [3] to [1]): origin = the lowest low (bullish) / highest high (bearish)
+    // from the last swing before the FVG, extreme = the high / low of the FVG candles
+    oteInit(f) {
+        if (!this.P.oteFvg) return;
+        const j = this.j;
+        let n = 3;
+        if (f.islong && this.otePLb !== null && this.otePLb <= j - 3) n = Math.min(j - this.otePLb, 4000);
+        else if (!f.islong && this.otePHb !== null && this.otePHb <= j - 3) n = Math.min(j - this.otePHb, 4000);
+        n = Math.min(n, j);
+        let lo = this.loB(1), hi = this.hiB(1);
+        for (let k = 1; k <= n; k++) {
+            if (f.islong) lo = Math.min(lo, this.loB(k));
+            else hi = Math.max(hi, this.hiB(k));
+        }
+        if (f.islong) { f.oLo = lo; f.oHi = Math.max(this.hiB(1), this.hiB(2), this.hiB(3)); }
+        else { f.oHi = hi; f.oLo = Math.min(this.loB(1), this.loB(2), this.loB(3)); }
+    }
+    // [OTEF] once per bar for a live FVG: true on the bar it retraces into the FVG while it matches the OTE band
+    oteFvgStep(f) {
+        const P = this.P;
+        let hit = false;
+        if (P.oteFvg && !f.ote && f.oLo !== null && f.oHi !== null) {
+            const r = f.oHi - f.oLo;
+            if (r > 0) {
+                const bLo = f.islong ? f.oHi - P.oteMax * r : f.oLo + P.oteMin * r;
+                const bHi = f.islong ? f.oHi - P.oteMin * r : f.oLo + P.oteMax * r;
+                const m = P.oteMode === "overlap" ? f.hi >= bLo && f.lo <= bHi
+                    : P.oteMode === "fullyInside" ? f.lo >= bLo && f.hi <= bHi
+                    : f.ce >= bLo && f.ce <= bHi;
+                const tap = f.islong ? this.l <= f.hi : this.h >= f.lo;
+                if (m && tap) { f.ote = true; hit = true; }
+            }
+            // keep extending the leg AFTER evaluating this bar
+            if (f.islong) f.oHi = Math.max(f.oHi, this.h);
+            else f.oLo = Math.min(f.oLo, this.l);
+        }
+        return hit;
     }
     longFVGHL() {
         const o1 = this.opB(1), c1 = this.clB(1), l1 = this.loB(1);
@@ -1110,7 +1167,7 @@ class FVGSIFVGOTE {
                 f.rect.bg = this.bgColor(f);
                 f.rect.border = this.lnColor(f);
                 f.rect.bw = this.bw(f);
-                f.rect.text = f.aplus && this.P.lblAp && !this.hideReg ? "A+" : "";
+                f.rect.text = this.fvgLbl(f);
                 f.rect.right = this.endsAt(f);
                 f.rect.extend = (f.isifp || f.isfp) ? "right" : "none";
             }
@@ -1274,6 +1331,11 @@ class FVGSIFVGOTE {
             for (const f of fvgs) {
                 const isdone = f.end !== null;
                 if (!isdone && this.isDone(f, this.o, this.c)) f.end = this.endsAt(f);
+                // [OTEF] retraced into while matching the OTE band of its leg (FVG shown as a plain FVG)
+                if (!isdone && f.end === null && f.dup === null && this.oteFvgStep(f) && f.rect && !f.cand && !f.kept) {
+                    f.rect.text = this.fvgLbl(f);
+                    this.textFmt(f.rect);
+                }
                 const et = this.endsAt(f);
                 const ext = (f.isifp || f.isfp) ? "right" : "none";
                 if (this.stySeg) {
@@ -1284,8 +1346,8 @@ class FVGSIFVGOTE {
                 } else if (!f.rect) {
                     f.rect = this.g.box({ left: f.start, top: f.hi, right: et, bottom: f.lo, bg: this.bgColor(f),
                         border: this.lnColor(f), bw: this.bw(f), extend: ext, bstyle: "solid" });
-                    if (f.aplus && P.lblAp && !this.hideReg) {
-                        f.rect.text = "A+";
+                    if (this.fvgLbl(f) !== "") {
+                        f.rect.text = this.fvgLbl(f);
                         this.textFmt(f.rect);
                     }
                 }
@@ -1664,7 +1726,8 @@ class FVGSIFVGOTE {
             f.brkD = b.dir;
             if (ib) ib.bold = true;
             else if (f.end === null && !f.cand && !f.kept && !(f.aplus && P.lblAp) && f.rect) {
-                f.rect.text = f.mbD !== 0 ? (b.dir === 1 ? "Mb+" : "Mb-") : (b.dir === 1 ? "b+" : "b-");
+                f.lblD = b.dir;
+                f.rect.text = this.fvgLbl(f);
                 this.textFmt(f.rect);
             }
             if (!b.tagged) this.zoneDraw(b, false);
@@ -1688,7 +1751,8 @@ class FVGSIFVGOTE {
             } else {
                 f.mbD = b.dir;
                 if (f.end === null && !f.cand && !f.kept && !(f.aplus && P.lblAp) && f.rect) {
-                    f.rect.text = f.brk ? (b.dir === 1 ? "Mb+" : "Mb-") : (b.dir === 1 ? "M+" : "M-");
+                    f.lblD = b.dir;
+                    f.rect.text = this.fvgLbl(f);
                     this.textFmt(f.rect);
                 }
             }

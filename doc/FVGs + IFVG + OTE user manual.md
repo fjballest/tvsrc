@@ -97,6 +97,7 @@ IFVG labels are written inside the box, black, small, right-aligned and vertical
 | `IFVG- OTE 3m+15m` | OTE matched on more than one timeframe on the same bar |
 | `... A+` | Delivery Engine A+ setup |
 | `A+` on a plain FVG box | A+ FVG (born from an MSS with displacement after a sweep) |
+| `OTE` on a plain FVG box | OTE FVG (section 8, **Flag OTE FVGs**); added after `A+`, `b±`, `M±` or `Mb±`, for example `b+ OTE` |
 
 The parts can be switched off with **Label parts: OTE TF**, **+ / -** and **A+**. With all three off an OTE IFVG reads `IFVG OTE`. **Labels** off hides all IFVG text (it is drawn fully transparent).
 
@@ -277,8 +278,13 @@ The ladder is 3m (or lower), 5m, 15m, 1h, 4h, D. The chart sits on the highest r
 
 The bands are drawn to the right of the last candle, **start** (5) candles after it and **width** (8) candles wide, and move with the chart. Up to two bands per timeframe can exist for each IFVG under watch (the retrace band and the prior-leg rejection band), and the bands of the bullish and the bearish candidate share the same space, so read the timeframe tag on each band. Bands are removed when the IFVG is cancelled or replaced.
 
+### OTE FVGs
+
+With **Flag OTE FVGs** on (default), plain FVGs are flagged too. The leg of a bullish FVG runs from the lowest low since the last swing low before the FVG (pivots of **Swing pivot left / right**, chart timeframe only) to the highest high since the FVG; for a bearish FVG, from the highest high since the last swing high to the lowest low since. When price retraces into the FVG (a low at or below its high for a bullish FVG, a high at or above its low for a bearish one) while the FVG matches the OTE band of that leg, using the same **OTE retracement** levels and **match** rule as the IFVGs, the FVG is labeled `OTE`. The flag stays until the FVG is mitigated. It only shows on box styles (not Segments), is hidden with the regular FVGs in the `IFVGs` draw modes, and has no band, marker or alert of its own.
+
 ### How to use it
 
+- An OTE FVG is the classic ICT entry: a gap left by the displacement that price retraces into at the 0.62 - 0.79 of the move.
 - An OTE IFVG combines the two ICT ideas: the inversion shows the change in order flow, the OTE says the retracement is at a premium (for shorts) or a discount (for longs).
 - A match on a higher timeframe (for example `OTE 15m` on a 3m chart) carries more weight than a chart-only match.
 - If you only want to be alerted on these, turn on **Alert only OTE**.
@@ -452,6 +458,7 @@ Inputs on one line in the settings dialog are listed together; a field without i
 
 | Label | Default | What it does |
 | --- | --- | --- |
+| Flag OTE FVGs | On | Labels plain FVGs `OTE` when price retraces into them while they match the OTE band of their leg (section 8). |
 | Detect OTE IFVGs | On | Needs **IFVGs**. Flags confirmed IFVGs that match an OTE. |
 | Alert only OTE | Off | Suppress the plain IFVG alerts; only OTE IFVG alerts fire. |
 | Signals | Off | `OTE` diamond markers. |
