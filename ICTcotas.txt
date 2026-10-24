@@ -253,6 +253,9 @@ type Lvl
     box bx = na
     box cebx = na
     int tfm = na      // formation time (close of the last candle of the FVG)
+    line hiln2 = na   // margin layout: links from the last bar to the box (bar index)
+    line loln2 = na
+    line celn2 = na
     line vln = na
 
 var array<Lvl> lvls = array.new<Lvl>()
@@ -315,6 +318,9 @@ method kill(Lvl l) =>
     rmBox(l.bx)
     rmBox(l.cebx)
     rmLine(l.vln)
+    rmLine(l.hiln2)
+    rmLine(l.loln2)
+    rmLine(l.celn2)
     true
 
 tcol(int tfi, int d) =>
@@ -406,14 +412,27 @@ mfCol(int i) =>
                 c += 1
     c
 
-// FVG by timeframe in the right margin: box in its timeframe column, CE box, arrow label, extended levels
+// horizontal line by bar index (margin only, a few bars around the last one)
+mkLineI(line cur, int x1, float p, int x2, color c, string sty, int w) =>
+    line r = cur
+    if na(r)
+        r := line.new(x1, p, x2, p, xloc = xloc.bar_index, color = c, style = sty, width = w)
+    else
+        r.set_xy1(x1, p)
+        r.set_xy2(x2, p)
+        r.set_color(c)
+    r
+
+// FVG by timeframe in the right margin: box in its timeframe column, CE box, arrow label, extended levels.
+// The margin objects are placed by bar index (bar times to the right of the last bar collapse while the
+// market is closed); the extended levels use bar time up to the last bar, then a bar-index link to the box.
 method drawMM(Lvl l) =>
     color c = mfcol(l.tfi - 3, l.dir)
     color bg = mfnofill ? transparent : color.new(c, mftr)
-    int x0 = tright(mfmoff + mfCol(l.tfi - 3) * (mfmw + 1))
-    int x1 = x0 + mfmw * tfms
+    int x0 = bar_index + mfmoff + mfCol(l.tfi - 3) * (mfmw + 1)
+    int x1 = x0 + mfmw
     if na(l.bx)
-        l.bx := box.new(x0, l.hi, x1, l.lo, xloc = xloc.bar_time, border_color = c,
+        l.bx := box.new(x0, l.hi, x1, l.lo, xloc = xloc.bar_index, border_color = c,
              border_style = mfsty, border_width = mfwid, bgcolor = bg)
     else
         l.bx.set_lefttop(x0, l.hi)
@@ -422,25 +441,28 @@ method drawMM(Lvl l) =>
         l.bx.set_bgcolor(bg)
     if mfshowce
         if na(l.cebx)
-            l.cebx := box.new(x0, l.ce, x1, l.ce, xloc = xloc.bar_time, border_color = c,
+            l.cebx := box.new(x0, l.ce, x1, l.ce, xloc = xloc.bar_index, border_color = c,
                  border_style = mfcesty, border_width = mfwid, bgcolor = transparent)
         else
             l.cebx.set_lefttop(x0, l.ce)
             l.cebx.set_rightbottom(x1, l.ce)
             l.cebx.set_border_color(c)
     if mfext
-        int xs = mfextst ? l.t : time - mfextn * tfms
-        l.hiln := mkLine(l.hiln, xs, l.hi, x0, c, mfsty, mfwid)
-        l.loln := mkLine(l.loln, xs, l.lo, x0, c, mfsty, mfwid)
+        int xs = mfextst ? l.t : time[math.min(mfextn, bar_index)]
+        l.hiln := mkLine(l.hiln, xs, l.hi, time, c, mfsty, mfwid)
+        l.loln := mkLine(l.loln, xs, l.lo, time, c, mfsty, mfwid)
+        l.hiln2 := mkLineI(l.hiln2, bar_index, l.hi, x0, c, mfsty, mfwid)
+        l.loln2 := mkLineI(l.loln2, bar_index, l.lo, x0, c, mfsty, mfwid)
         if mfshowce
-            l.celn := mkLine(l.celn, xs, l.ce, x0, c, mfcesty, mfwid)
+            l.celn := mkLine(l.celn, xs, l.ce, time, c, mfcesty, mfwid)
+            l.celn2 := mkLineI(l.celn2, bar_index, l.ce, x0, c, mfcesty, mfwid)
     if mflbl
         float y = mflvert == "High" ? l.hi : mflvert == "Low" ? l.lo : l.ce
         // thin boxes: the timeframe on one line, the arrow on the next
         string tfn = mflshowtf ? mfNames.get(l.tfi - 3) + "\n" : ""
         string txt = tfn + (l.dir == 1 ? "↑" : "↓")
         if na(l.celb)
-            l.celb := label.new(int((x0 + x1) / 2), y, txt, xloc = xloc.bar_time,
+            l.celb := label.new(int((x0 + x1) / 2), y, txt, xloc = xloc.bar_index,
                  style = label.style_label_center, color = transparent, textcolor = c, size = mflsz,
                  text_formatting = lblbold ? text.format_bold : text.format_none)
         else

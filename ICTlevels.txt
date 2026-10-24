@@ -631,6 +631,10 @@ sdCount(int n, bool auto, float base, float u, float ext, int sgn) =>
         r := math.max(n, math.min(reached + 1, 40))
     r
 
+// stddev name: distance from the range edge in whole ranges (step i of u, range r), for example "+0.25", "-1.5"
+sdName(int i, float u, float r, int sgn) =>
+    (sgn > 0 ? "+" : "-") + str.tostring(i * u / r, "#.###")
+
 // ============================================================ zones
 mkZone(string name, ZoneInfo zi = na) =>
     Zone z = Zone.new(name, time, open, high, low, time, time)
@@ -697,16 +701,16 @@ method pmdraw(Zone z, bool auto = false) =>
                 for i = 1 to math.max(nu, nd)
                     if i <= nu
                         [l2, b2] = mkLL(x0, x1, z.hi + i * u, pmcolor, pmpo3sty, pmwid,
-                             "PMKT+" + str.tostring(i), pmcolor, pmlsz)
+                             "PMKT" + sdName(i, u, r, 1), pmcolor, pmlsz)
                         z.sdlines.push(l2)
                         z.sdlabels.push(b2)
-                        z.sdnames.push("+" + str.tostring(i))
+                        z.sdnames.push(sdName(i, u, r, 1))
                     if i <= nd
                         [l3, b3] = mkLL(x0, x1, z.lo - i * u, pmcolor, pmpo3sty, pmwid,
-                             "PMKT-" + str.tostring(i), pmcolor, pmlsz)
+                             "PMKT" + sdName(i, u, r, -1), pmcolor, pmlsz)
                         z.sdlines.push(l3)
                         z.sdlabels.push(b3)
-                        z.sdnames.push("-" + str.tostring(i))
+                        z.sdnames.push(sdName(i, u, r, -1))
         // high and low of the range, red solid lines, whenever quadrants or stddevs are drawn
         bool anyq = not na(z.qlines) and z.qlines.size() > 0
         bool anysd = not na(z.sdlines) and z.sdlines.size() > 0
@@ -1366,17 +1370,17 @@ method rpo3(RTHOG g) =>
         int nd = sdCount(rthogpo3num, rthogauto, pd0, u, g.xlo, -1)
         for i = 1 to math.max(nu, nd)
             if i <= nu
-                [l1, b1] = mkLL(x0, x1, pu0 + i * u, lrgapcolor, rgappo3lnsty, rgapwid, "RTHOG+"
-                     + str.tostring(i), lrgapcolor)
+                [l1, b1] = mkLL(x0, x1, pu0 + i * u, lrgapcolor, rgappo3lnsty, rgapwid, "RTHOG"
+                     + sdName(i, u, gap, 1), lrgapcolor)
                 g.po3lines.push(l1)
                 g.po3labels.push(b1)
-                g.po3names.push("+" + str.tostring(i))
+                g.po3names.push(sdName(i, u, gap, 1))
             if i <= nd
-                [l2, b2] = mkLL(x0, x1, pd0 - i * u, lrgapcolor, rgappo3lnsty, rgapwid, "RTHOG-"
-                     + str.tostring(i), lrgapcolor)
+                [l2, b2] = mkLL(x0, x1, pd0 - i * u, lrgapcolor, rgappo3lnsty, rgapwid, "RTHOG"
+                     + sdName(i, u, gap, -1), lrgapcolor)
                 g.po3lines.push(l2)
                 g.po3labels.push(b2)
-                g.po3names.push("-" + str.tostring(i))
+                g.po3names.push(sdName(i, u, gap, -1))
 
 // opening gap: called from 15 minutes before the open (hint, price = current close)
 // and on the open bar (final, price = open)
@@ -1684,7 +1688,7 @@ drawMonth(int idx, float h, float l, float c, int t, int tc) =>
 
 // ============================================================ RTHOG / premarket stddev labels
 // stddev lines of the RTHOG and the premarket range at almost the same price share one
-// label: "RTHOG+2 PMKT+3". The other label is emptied.
+// label: "RTHOG+0.5 PMKT+1". The other label is emptied.
 combinePo3(RTHOG g, Zone z, float tol) =>
     if not na(g.po3labels) and not na(z.sdlabels) and not na(g.po3names) and not na(z.sdnames)
         for [k, l] in g.po3labels

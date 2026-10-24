@@ -164,7 +164,7 @@ Needs a chart timeframe of 5 minutes or lower.
 - **Pre-mkt hi / Pre-mkt lo** lines and labels, in the session max/min style, from the extreme to the bar that takes it, stopping at the market close (16:15 New York, 17:30 Madrid).
 - For the most recent range (or the last N ranges, setting "quadrants/stddevs for the last"):
   - **Quadrants**: lines at 25%, 50% and 75% of the range, labelled "PMKT dq", "PMKT ce" and "PMKT uq" with the date (for example "PMKT ce 20 Oct"). Drawn only when a quarter of the range is larger than the minimum size (default 20 points, so the range must be over 80 points).
-  - **Standard deviations**: lines above the high and below the low, labelled "PMKT+1", "PMKT-1", "PMKT+2" and so on, 4 per side by default. The step is the range divided by 8, 4, 2 or 1: the first of these that is larger than the minimum size (default 20 points). If even the whole range is not larger than the minimum, no deviations are drawn.
+  - **Standard deviations**: lines above the high and below the low, 4 per side by default. The step is the range divided by 8, 4, 2 or 1: the first of these that is larger than the minimum size (default 20 points). Each label gives the distance from the range edge in whole ranges: "PMKT+1" is one full range above the high, "PMKT-0.5" half a range below the low, "PMKT+0.25" a quarter of a range above, and so on (with a step of 1/8: "PMKT+0.125", "PMKT+0.25", "PMKT+0.375"...). If even the whole range is not larger than the minimum, no deviations are drawn.
   - **PMKT hi / PMKT lo**: whenever any quadrant or deviation line is drawn, the range high and low are also drawn as solid lines in the premarket color (red by default), labelled for example "PMKT hi 20 Oct".
   - These lines start a couple of bars before the end of the range (4 bars on 1m or lower, 2 bars otherwise) and extend to the right margin, but never past the market close of that day.
 
@@ -209,7 +209,7 @@ The regular trading hours opening gap is the range between the settlement of the
   - **CE**: the midpoint of the gap, "RTHOG ce 20 Oct".
   - **Quadrants**: 25% and 75% of the gap, "RTHOG dq" and "RTHOG uq", only when a quarter of the gap is larger than the minimum size (default 25 points, so the gap must be over 100 points).
   - **Octants** (on by default): 1/8, 3/8, 5/8 and 7/8 of the gap, the midpoints between the quadrants, labelled "RTHOG 1/8 20 Oct" and so on, thin lines in the quadrant style. Only on the latest RTHOG, only when an eighth of the gap is larger than the quadrant minimum size (so the gap must be over 200 points with the default 25), and they stop at noon: until noon they follow the right edge, after noon they end there.
-  - **Standard deviations**: "RTHOG+1", "RTHOG-1" and so on above the higher edge and below the lower edge, 4 per side by default, dotted. The step is the gap divided by 8, 4, 2 or 1, the first that is larger than the minimum size (default 25 points).
+  - **Standard deviations**: above the higher edge and below the lower edge, 4 per side by default, dotted. The step is the gap divided by 8, 4, 2 or 1, the first that is larger than the minimum size (default 25 points). As for the premarket range, the label is the distance from the gap edge in whole gaps: "RTHOG+1" one full gap above, "RTHOG-0.5" half a gap below, "RTHOG+1.25" and so on.
   - Optional rectangle between settlement and open.
 - **After the next close**: the gap becomes the previous one. It is redrawn in the "old" color (cyan #17E1DA) and loses its quadrants, octants and deviations, keeping settlement, CE and open.
 - **Older gaps** are reduced to short ticks around the settlement and the open, labelled "rthog.cl", "rthog.ce" and "rthog.op" in black text. With "extend old RTHOG lines" the ticks at the open are extended to the right.
@@ -222,7 +222,7 @@ The RTHOG is a key ICT reference for the cash session: its CE is a frequent reac
 
 ### 4.9 Combined deviation labels (RTHOG and premarket)
 
-When both the current RTHOG and the latest premarket range have deviation lines (5m or lower charts), their labels are compared. When an RTHOG deviation and a premarket deviation are within the tolerance (default 0.05 x daily ATR), one label is shown for both, for example **RTHOG+2 PMKT+3**, placed on the RTHOG line; the premarket line's label is emptied. These confluences are stronger targets than either line alone.
+When both the current RTHOG and the latest premarket range have deviation lines (5m or lower charts), their labels are compared. When an RTHOG deviation and a premarket deviation are within the tolerance (default 0.05 x daily ATR), one label is shown for both, for example **RTHOG+0.5 PMKT+1**, placed on the RTHOG line; the premarket line's label is emptied. These confluences are stronger targets than either line alone.
 
 ### 4.10 EQH and EQL
 
@@ -281,7 +281,7 @@ ICT macros are short windows in which the algorithm is expected to seek liquidit
 | Asia hi, London lo, NY AM hi, NY PM lo... | Untaken session high or low |
 | Pre-mkt hi, Pre-mkt lo | Untaken premarket high or low |
 | PMKT hi / lo / dq / ce / uq + date | Premarket range high, low, 25%, 50%, 75% |
-| PMKT+1, PMKT-1... | Premarket standard deviation projections |
+| PMKT+0.5, PMKT-1... | Premarket standard deviation projections, in whole ranges from the range edge |
 | NDOG 20 Oct.hi / .lo | New day opening gap edges (date of the reopening) |
 | NWOG 18 Oct.hi / .lo | New week opening gap edges |
 | NDOGx3, NWOGx2 | Several gaps combined into one level |
@@ -289,8 +289,8 @@ ICT macros are short windows in which the algorithm is expected to seek liquidit
 | new RTHOG settlement | Settlement of the regular session, gap not yet open |
 | RTHOG hi / lo / ce / dq / uq + date | Edges, midpoint and quadrants of the RTHOG |
 | RTHOG 1/8, 3/8, 5/8, 7/8 + date | Octants of the latest RTHOG, until noon |
-| RTHOG+1, RTHOG-1... | RTHOG standard deviation projections |
-| RTHOG+2 PMKT+3 | An RTHOG deviation and a premarket deviation at the same price |
+| RTHOG+0.25, RTHOG-1.5... | RTHOG standard deviation projections, in whole gaps from the gap edge |
+| RTHOG+0.5 PMKT+1 | An RTHOG deviation and a premarket deviation at the same price |
 | rthog.cl, rthog.ce, rthog.op | Ticks of older RTHOGs: settlement, midpoint, open |
 | EQH, EQL | Untaken equal highs or lows on the chart timeframe |
 | EQH D, EQL D | Untaken equal highs or lows on daily swings |
@@ -435,7 +435,7 @@ Settings are listed in the order they appear in the settings dialog. Several set
 | CE | solid | Style of the 50% line. |
 | stddev | dotted | Style of the deviation lines. |
 | label size | normal | Text size of the PMKT labels. |
-| combine RTHOG labels, tolerance x daily ATR | 0.05 | When an RTHOG deviation and a premarket deviation are within this fraction of the daily ATR(14), one label is shown for both ("RTHOG+2 PMKT+3"). |
+| combine RTHOG labels, tolerance x daily ATR | 0.05 | When an RTHOG deviation and a premarket deviation are within this fraction of the daily ATR(14), one label is shown for both ("RTHOG+0.5 PMKT+1"). |
 
 ### 5.8 Equal Highs / Lows
 

@@ -11,7 +11,7 @@
  *   It draws levels only: no signals, no alerts, no plots.
  *
  *   It is a port of the TradingView Pine Script v6 indicator ICTlevels.txt
- *   (md5 eb1df4d5ef90f25c0f037033555717e9). Parameter names are the Pine variable names and the
+ *   (md5 89f7ef371984d7f2d7205c710f05a38e). Parameter names are the Pine variable names and the
  *   defaults are the Pine defaults; see "ICTlevels user manual.md" for what every level means.
  *
  * How to install
@@ -297,6 +297,11 @@ function sdCount(n, auto, base, u, ext, sgn) {
 }
 
 // stddev step: range / 8, 4, 2 or 1, the first larger than the minimum, else 0
+// stddev name: distance from the range edge in whole ranges (step k of u, range r), for example "+0.25", "-1.5"
+function sdName(k, u, r, sgn) {
+    return (sgn > 0 ? "+" : "-") + String(Math.round(k * u / r * 1000) / 1000);
+}
+
 function sdStep(r, mn) {
     if (r / 8 > mn) return r / 8;
     if (r / 4 > mn) return r / 4;
@@ -1297,13 +1302,13 @@ class ICTlevels {
                         if (k <= nu) {
                             const y = z.hi + k * u;
                             G.line(x0, x1, y, P.pmcolor, P.pmpo3sty, P.pmwid);
-                            sd.push({ y, name: "+" + k, lbl: G.text(x1, y, "PMKT+" + k, P.pmcolor, sz) });
+                            sd.push({ y, name: sdName(k, u, r, 1), lbl: G.text(x1, y, "PMKT" + sdName(k, u, r, 1), P.pmcolor, sz) });
                             any = true;
                         }
                         if (k <= nd) {
                             const y = z.lo - k * u;
                             G.line(x0, x1, y, P.pmcolor, P.pmpo3sty, P.pmwid);
-                            sd.push({ y, name: "-" + k, lbl: G.text(x1, y, "PMKT-" + k, P.pmcolor, sz) });
+                            sd.push({ y, name: sdName(k, u, r, -1), lbl: G.text(x1, y, "PMKT" + sdName(k, u, r, -1), P.pmcolor, sz) });
                             any = true;
                         }
                     }
@@ -1383,7 +1388,8 @@ class ICTlevels {
             }
         }
         if (P.dorthogpo3) {
-            const u = sdStep(Math.abs(g.op - g.cl), P.rthogpo3min);
+            const gap = Math.abs(g.op - g.cl);
+            const u = sdStep(gap, P.rthogpo3min);
             if (u > 0) {
                 const pu0 = Math.max(g.cl, g.op);
                 const pd0 = Math.min(g.cl, g.op);
@@ -1393,12 +1399,12 @@ class ICTlevels {
                     if (k <= nu) {
                         const y = pu0 + k * u;
                         G.line(x0, xr, y, col, P.rgappo3lnsty, P.rgapwid);
-                        sd.push({ y, name: "+" + k, lbl: G.text(xr, y, "RTHOG+" + k, col, 12) });
+                        sd.push({ y, name: sdName(k, u, gap, 1), lbl: G.text(xr, y, "RTHOG" + sdName(k, u, gap, 1), col, 12) });
                     }
                     if (k <= nd) {
                         const y = pd0 - k * u;
                         G.line(x0, xr, y, col, P.rgappo3lnsty, P.rgapwid);
-                        sd.push({ y, name: "-" + k, lbl: G.text(xr, y, "RTHOG-" + k, col, 12) });
+                        sd.push({ y, name: sdName(k, u, gap, -1), lbl: G.text(xr, y, "RTHOG" + sdName(k, u, gap, -1), col, 12) });
                     }
                 }
             }

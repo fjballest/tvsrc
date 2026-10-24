@@ -4,7 +4,7 @@
 // quadrants and standard deviations, premarket range, EQH/EQL, PO3 lines, TGIF levels, macros,
 // silver bullet and a session/macro status text. Draws levels only: no plots, no signals, no alerts.
 //
-// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 eb1df4d5ef90f25c0f037033555717e9),
+// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 89f7ef371984d7f2d7205c710f05a38e),
 // © franjballest, Mozilla Public License 2.0 (https://mozilla.org/MPL/2.0/).
 //
 // Install:
@@ -1282,6 +1282,12 @@ namespace NinjaTrader.NinjaScript.Indicators
 
 		// stddevs to draw on one side of a range: at least n; with auto, also every stddev reached by the
 		// extreme ext (base: the range edge on that side, u: the step, sgn 1 above, -1 below) plus the next one
+		// stddev name: distance from the range edge in whole ranges (step i of u, range r), for example "+0.25", "-1.5"
+		private static string SdName(int i, double u, double r, int sgn)
+		{
+			return (sgn > 0 ? "+" : "-") + Math.Round(i * u / r, 3).ToString("0.###", CultureInfo.InvariantCulture);
+		}
+
 		private static int SdCount(int n, bool auto, double b, double u, double ext, int sgn)
 		{
 			int r = n;
@@ -1357,14 +1363,14 @@ namespace NinjaTrader.NinjaScript.Indicators
 							if (i <= nu)
 							{
 								z.sdlines.Add(MkLL(tg + "su" + i, x0, x1, z.hi + i * u, PmColor, PmPo3Style, PmWidth,
-									"PMKT+" + i, PmColor, fPm, false));
-								z.sdnames.Add("+" + i);
+									"PMKT" + SdName(i, u, r, 1), PmColor, fPm, false));
+								z.sdnames.Add(SdName(i, u, r, 1));
 							}
 							if (i <= nd)
 							{
 								z.sdlines.Add(MkLL(tg + "sd" + i, x0, x1, z.lo - i * u, PmColor, PmPo3Style, PmWidth,
-									"PMKT-" + i, PmColor, fPm, false));
-								z.sdnames.Add("-" + i);
+									"PMKT" + SdName(i, u, r, -1), PmColor, fPm, false));
+								z.sdnames.Add(SdName(i, u, r, -1));
 							}
 						}
 					}
@@ -1696,14 +1702,14 @@ namespace NinjaTrader.NinjaScript.Indicators
 					if (i <= nu)
 					{
 						g.po3.Add(MkLL(tg + "su" + i, x0, x1, pu0 + i * u, RthogColor, RthogPo3Style, RthogWidth,
-							"RTHOG+" + i, RthogColor, fNormal, false));
-						g.po3names.Add("+" + i);
+							"RTHOG" + SdName(i, u, gap, 1), RthogColor, fNormal, false));
+						g.po3names.Add(SdName(i, u, gap, 1));
 					}
 					if (i <= nd)
 					{
 						g.po3.Add(MkLL(tg + "sd" + i, x0, x1, pd0 - i * u, RthogColor, RthogPo3Style, RthogWidth,
-							"RTHOG-" + i, RthogColor, fNormal, false));
-						g.po3names.Add("-" + i);
+							"RTHOG" + SdName(i, u, gap, -1), RthogColor, fNormal, false));
+						g.po3names.Add(SdName(i, u, gap, -1));
 					}
 				}
 			}
@@ -1798,7 +1804,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 		}
 
 		// stddev lines of the RTHOG and the premarket range at almost the same price share one label:
-		// "RTHOG+2 PMKT+3". The other label is emptied.
+		// "RTHOG+0.5 PMKT+1". The other label is emptied.
 		private void CombinePo3(IRthog g, IZone z, double tol)
 		{
 			if (g.po3.Count == 0 && z.sdlines.Count == 0)
