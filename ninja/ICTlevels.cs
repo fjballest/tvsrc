@@ -4,7 +4,7 @@
 // quadrants and standard deviations, premarket range, EQH/EQL, PO3 lines, TGIF levels, macros,
 // silver bullet and a session/macro status text. Draws levels only: no plots, no signals, no alerts.
 //
-// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 cf504b3ce0772187f62209c70433ac15),
+// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 eb1df4d5ef90f25c0f037033555717e9),
 // © franjballest, Mozilla Public License 2.0 (https://mozilla.org/MPL/2.0/).
 //
 // Install:
@@ -171,6 +171,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 			public List<string> po3names = new List<string>();
 			public double xhi = double.NaN, xlo = double.NaN;
 			public bool isold;
+			public List<LL> octs = new List<LL>();  // octant lines (latest RTHOG, until noon)
+			public DateTime? noon;                  // noon of the RTHOG day
 		}
 
 		private class IPiv
@@ -322,6 +324,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 				DoNwog = true;
 				DoRthog = true;
 				DoRthogQ = true;
+				DoRthogOct = true;
 				RthogQMin = 25.0;
 				DoRthogPo3 = true;
 				RthogPo3Min = 25.0;
@@ -777,6 +780,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 						IRthog pv = rthogs[rthogs.Count - 1];
 						KillQ(pv);
 						KillPo3(pv);
+						KillOct(pv);
 					}
 					if (rthogs.Count > 1)
 						SetOld(rthogs[rthogs.Count - 2]);
@@ -947,7 +951,10 @@ namespace NinjaTrader.NinjaScript.Indicators
 			for (int i = 0; i < rthogs.Count; i++)
 			{
 				if (i == rthogs.Count - 1)
+				{
 					RRight(rthogs[i], RthogColor);
+					OctRight(rthogs[i], RthogColor);    // octants: latest RTHOG only (removed at the close, like the quadrants)
+				}
 				else if (i == rthogs.Count - 2)
 					RRight(rthogs[i], RthogOldColor);
 			}
@@ -1350,13 +1357,13 @@ namespace NinjaTrader.NinjaScript.Indicators
 							if (i <= nu)
 							{
 								z.sdlines.Add(MkLL(tg + "su" + i, x0, x1, z.hi + i * u, PmColor, PmPo3Style, PmWidth,
-									"PMKT +" + i + "dev", PmColor, fPm, false));
+									"PMKT+" + i, PmColor, fPm, false));
 								z.sdnames.Add("+" + i);
 							}
 							if (i <= nd)
 							{
 								z.sdlines.Add(MkLL(tg + "sd" + i, x0, x1, z.lo - i * u, PmColor, PmPo3Style, PmWidth,
-									"PMKT -" + i + "dev", PmColor, fPm, false));
+									"PMKT-" + i, PmColor, fPm, false));
 								z.sdnames.Add("-" + i);
 							}
 						}
@@ -1584,8 +1591,49 @@ namespace NinjaTrader.NinjaScript.Indicators
 			g.po3.Clear();
 		}
 
+		private void KillOct(IRthog g)
+		{
+			foreach (LL l in g.octs)
+				RemoveLL(l);
+			g.octs.Clear();
+		}
+
+		// octants: 1/8, 3/8, 5/8, 7/8 of the gap, from the open to noon (or the right edge before noon)
+		private void ROct(IRthog g)
+		{
+			KillOct(g);
+			if (!g.tend.HasValue)
+				return;
+			double ody = Math.Abs(g.op - g.cl) / 8.0;
+			DateTime te = g.tend.Value;
+			DateTime teTz = ToTz(te);
+			g.noon = te + (teTz.Date.AddHours(12) - teTz);
+			DateTime x0 = te.AddSeconds(-(double)tfsecs * rdx);
+			DateTime x1 = Mn(TRight(Xoff), g.noon.Value);
+			if (ody > RthogQMin && x1 > x0)
+			{
+				string tg = RTag(g);
+				double p = Math.Min(g.cl, g.op);
+				string nm = DateStr();
+				foreach (int k in new[] { 1, 3, 5, 7 })
+					g.octs.Add(MkLL(tg + "oc" + k, x0, x1, p + k * ody, RthogColor, RthogQuadStyle, 1,
+						"RTHOG " + k + "/8 " + nm, RthogColor, fNormal, false));
+			}
+		}
+
+		// final bar: the octants follow the right edge until noon
+		private void OctRight(IRthog g, Brush c)
+		{
+			if (g.octs.Count == 0 || !g.noon.HasValue)
+				return;
+			DateTime x = Mn(TRight(Xoff), g.noon.Value);
+			foreach (LL l in g.octs)
+				SetR(l, x, c);
+		}
+
 		private void KillR(IRthog g)
 		{
+			KillOct(g);
 			RemoveLL(g.cline);
 			RemoveLL(g.mline);
 			RemoveLL(g.cline2);
@@ -1648,13 +1696,13 @@ namespace NinjaTrader.NinjaScript.Indicators
 					if (i <= nu)
 					{
 						g.po3.Add(MkLL(tg + "su" + i, x0, x1, pu0 + i * u, RthogColor, RthogPo3Style, RthogWidth,
-							"RTHOG +" + i + "dev", RthogColor, fNormal, false));
+							"RTHOG+" + i, RthogColor, fNormal, false));
 						g.po3names.Add("+" + i);
 					}
 					if (i <= nd)
 					{
 						g.po3.Add(MkLL(tg + "sd" + i, x0, x1, pd0 - i * u, RthogColor, RthogPo3Style, RthogWidth,
-							"RTHOG -" + i + "dev", RthogColor, fNormal, false));
+							"RTHOG-" + i, RthogColor, fNormal, false));
 						g.po3names.Add("-" + i);
 					}
 				}
@@ -1699,6 +1747,10 @@ namespace NinjaTrader.NinjaScript.Indicators
 				RQuads(g);
 			else
 				KillQ(g);
+			if (DoRthogOct)
+				ROct(g);
+			else
+				KillOct(g);
 			if (DoRthogPo3)
 				RPo3(g);
 			else
@@ -1746,15 +1798,15 @@ namespace NinjaTrader.NinjaScript.Indicators
 		}
 
 		// stddev lines of the RTHOG and the premarket range at almost the same price share one label:
-		// "RTHOG +2 PMKT +3". The other label is emptied.
+		// "RTHOG+2 PMKT+3". The other label is emptied.
 		private void CombinePo3(IRthog g, IZone z, double tol)
 		{
 			if (g.po3.Count == 0 && z.sdlines.Count == 0)
 				return;
 			for (int k = 0; k < g.po3.Count; k++)
-				g.po3[k].txt = "RTHOG " + (k < g.po3names.Count ? g.po3names[k] : string.Empty) + "dev";
+				g.po3[k].txt = "RTHOG" + (k < g.po3names.Count ? g.po3names[k] : string.Empty);
 			for (int k = 0; k < z.sdlines.Count; k++)
-				z.sdlines[k].txt = "PMKT " + (k < z.sdnames.Count ? z.sdnames[k] : string.Empty) + "dev";
+				z.sdlines[k].txt = "PMKT" + (k < z.sdnames.Count ? z.sdnames[k] : string.Empty);
 			bool[] used = new bool[z.sdlines.Count];
 			for (int k = 0; k < g.po3.Count; k++)
 			{
@@ -1762,8 +1814,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 				{
 					if (!used[m] && Math.Abs(g.po3[k].y - z.sdlines[m].y) <= tol)
 					{
-						g.po3[k].txt = "RTHOG " + (k < g.po3names.Count ? g.po3names[k] : string.Empty)
-							+ " PMKT " + (m < z.sdnames.Count ? z.sdnames[m] : string.Empty);
+						g.po3[k].txt = "RTHOG" + (k < g.po3names.Count ? g.po3names[k] : string.Empty)
+							+ " PMKT" + (m < z.sdnames.Count ? z.sdnames[m] : string.Empty);
 						z.sdlines[m].txt = string.Empty;
 						used[m] = true;
 						break;
@@ -2576,6 +2628,10 @@ namespace NinjaTrader.NinjaScript.Indicators
 		[Range(0.0, double.MaxValue)]
 		[Display(Name = "RTHOG quadrants min size", GroupName = "Gaps and Ranges", Order = 607)]
 		public double RthogQMin { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "RTHOG octants", Description = "Midpoints between the quadrants (1/8, 3/8, 5/8 and 7/8 of the gap) of the latest RTHOG, drawn when an eighth of the gap is above the quadrant min size, from the open until noon.", GroupName = "Gaps and Ranges", Order = 607)]
+		public bool DoRthogOct { get; set; }
 
 		[NinjaScriptProperty]
 		[Display(Name = "RTHOG stddevs", GroupName = "Gaps and Ranges", Order = 608)]

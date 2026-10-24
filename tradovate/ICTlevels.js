@@ -11,7 +11,7 @@
  *   It draws levels only: no signals, no alerts, no plots.
  *
  *   It is a port of the TradingView Pine Script v6 indicator ICTlevels.txt
- *   (md5 cf504b3ce0772187f62209c70433ac15). Parameter names are the Pine variable names and the
+ *   (md5 eb1df4d5ef90f25c0f037033555717e9). Parameter names are the Pine variable names and the
  *   defaults are the Pine defaults; see "ICTlevels user manual.md" for what every level means.
  *
  * How to install
@@ -137,6 +137,7 @@ const PARAMS = {
     dorthog: ps.bool(true),
     dorthogq: ps.bool(true),
     rthogqmin: ps.number(25.0, 0.25, 0),
+    dorthogoct: ps.bool(true),
     dorthogpo3: ps.bool(true),
     rthogpo3min: ps.number(25.0, 0.25, 0),
     rthogpo3num: ps.number(4, 1, 0),
@@ -788,7 +789,7 @@ class ICTlevels {
             const R = S.rthogs;
             if (mktClose) {
                 const rt = { tstart: i - 1, cl: pv.c, tend: null, op: null, xhi: null, xlo: null, isold: false,
-                    nm: "", clText: "new RTHOG settlement" };
+                    nm: "", clText: "new RTHOG settlement", noonT: null, noonIdx: null };
                 if (R.length > 1) {
                     R[R.length - 2].isold = true;
                 }
@@ -805,7 +806,15 @@ class ICTlevels {
                     cg.xhi = high;
                     cg.xlo = low;
                     cg.nm = dmy(t, C.tz);
+                    cg.noonT = t + (12 * 3600 - tsec) * 1000; // noon of the RTHOG day (octants)
+                    cg.noonIdx = null;
                     cg.clText = (cg.op > cg.cl ? "RTHOG lo " : "RTHOG hi ") + cg.nm;
+                }
+            }
+            // octants stop at noon: first bar at or after it
+            for (const og of R) {
+                if (og.noonT !== null && og.noonIdx === null && i > og.tend && t >= og.noonT) {
+                    og.noonIdx = i;
                 }
             }
             if (P.rthogauto && !mktClose && R.length > 0) {
@@ -1170,7 +1179,7 @@ class ICTlevels {
             for (const a of rSd) {
                 for (let m = 0; m < pmSd.length; m++) {
                     if (!used[m] && Math.abs(a.y - pmSd[m].y) <= tol) {
-                        a.lbl.text = "RTHOG " + a.name + " PMKT " + pmSd[m].name;
+                        a.lbl.text = "RTHOG" + a.name + " PMKT" + pmSd[m].name;
                         pmSd[m].lbl.text = "";
                         used[m] = true;
                         break;
@@ -1288,13 +1297,13 @@ class ICTlevels {
                         if (k <= nu) {
                             const y = z.hi + k * u;
                             G.line(x0, x1, y, P.pmcolor, P.pmpo3sty, P.pmwid);
-                            sd.push({ y, name: "+" + k, lbl: G.text(x1, y, "PMKT +" + k + "dev", P.pmcolor, sz) });
+                            sd.push({ y, name: "+" + k, lbl: G.text(x1, y, "PMKT+" + k, P.pmcolor, sz) });
                             any = true;
                         }
                         if (k <= nd) {
                             const y = z.lo - k * u;
                             G.line(x0, x1, y, P.pmcolor, P.pmpo3sty, P.pmwid);
-                            sd.push({ y, name: "-" + k, lbl: G.text(x1, y, "PMKT -" + k + "dev", P.pmcolor, sz) });
+                            sd.push({ y, name: "-" + k, lbl: G.text(x1, y, "PMKT-" + k, P.pmcolor, sz) });
                             any = true;
                         }
                     }
@@ -1328,7 +1337,7 @@ class ICTlevels {
         }
     }
 
-    // current (with quadrants and stddevs) or previous RTHOG; returns the stddev entries
+    // current (with quadrants, octants and stddevs) or previous RTHOG; returns the stddev entries
     drawRthog(G, g, col, current, xr, rdx) {
         const P = this.P;
         const sd = [];
@@ -1351,6 +1360,18 @@ class ICTlevels {
         if (!current) {
             return sd;
         }
+        // octants: 1/8, 3/8, 5/8, 7/8 of the gap, from the open to noon (or the right edge before noon)
+        if (P.dorthogoct) {
+            const ody = Math.abs(g.op - g.cl) / 8;
+            const x1 = g.noonIdx !== null ? Math.min(xr, g.noonIdx) : xr;
+            if (ody > P.rthogqmin && x1 > x0) {
+                const pl = Math.min(g.cl, g.op);
+                for (const k of [1, 3, 5, 7]) {
+                    G.line(x0, x1, pl + k * ody, col, P.rgapqlnsty, 1);
+                    G.text(x1, pl + k * ody, "RTHOG " + k + "/8 " + nm, col, 12);
+                }
+            }
+        }
         if (P.dorthogq) {
             const qdy = Math.abs(g.op - g.cl) / 4;
             if (qdy > P.rthogqmin) {
@@ -1372,12 +1393,12 @@ class ICTlevels {
                     if (k <= nu) {
                         const y = pu0 + k * u;
                         G.line(x0, xr, y, col, P.rgappo3lnsty, P.rgapwid);
-                        sd.push({ y, name: "+" + k, lbl: G.text(xr, y, "RTHOG +" + k + "dev", col, 12) });
+                        sd.push({ y, name: "+" + k, lbl: G.text(xr, y, "RTHOG+" + k, col, 12) });
                     }
                     if (k <= nd) {
                         const y = pd0 - k * u;
                         G.line(x0, xr, y, col, P.rgappo3lnsty, P.rgapwid);
-                        sd.push({ y, name: "-" + k, lbl: G.text(xr, y, "RTHOG -" + k + "dev", col, 12) });
+                        sd.push({ y, name: "-" + k, lbl: G.text(xr, y, "RTHOG-" + k, col, 12) });
                     }
                 }
             }

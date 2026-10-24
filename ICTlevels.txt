@@ -174,6 +174,9 @@ bool dorthog = input.bool(true, "RTHOGs (timeframes up to 15m)", inline = "xdog"
 bool dorthogq = input.bool(true, "RTHOG quadrants", group = GRP_DOG, inline = "rq")
 float rthogqmin = input.float(25.0, "min size", group = GRP_DOG, inline = "rq",
      tooltip = "min size between quadrants to draw them")
+bool dorthogoct = input.bool(true, "RTHOG octants", group = GRP_DOG, inline = "ro",
+     tooltip = "Midpoints between the quadrants (1/8, 3/8, 5/8 and 7/8 of the gap) of the latest RTHOG, drawn "
+     + "when an eighth of the gap is above the quadrant min size, from the open until noon.")
 bool dorthogpo3 = input.bool(true, "RTHOG stddevs", group = GRP_DOG, inline = "rp")
 float rthogpo3min = input.float(25.0, "min size", group = GRP_DOG, inline = "rp",
      tooltip = "min size of the steps to draw them (selects octants, "
@@ -357,7 +360,8 @@ int ngapsEff = math.min(ngaps, 15)
 int gapKinds = (dondog ? 1 : 0) + (donwog ? 1 : 0)
 int lnMonths = domonth ? 9 : 0
 int lnGaps = dogaps ? gapKinds * 2 * ngapsEff : 0
-int lnRth = dogaps and dorthog ? 4 * ngapsEff + 2 * rthogpo3num + 8 + (rthogauto ? 12 : 0) : 0
+int lnRth = dogaps and dorthog ? 4 * ngapsEff + 2 * rthogpo3num + 8 + (rthogauto ? 12 : 0)
+     + (dorthogoct ? 4 : 0) : 0
 int lnSes = doses ? 2 * nsesEff : 0
 int lnPre = preOn ? 4 * nsesEff : 0
 int lnPmx = preOn ? pmkeep * ((dopmq ? 3 : 0) + (dopmpo3 ? 2 * pmpo3num : 0) + (dopmq or dopmpo3 ? 2 : 0))
@@ -479,6 +483,9 @@ type RTHOG
     float xhi = na    // highest high / lowest low from the open to the market close (auto)
     float xlo = na
     bool isold = false
+    array<line> oclines = na    // octant lines (latest RTHOG, until noon)
+    array<label> oclabels = na
+    int noon = na               // noon of the RTHOG day
 
 type Piv
     float p
@@ -690,13 +697,13 @@ method pmdraw(Zone z, bool auto = false) =>
                 for i = 1 to math.max(nu, nd)
                     if i <= nu
                         [l2, b2] = mkLL(x0, x1, z.hi + i * u, pmcolor, pmpo3sty, pmwid,
-                             "PMKT +" + str.tostring(i) + "dev", pmcolor, pmlsz)
+                             "PMKT+" + str.tostring(i), pmcolor, pmlsz)
                         z.sdlines.push(l2)
                         z.sdlabels.push(b2)
                         z.sdnames.push("+" + str.tostring(i))
                     if i <= nd
                         [l3, b3] = mkLL(x0, x1, z.lo - i * u, pmcolor, pmpo3sty, pmwid,
-                             "PMKT -" + str.tostring(i) + "dev", pmcolor, pmlsz)
+                             "PMKT-" + str.tostring(i), pmcolor, pmlsz)
                         z.sdlines.push(l3)
                         z.sdlabels.push(b3)
                         z.sdnames.push("-" + str.tostring(i))
@@ -1243,7 +1250,18 @@ method killpo3(RTHOG g) =>
             rmLabel(b)
         g.po3labels.clear()
 
+method killoct(RTHOG g) =>
+    if not na(g.oclines)
+        for l in g.oclines
+            rmLine(l)
+        g.oclines.clear()
+    if not na(g.oclabels)
+        for b in g.oclabels
+            rmLabel(b)
+        g.oclabels.clear()
+
 method kill(RTHOG g) =>
+    g.killoct()
     rmLine(g.cline)
     rmLine(g.mline)
     rmLine(g.cline2)
@@ -1292,6 +1310,36 @@ method rquads(RTHOG g) =>
         g.uqline := l2
         g.uqlabel := b2
 
+// octants: 1/8, 3/8, 5/8, 7/8 of the gap, from the open to noon (or the right edge before noon)
+method roct(RTHOG g) =>
+    g.killoct()
+    float ody = math.abs(g.op - g.cl) / 8.0
+    g.noon := timestamp(tz, year(g.tend, tz), month(g.tend, tz), dayofmonth(g.tend, tz), 12, 0)
+    int x0 = g.tend - tfms * rdx
+    int x1 = math.min(tright(xoff), g.noon)
+    if ody > rthogqmin and x1 > x0
+        if na(g.oclines)
+            g.oclines := array.new<line>()
+            g.oclabels := array.new<label>()
+        float p = math.min(g.cl, g.op)
+        string nm = timestr()
+        for k in array.from(1, 3, 5, 7)
+            [l, b] = mkLL(x0, x1, p + k * ody, lrgapcolor, rgapqlnsty, 1, "RTHOG " + str.tostring(k) + "/8 "
+                 + nm, lrgapcolor)
+            g.oclines.push(l)
+            g.oclabels.push(b)
+
+// last bar: the octants follow the right edge until noon
+method octRight(RTHOG g, color c) =>
+    if not na(g.oclines) and not na(g.noon)
+        int x = math.min(tright(xoff), g.noon)
+        for l in g.oclines
+            l.set_x2(x)
+            l.set_color(c)
+        for b in g.oclabels
+            b.set_x(x)
+            b.set_textcolor(c)
+
 method rpo3(RTHOG g) =>
     g.killpo3()
     float gap = math.abs(g.op - g.cl)
@@ -1318,14 +1366,14 @@ method rpo3(RTHOG g) =>
         int nd = sdCount(rthogpo3num, rthogauto, pd0, u, g.xlo, -1)
         for i = 1 to math.max(nu, nd)
             if i <= nu
-                [l1, b1] = mkLL(x0, x1, pu0 + i * u, lrgapcolor, rgappo3lnsty, rgapwid, "RTHOG +"
-                     + str.tostring(i) + "dev", lrgapcolor)
+                [l1, b1] = mkLL(x0, x1, pu0 + i * u, lrgapcolor, rgappo3lnsty, rgapwid, "RTHOG+"
+                     + str.tostring(i), lrgapcolor)
                 g.po3lines.push(l1)
                 g.po3labels.push(b1)
                 g.po3names.push("+" + str.tostring(i))
             if i <= nd
-                [l2, b2] = mkLL(x0, x1, pd0 - i * u, lrgapcolor, rgappo3lnsty, rgapwid, "RTHOG -"
-                     + str.tostring(i) + "dev", lrgapcolor)
+                [l2, b2] = mkLL(x0, x1, pd0 - i * u, lrgapcolor, rgappo3lnsty, rgapwid, "RTHOG-"
+                     + str.tostring(i), lrgapcolor)
                 g.po3lines.push(l2)
                 g.po3labels.push(b2)
                 g.po3names.push("-" + str.tostring(i))
@@ -1362,8 +1410,11 @@ method rends(RTHOG g, float opv) =>
              bgcolor = color.new(lrgapcolor, grtransp))
     g.killq()
     g.killpo3()
+    g.killoct()
     if dorthogq
         g.rquads()
+    if dorthogoct
+        g.roct()
     if dorthogpo3
         g.rpo3()
 
@@ -1431,6 +1482,7 @@ if rthOk
             RTHOG pv = rthogs.last()
             pv.killq()
             pv.killpo3()
+            pv.killoct()
         if rthogs.size() > 1
             rthogs.get(rthogs.size() - 2).setOld()
         rthogs.push(rt)
@@ -1632,18 +1684,18 @@ drawMonth(int idx, float h, float l, float c, int t, int tc) =>
 
 // ============================================================ RTHOG / premarket stddev labels
 // stddev lines of the RTHOG and the premarket range at almost the same price share one
-// label: "RTHOG +2 PMKT +3". The other label is emptied.
+// label: "RTHOG+2 PMKT+3". The other label is emptied.
 combinePo3(RTHOG g, Zone z, float tol) =>
     if not na(g.po3labels) and not na(z.sdlabels) and not na(g.po3names) and not na(z.sdnames)
         for [k, l] in g.po3labels
-            l.set_text("RTHOG " + g.po3names.get(k) + "dev")
+            l.set_text("RTHOG" + g.po3names.get(k))
         for [k, l] in z.sdlabels
-            l.set_text("PMKT " + z.sdnames.get(k) + "dev")
+            l.set_text("PMKT" + z.sdnames.get(k))
         array<bool> used = array.new<bool>(z.sdlabels.size(), false)
         for [k, l] in g.po3labels
             for [m, q] in z.sdlabels
                 if not used.get(m) and math.abs(l.get_y() - q.get_y()) <= tol
-                    l.set_text("RTHOG " + g.po3names.get(k) + " PMKT " + z.sdnames.get(m))
+                    l.set_text("RTHOG" + g.po3names.get(k) + " PMKT" + z.sdnames.get(m))
                     q.set_text("")
                     used.set(m, true)
                     break
@@ -1695,6 +1747,7 @@ if finalBar and tfok
     for [i, g] in rthogs
         if i == rthogs.size() - 1
             g.right(lrgapcolor)
+            g.octRight(lrgapcolor)    // octants: latest RTHOG only (removed at the close, like the quadrants)
         else if i == rthogs.size() - 2
             g.right(rgapcolor)
     if preOn and rthogs.size() > 0 and premarkets.size() > 0
