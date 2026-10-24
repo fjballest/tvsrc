@@ -121,7 +121,7 @@ ICT's TGIF ("thank God it's Friday") idea: when the week has made a strong one-d
 
 **What you see**
 
-Two dashed lines labelled **TGIF-20%** and **TGIF-30%**:
+Two dashed lines labelled **TGIF20** and **TGIF30**:
 
 - In a bullish week they are measured down from the week high and drawn in the "down" color (red by default).
 - In a bearish week they are measured up from the week low and drawn in the "up" color (green by default).
@@ -163,9 +163,9 @@ Needs a chart timeframe of 5 minutes or lower.
 - **Start and end vertical lines** of the range, in the day line style (dotted blue).
 - **Pre-mkt hi / Pre-mkt lo** lines and labels, in the session max/min style, from the extreme to the bar that takes it, stopping at the market close (16:15 New York, 17:30 Madrid).
 - For the most recent range (or the last N ranges, setting "quadrants/stddevs for the last"):
-  - **Quadrants**: lines at 25%, 50% and 75% of the range, labelled "PMKT dq", "PMKT ce" and "PMKT uq" with the date (for example "PMKT ce 20 Oct"). Drawn only when a quarter of the range is larger than the minimum size (default 20 points, so the range must be over 80 points).
+  - **Quadrants**: lines at 25%, 50% and 75% of the range, labelled "PMKT dq", "PMKT ce" and "PMKT uq" with the date (for example "PMKT ce 20O"). Drawn only when a quarter of the range is larger than the minimum size (default 20 points, so the range must be over 80 points).
   - **Standard deviations**: lines above the high and below the low, 4 per side by default. The step is the range divided by 8, 4, 2 or 1: the first of these that is larger than the minimum size (default 20 points). Each label gives the distance from the range edge in whole ranges: "PMKT+1" is one full range above the high, "PMKT-0.5" half a range below the low, "PMKT+0.25" a quarter of a range above, and so on (with a step of 1/8: "PMKT+0.125", "PMKT+0.25", "PMKT+0.375"...). If even the whole range is not larger than the minimum, no deviations are drawn.
-  - **PMKT hi / PMKT lo**: whenever any quadrant or deviation line is drawn, the range high and low are also drawn as solid lines in the premarket color (red by default), labelled for example "PMKT hi 20 Oct".
+  - **PMKT hi / PMKT lo**: whenever any quadrant or deviation line is drawn, the range high and low are also drawn as solid lines in the premarket color (red by default), labelled for example "PMKT hi 20O".
   - These lines start a couple of bars before the end of the range (4 bars on 1m or lower, 2 bars otherwise) and extend to the right margin, but never past the market close of that day.
 
 While the range is still forming, its lines, quadrants and deviations move with it.
@@ -180,14 +180,14 @@ Opening gaps of the daily futures break. For NQ the market stops at 17:00 and re
 
 **What you see**
 
-- **NDOG** (new day opening gap, magenta #C32E7D, width 1): two lines, at the last price before the break (settlement) and the first price after it (open), from the settlement bar to the right margin. Labels read for example "NDOG 20 Oct.hi" and "NDOG 20 Oct.lo"; the date is the date of the reopening.
-- **NWOG** (new week opening gap, maroon, width 2): the same for the gap between Friday's close and the week's first open, for example "NWOG 18 Oct.hi".
-- When the high and low of a gap are within the tolerance (0.05 x daily ATR by default), a single label is placed in the middle, without ".hi" / ".lo".
+- **NDOG** (new day opening gap, magenta #C32E7D, width 1): two lines, at the last price before the break (settlement) and the first price after it (open), from the settlement bar to the right margin. Labels read for example "NDOG hi 20O" and "NDOG lo 20O"; the date is the date of the reopening.
+- **NWOG** (new week opening gap, maroon, width 2): the same for the gap between Friday's close and the week's first open, for example "NWOG hi 18O".
+- When the high and low of a gap are within the tolerance (0.05 x daily ATR by default), a single label is placed in the middle, without "hi" / "lo" ("NDOG 20O").
 - **Gap rectangles** (optional, off by default): a shaded box between the two lines.
 
 **Combined gaps** (on by default):
 
-- Several NDOGs (or NWOGs) whose ranges overlap or lie within the tolerance of each other are drawn once, using the outer high and low of the whole group, starting at the oldest gap. The label shows how many: "NDOGx3 14 Oct", "NWOGx2 4 Oct". The date is that of the oldest gap.
+- Several NDOGs (or NWOGs) whose ranges overlap or lie within the tolerance of each other are drawn once, using the outer high and low of the whole group, starting at the oldest gap. The label shows how many: "NDOGx3 lo 14O", "NWOGx2 4O". The date is that of the oldest gap.
 - A NWOG with an NDOG (or group of NDOGs) whose high and low are both within the tolerance of the NWOG's high and low is labelled "NWOG+NDOG", "NWOG+NDOGx2", "NWOGx2+NDOG" and so on, and those NDOG lines are not drawn.
 
 The default keeps the last 10 NDOGs and the last 10 NWOGs.
@@ -206,9 +206,9 @@ The regular trading hours opening gap is the range between the settlement of the
 - **From 15 minutes before the open**: in real time, the gap is drawn using the current price as a provisional open (a hint). The open, CE, quadrants and deviations follow the price until the open bar.
 - **On the open bar**: the gap is fixed with the real open price:
   - The open line is labelled "RTHOG hi" (gap up) or "RTHOG lo" (gap down) with the date; the settlement line is relabelled with the other one.
-  - **CE**: the midpoint of the gap, "RTHOG ce 20 Oct".
+  - **CE**: the midpoint of the gap, "RTHOG ce 20O".
   - **Quadrants**: 25% and 75% of the gap, "RTHOG dq" and "RTHOG uq", only when a quarter of the gap is larger than the minimum size (default 25 points, so the gap must be over 100 points).
-  - **Octants** (on by default): 1/8, 3/8, 5/8 and 7/8 of the gap, the midpoints between the quadrants, labelled "RTHOG 1/8 20 Oct" and so on, thin lines in the quadrant style. Only on the latest RTHOG, only when an eighth of the gap is larger than the quadrant minimum size (so the gap must be over 200 points with the default 25), and they stop at noon: until noon they follow the right edge, after noon they end there.
+  - **Octants** (on by default): 1/8, 3/8, 5/8 and 7/8 of the gap, the midpoints between the quadrants, labelled "RTHOG 1/8 20O" and so on, thin lines in the quadrant style. Only on the latest RTHOG, only when an eighth of the gap is larger than the quadrant minimum size (so the gap must be over 200 points with the default 25), and they stop at noon: until noon they follow the right edge, after noon they end there.
   - **Standard deviations**: above the higher edge and below the lower edge, 4 per side by default, dotted. The step is the gap divided by 8, 4, 2 or 1, the first that is larger than the minimum size (default 25 points). As for the premarket range, the label is the distance from the gap edge in whole gaps: "RTHOG+1" one full gap above, "RTHOG-0.5" half a gap below, "RTHOG+1.25" and so on.
   - Optional rectangle between settlement and open.
 - **After the next close**: the gap becomes the previous one. It is redrawn in the "old" color (cyan #17E1DA) and loses its quadrants, octants and deviations, keeping settlement, CE and open.
@@ -277,13 +277,15 @@ ICT macros are short windows in which the algorithm is expected to seek liquidit
 | eq | Day equilibrium (midpoint of high and low) |
 | M.O. | Midnight open |
 | max Sep, min Sep, close Sep | High, low and close of a past month |
-| TGIF-20%, TGIF-30% | TGIF retracement levels |
+| TGIF20, TGIF30 | TGIF retracement levels |
 | Asia hi, London lo, NY AM hi, NY PM lo... | Untaken session high or low |
 | Pre-mkt hi, Pre-mkt lo | Untaken premarket high or low |
 | PMKT hi / lo / dq / ce / uq + date | Premarket range high, low, 25%, 50%, 75% |
 | PMKT+0.5, PMKT-1... | Premarket standard deviation projections, in whole ranges from the range edge |
-| NDOG 20 Oct.hi / .lo | New day opening gap edges (date of the reopening) |
-| NWOG 18 Oct.hi / .lo | New week opening gap edges |
+| NDOG hi 20O / NDOG lo 20O | New day opening gap edges (date of the reopening) |
+| NWOG hi 18O / NWOG lo 18O | New week opening gap edges |
+
+Dates in labels are the day of the month followed by the month: one letter when no other month starts with it (F, S, O, N, D), otherwise three letters. For example 23O is 23 October and 23Jul is 23 July.
 | NDOGx3, NWOGx2 | Several gaps combined into one level |
 | NWOG+NDOG | NWOG with NDOGs at the same levels |
 | new RTHOG settlement | Settlement of the regular session, gap not yet open |

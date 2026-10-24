@@ -514,8 +514,16 @@ rmBox(box b) =>
 tright(int n) =>
     time + n * tfms
 
+// short date of t for labels: day of the month and the month, one letter when no other month starts with it
+// (F, S, O, N, D), else three letters (Jan, Mar, Apr, May, Jun, Jul, Aug): 23O, 23Jul
+sdate(int t) =>
+    int m = month(t, tz)
+    string mm = m == 2 ? "F" : m == 9 ? "S" : m == 10 ? "O" : m == 11 ? "N" : m == 12 ? "D"
+         : str.format_time(t, "MMM", tz)
+    str.tostring(dayofmonth(t, tz)) + mm
+
 timestr() =>
-    str.format_time(time, "d MMM", tz)
+    sdate(time)
 
 mkLL(int x1, int x2, float p, color c, string sty, int w, string txt, color tc,
      string sz = size.normal) =>
@@ -668,7 +676,7 @@ method pmdraw(Zone z, bool auto = false) =>
     float r = z.hi - z.lo
     int x1 = na(z.tclose) ? tright(xoff) : math.min(tright(xoff), z.tclose)
     int x0 = (na(z.tend) ? time : z.tend) - tfms * rdx
-    string nm = str.format_time(z.tstart, "d MMM", tz)
+    string nm = sdate(z.tstart)
     if r > 0
         if dopmq and r / 4.0 > pmqmin
             if na(z.qlines)
@@ -1036,9 +1044,9 @@ if inWin and tfok and dotgif
         color c = tgDir == 1 ? tgdncol : tgupcol
         int x1 = tright(xoff)
         if na(tgL1)
-            [l1, b1] = mkLL(tgT0, x1, v1, c, tgsty, tgwid, "TGIF-" + str.tostring(tgp1 * 100, "#.#") + "%", c,
+            [l1, b1] = mkLL(tgT0, x1, v1, c, tgsty, tgwid, "TGIF" + str.tostring(tgp1 * 100, "#.#"), c,
                  tglsz)
-            [l2, b2] = mkLL(tgT0, x1, v2, c, tgsty, tgwid, "TGIF-" + str.tostring(tgp2 * 100, "#.#") + "%", c,
+            [l2, b2] = mkLL(tgT0, x1, v2, c, tgsty, tgwid, "TGIF" + str.tostring(tgp2 * 100, "#.#"), c,
                  tglsz)
             tgL1 := l1
             tgB1 := b1
@@ -1081,34 +1089,34 @@ method gend(Gap g, float xe) =>
     g.name := (g.isw ? "NWOG " : "NDOG ") + timestr()
     g.gmake()
 
-// text of the gap: plain, or combined (NDOGx3, NWOGx2, NWOG+NDOG) keeping the date
+// text of the gap without the date: plain, or combined (NDOGx3, NWOGx2, NWOG+NDOG)
 method gname(Gap g) =>
-    string b = g.name
-    string dt = " " + str.substring(g.name, 5)   // date of the gap that draws the level
+    string b = str.substring(g.name, 0, 4)
     if g.isw and g.nd > 0
         b := (g.n > 1 ? "NWOGx" + str.tostring(g.n) : "NWOG") + "+NDOG"
-             + (g.nd > 1 ? "x" + str.tostring(g.nd) : "") + dt
+             + (g.nd > 1 ? "x" + str.tostring(g.nd) : "")
     else if g.n > 1
-        b := (g.isw ? "NWOGx" : "NDOGx") + str.tostring(g.n) + dt
+        b := (g.isw ? "NWOGx" : "NDOGx") + str.tostring(g.n)
     b
 
-// labels of the levels h and l: two labels with .hi/.lo, or a single one in the middle
-// when the levels are within tol of each other
+// labels of the levels h and l: two labels "NDOGx3 hi 23O" / "NDOGx3 lo 23O", or a single one in the middle
+// ("NDOGx3 23O") when the levels are within tol of each other. The date is the one of the gap that draws them.
 method glabels(Gap g, float h, float l, float tol, int x) =>
     bool small = math.abs(h - l) <= tol
     string b = g.gname()
+    string dt = " " + str.substring(g.name, 5)
     Sty gs = g.isw ? wgapsty : gapsty
     g.hilbl.set_xy(x, small ? math.avg(h, l) : h)
-    g.hilbl.set_text(small ? b : b + ".hi")
+    g.hilbl.set_text(small ? b + dt : b + " hi" + dt)
     if small
         rmLabel(g.lolbl)
         g.lolbl := na
     else
         if na(g.lolbl)
-            g.lolbl := label.new(x, l, b + ".lo", xloc = xloc.bar_time,
+            g.lolbl := label.new(x, l, b + " lo" + dt, xloc = xloc.bar_time,
                  style = label.style_label_left, color = transparent, textcolor = gs.col)
         g.lolbl.set_xy(x, l)
-        g.lolbl.set_text(b + ".lo")
+        g.lolbl.set_text(b + " lo" + dt)
     true
 
 method gright(Gap g, float tol) =>

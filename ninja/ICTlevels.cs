@@ -4,7 +4,7 @@
 // quadrants and standard deviations, premarket range, EQH/EQL, PO3 lines, TGIF levels, macros,
 // silver bullet and a session/macro status text. Draws levels only: no plots, no signals, no alerts.
 //
-// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 89f7ef371984d7f2d7205c710f05a38e),
+// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 0d076ecfcaddbeb73756f31e4e1eaaa6),
 // © franjballest, Mozilla Public License 2.0 (https://mozilla.org/MPL/2.0/).
 //
 // Install:
@@ -127,7 +127,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 		{
 			public int id;
 			public string name;
-			public string dstr;     // start date "d MMM" in the target time zone
+			public string dstr;     // start date ("23O", "23Jul") in the target time zone
 			public DateTime tstart;
 			public double op, hi, lo;
 			public DateTime hit, lot;
@@ -996,9 +996,9 @@ namespace NinjaTrader.NinjaScript.Indicators
 				Brush c = tgDir == 1 ? TgDownColor : TgUpColor;
 				DateTime x1 = TRight(Xoff);
 				DLine(TagPfx + "tg1", tgT0, tgV1, x1, tgV1, c, TgStyle, TgWidth);
-				DText(TagPfx + "tg1L", "TGIF-" + (TgP1 * 100).ToString("0.#", CultureInfo.InvariantCulture) + "%", x1, tgV1, c, fTg, 0);
+				DText(TagPfx + "tg1L", "TGIF" + (TgP1 * 100).ToString("0.#", CultureInfo.InvariantCulture), x1, tgV1, c, fTg, 0);
 				DLine(TagPfx + "tg2", tgT0, tgV2, x1, tgV2, c, TgStyle, TgWidth);
-				DText(TagPfx + "tg2L", "TGIF-" + (TgP2 * 100).ToString("0.#", CultureInfo.InvariantCulture) + "%", x1, tgV2, c, fTg, 0);
+				DText(TagPfx + "tg2L", "TGIF" + (TgP2 * 100).ToString("0.#", CultureInfo.InvariantCulture), x1, tgV2, c, fTg, 0);
 			}
 			else
 			{
@@ -1441,20 +1441,19 @@ namespace NinjaTrader.NinjaScript.Indicators
 			g.ut = g.tstart;
 		}
 
-		// text of the gap: plain, or combined (NDOGx3, NWOGx2, NWOG+NDOG) keeping the date
+		// text of the gap without the date: plain, or combined (NDOGx3, NWOGx2, NWOG+NDOG)
 		private string GName(IGap g)
 		{
-			string b = g.name;
-			string dt = " " + g.dstr;
+			string b = g.isw ? "NWOG" : "NDOG";
 			if (g.isw && g.nd > 0)
-				b = (g.n > 1 ? "NWOGx" + g.n : "NWOG") + "+NDOG" + (g.nd > 1 ? "x" + g.nd : string.Empty) + dt;
+				b = (g.n > 1 ? "NWOGx" + g.n : "NWOG") + "+NDOG" + (g.nd > 1 ? "x" + g.nd : string.Empty);
 			else if (g.n > 1)
-				b = (g.isw ? "NWOGx" : "NDOGx") + g.n + dt;
+				b = (g.isw ? "NWOGx" : "NDOGx") + g.n;
 			return b;
 		}
 
-		// lines, labels and optional rectangle of a gap at levels h / l from t0. Two labels with .hi/.lo,
-		// or a single one in the middle when the levels are within tol of each other
+		// lines, labels and optional rectangle of a gap at levels h / l from t0. Two labels "NDOGx3 hi 23O" /
+		// "NDOGx3 lo 23O", or a single one in the middle ("NDOGx3 23O") when the levels are within tol of each other
 		private void GDraw(IGap g, DateTime t0, double h, double l, double tol)
 		{
 			Sty st = g.isw ? wgapsty : gapsty;
@@ -1464,11 +1463,12 @@ namespace NinjaTrader.NinjaScript.Indicators
 			DLine(tg + "l", t0, l, x, l, st.col, st.sty, st.wid);
 			bool small = Math.Abs(h - l) <= tol;
 			string b = GName(g);
-			DText(tg + "hL", small ? b : b + ".hi", x, small ? (h + l) / 2.0 : h, st.col, fNormal, 0);
+			string dt = " " + g.dstr;
+			DText(tg + "hL", small ? b + dt : b + " hi" + dt, x, small ? (h + l) / 2.0 : h, st.col, fNormal, 0);
 			if (small)
 				Rm(tg + "lL");
 			else
-				DText(tg + "lL", b + ".lo", x, l, st.col, fNormal, 0);
+				DText(tg + "lL", b + " lo" + dt, x, l, st.col, fNormal, 0);
 			if (DoGapRect)
 				DRect(tg + "r", t0, h, x, l, st.col, 100 - GapRectTransparency);
 		}
@@ -2106,9 +2106,14 @@ namespace NinjaTrader.NinjaScript.Indicators
 			return Time[0].AddSeconds((double)n * tfsecs);
 		}
 
+		// short date for labels: day of the month and the month, one letter when no other month starts with it
+		// (F, S, O, N, D), else three letters (Jan, Mar, Apr, May, Jun, Jul, Aug): 23O, 23Jul
 		private string DateStr()
 		{
-			return barTz.ToString("d MMM", CultureInfo.InvariantCulture);
+			int m = barTz.Month;
+			string mm = m == 2 ? "F" : m == 9 ? "S" : m == 10 ? "O" : m == 11 ? "N" : m == 12 ? "D"
+				: barTz.ToString("MMM", CultureInfo.InvariantCulture);
+			return barTz.Day.ToString(CultureInfo.InvariantCulture) + mm;
 		}
 
 		private static DateTime Mn(DateTime a, DateTime b)

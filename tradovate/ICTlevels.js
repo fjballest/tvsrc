@@ -11,7 +11,7 @@
  *   It draws levels only: no signals, no alerts, no plots.
  *
  *   It is a port of the TradingView Pine Script v6 indicator ICTlevels.txt
- *   (md5 89f7ef371984d7f2d7205c710f05a38e). Parameter names are the Pine variable names and the
+ *   (md5 0d076ecfcaddbeb73756f31e4e1eaaa6). Parameter names are the Pine variable names and the
  *   defaults are the Pine defaults; see "ICTlevels user manual.md" for what every level means.
  *
  * How to install
@@ -252,9 +252,12 @@ function tzParts(ms, tz) {
     return r;
 }
 
+// short date for labels: day of the month and the month, one letter when no other month starts with it
+// (F, S, O, N, D), else three letters (Jan, Mar, Apr, May, Jun, Jul, Aug): 23O, 23Jul
+const MONTH1 = { 2: "F", 9: "S", 10: "O", 11: "N", 12: "D" };
 function dmy(ms, tz) {
     const p = tzParts(ms, tz);
-    return p.d + " " + MONTHS[p.mo - 1];
+    return p.d + (MONTH1[p.mo] || MONTHS[p.mo - 1]);
 }
 
 function parseSecs(s) {
@@ -1198,9 +1201,9 @@ class ICTlevels {
             const col = S.tgDir === 1 ? P.tgdncol : P.tgupcol;
             const sz = fs(P.tglblsize);
             G.line(S.tgT0, xr, S.tgV1, col, P.tgsty, P.tgwid);
-            G.text(xr, S.tgV1, "TGIF-" + fmt1(P.tgp1 * 100) + "%", col, sz);
+            G.text(xr, S.tgV1, "TGIF" + fmt1(P.tgp1 * 100), col, sz);
             G.line(S.tgT0, xr, S.tgV2, col, P.tgsty, P.tgwid);
-            G.text(xr, S.tgV2, "TGIF-" + fmt1(P.tgp2 * 100) + "%", col, sz);
+            G.text(xr, S.tgV2, "TGIF" + fmt1(P.tgp2 * 100), col, sz);
         }
 
         // ---- EQH / EQL
@@ -1331,11 +1334,12 @@ class ICTlevels {
         G.line(x0, xr, l, st.col, st.sty, st.wid);
         const small = Math.abs(h - l) <= tol;
         const b = gname(g);
+        const dt = " " + g.name.substring(5);
         if (small) {
-            G.text(xr, (h + l) / 2, b, st.col, 12);
+            G.text(xr, (h + l) / 2, b + dt, st.col, 12);
         } else {
-            G.text(xr, h, b + ".hi", st.col, 12);
-            G.text(xr, l, b + ".lo", st.col, 12);
+            G.text(xr, h, b + " hi" + dt, st.col, 12);
+            G.text(xr, l, b + " lo" + dt, st.col, 12);
         }
         if (P.dogrect) {
             G.rect(x0, xr, h, l, st.col, (100 - P.grtransp) / 100);
@@ -1465,14 +1469,13 @@ function markRel(arr, tol) {
     }
 }
 
-// text of the gap: plain, or combined (NDOGx3, NWOGx2, NWOG+NDOG) keeping the date
+// text of the gap without the date: plain, or combined (NDOGx3, NWOGx2, NWOG+NDOG)
 function gname(g) {
-    let b = g.name;
-    const dt = " " + g.name.substring(5);
+    let b = g.name.substring(0, 4);
     if (g.isw && g.nd > 0) {
-        b = (g.n > 1 ? "NWOGx" + g.n : "NWOG") + "+NDOG" + (g.nd > 1 ? "x" + g.nd : "") + dt;
+        b = (g.n > 1 ? "NWOGx" + g.n : "NWOG") + "+NDOG" + (g.nd > 1 ? "x" + g.nd : "");
     } else if (g.n > 1) {
-        b = (g.isw ? "NWOGx" : "NDOGx") + g.n + dt;
+        b = (g.isw ? "NWOGx" : "NDOGx") + g.n;
     }
     return b;
 }

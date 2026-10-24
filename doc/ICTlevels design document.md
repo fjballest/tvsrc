@@ -128,7 +128,7 @@ On `newDay` a `Zone` with `isday` set is created. The previous day is closed by 
 
 ### TGIF
 
-ICT's TGIF ("thank God it's Friday"): when the week candle made a displacement and has not formed its final wick, a retracement of 20% - 30% of the week range is expected on Friday, or on Monday when it did not happen on Friday. The week candle is tracked from `newWeek` (`twO`, `twH`, `twL`). `tgEval` calls it a displacement up (down) when the close is within `tgnear` of the range from the week high (low), whatever the body, so a solid candle and one with a long wick on the other side both count. On the first bar of Friday the week so far is tested; if it qualifies, `TGIF-20%` and `TGIF-30%` are drawn from the start of Friday, measured down from the week high in red (bullish week) or up from the week low in green (bearish week). On Friday they follow new week extremes until price reaches the first level, then stay fixed. When the week closes displaced and the retracement did not happen on Friday (the Friday levels were not armed or not reached), the levels of the final week are drawn on Monday, from the start of the new week until Tuesday. Outside those days the levels are removed, so they show only while they apply. They use two lines and two labels of the object budget (`lnTg`).
+ICT's TGIF ("thank God it's Friday"): when the week candle made a displacement and has not formed its final wick, a retracement of 20% - 30% of the week range is expected on Friday, or on Monday when it did not happen on Friday. The week candle is tracked from `newWeek` (`twO`, `twH`, `twL`). `tgEval` calls it a displacement up (down) when the close is within `tgnear` of the range from the week high (low), whatever the body, so a solid candle and one with a long wick on the other side both count. On the first bar of Friday the week so far is tested; if it qualifies, `TGIF20` and `TGIF30` are drawn from the start of Friday, measured down from the week high in red (bullish week) or up from the week low in green (bearish week). On Friday they follow new week extremes until price reaches the first level, then stay fixed. When the week closes displaced and the retracement did not happen on Friday (the Friday levels were not armed or not reached), the levels of the final week are drawn on Monday, from the start of the new week until Tuesday. Outside those days the levels are removed, so they show only while they apply. They use two lines and two labels of the object budget (`lnTg`).
 
 ### Sessions
 
@@ -144,7 +144,7 @@ The gap is built in `ndog`. At the bar before the gap window opens (`gapCloseBar
 
 ### Combining gaps
 
-When `combgaps` is on, the last bar runs `combineGaps` with a tolerance of `combtol` times the daily ATR. `gcluster` repeatedly merges gaps whose ranges overlap or are within the tolerance into groups, by relabelling a component id until nothing changes. The oldest gap of each group draws the outer levels (`uhi`, `ulo`, from `ut`) and counts the group in `n`, and the rest are hidden. Then every visible NWOG is compared with every visible NDOG: if both of its edges are within the tolerance of the NWOG's edges, the NDOG is hidden and counted in the NWOG's `nd`. `gname` builds the text from that state: NDOGx3, NWOGx2 or NWOG+NDOG, always followed by the date of the gap that draws the level. `glabels` draws one label in the middle when high and low are within the tolerance, otherwise `.hi` and `.lo` labels.
+When `combgaps` is on, the last bar runs `combineGaps` with a tolerance of `combtol` times the daily ATR. `gcluster` repeatedly merges gaps whose ranges overlap or are within the tolerance into groups, by relabelling a component id until nothing changes. The oldest gap of each group draws the outer levels (`uhi`, `ulo`, from `ut`) and counts the group in `n`, and the rest are hidden. Then every visible NWOG is compared with every visible NDOG: if both of its edges are within the tolerance of the NWOG's edges, the NDOG is hidden and counted in the NWOG's `nd`. `gname` builds the text from that state: NDOG, NWOG, NDOGx3, NWOGx2 or NWOG+NDOG, without the date. `glabels` adds the part and then the date of the gap that draws the level: one label in the middle ("NDOGx3 14O") when high and low are within the tolerance, otherwise "NDOGx3 hi 14O" and "NDOGx3 lo 14O".
 
 ### RTHOG
 
@@ -178,7 +178,8 @@ Methods are called on their object (`z.refresh()`); plain functions are called b
 | --- | --- |
 | `rmLine`, `rmLabel`, `rmBox` | Delete the object if it is not `na` |
 | `tright(n)` | Time of `n` bars to the right of the current bar, used as the right edge |
-| `timestr()` | Current bar date as "d MMM" in `tz` |
+| `sdate(t)` | Short date of time `t` in `tz`: day of the month plus F, S, O, N or D, or the three-letter month for the others (23O, 23Jul) |
+| `timestr()` | `sdate(time)`, the current bar date |
 | `mkLL(x1, x2, p, c, sty, w, txt, tc, sz)` | Creates a horizontal line and a left-aligned label at its right end, returns both |
 | `setR(l, b, x, c)` | Moves the right end of a line and its label to `x` and recolors them |
 | `tinyLbl(cur, show, x, y, txt, c, sz)` | Creates, moves or deletes a small label according to `show`, returns the label |
@@ -216,7 +217,7 @@ Methods are called on their object (`z.refresh()`); plain functions are called b
 | `gmake(g)` | Draws the lines, labels and optional rectangle of a gap |
 | `gend(g, xe)` | Closes the gap with the open price, orders the edges, names and draws it |
 | `gname(g)` | Label text: plain, NDOGxN, NWOGxN or NWOG+NDOG, with the date |
-| `glabels(g, h, l, tol, x)` | Two labels with .hi and .lo, or one centered label when the levels are close |
+| `glabels(g, h, l, tol, x)` | Two labels "name hi date" and "name lo date", or one centered "name date" when the levels are close |
 | `gright(g, tol)` | Right-edge update when gaps are not combined |
 | `gcomb(g, tol)` | Draws a gap with its combined levels, or deletes it when hidden |
 | `gcluster(arr, tol)` | Groups gaps whose ranges overlap or lie within `tol` |
