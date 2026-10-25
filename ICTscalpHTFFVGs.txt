@@ -312,14 +312,15 @@ bool dowk = input.bool(true, "Wick CE", group = G_GEN, inline = "w1")
 int nwk = input.int(8, "keep", minval = 1, maxval = 20, group = G_GEN, inline = "w1")
 float wkmin = input.float(30.0, "min wick %", minval = 1.0, maxval = 100.0, group = G_GEN, inline = "w1")
 bool domf = input.bool(true, "FVGs by timeframe", group = G_GEN, inline = "m0")
-int mfnext = input.int(0, "plus the next higher", minval = 0, maxval = 5, group = G_GEN, inline = "m0")
+int mfnext = input.int(0, "plus the next higher", minval = 0, maxval = 6, group = G_GEN, inline = "m0")
 bool mf15 = input.bool(true, "15m", group = G_GEN, inline = "m1")
 bool mf1h = input.bool(true, "1H", group = G_GEN, inline = "m1")
 bool mf4h = input.bool(true, "4H", group = G_GEN, inline = "m1")
 bool mfd = input.bool(true, "D", group = G_GEN, inline = "m1")
-bool mfw = input.bool(true, "W", group = G_GEN, inline = "m1",
-     tooltip = "Unlike ICTcotas, all of them are on by default. Only timeframes equal to or higher than "+
-         "the chart timeframe are used.")
+bool mfw = input.bool(true, "W", group = G_GEN, inline = "m1")
+bool mfm = input.bool(true, "M", group = G_GEN, inline = "m1",
+     tooltip = "Unlike ICTcotas, all of them are on by default. Only timeframes higher than "+
+         "the chart timeframe are used, never the chart's own.")
 int nmf = input.int(6, "keep per timeframe", minval = 1, maxval = 20, group = G_GEN, inline = "m2")
 float mfmin = input.float(0.0, "min size", minval = 0.0, group = G_GEN, inline = "m2")
 bool wk1h = input.bool(true, "wick CE: 1H", group = G_GEN, inline = "m3")
@@ -746,9 +747,10 @@ bool bearRet = not na(bearifvg) and not na(bearconfirm) and time != bearconfirm 
 bool bullRet = not na(bullifvg) and not na(bullconfirm) and time != bullconfirm and low <= bullifvg.hi and low >= bullifvg.lo
 
 // ============================================================ HTF levels (from ICTcotas, no drawing)
-bool dayOk = dodaily and tfsecs <= 86400
-bool wkOk = doweekly and tfsecs <= 604800
-bool monOk = domonthly and tfsecs <= 2592000
+// D, W and M levels only on lower chart timeframes, never the chart's own
+bool dayOk = dodaily and tfsecs < 86400
+bool wkOk = doweekly and tfsecs < 604800
+bool monOk = domonthly and tfsecs < 2592000
 int mmode = mitig == "CE touched" ? 1 : mitig == "Fully filled (wick)" ? 2
      : mitig == "Fully filled (close)" ? 3 : 0
 var int tfirst = time
@@ -769,14 +771,18 @@ type Lvl
 var array<Lvl> lvls = array.new<Lvl>()
 var array<Lvl> wcur = array.new<Lvl>(12, na)   // current wick group level: tf * 2 + side
 
-var array<int> mfSecs = array.from(900, 3600, 14400, 86400, 604800)
-var array<string> mfTfs = array.from("15", "60", "240", "D", "W")
-var array<bool> mfSel = array.from(mf15, mf1h, mf4h, mfd, mfw)
-var array<int> mfLastT = array.new<int>(5, na)
+var array<int> mfSecs = array.from(900, 3600, 14400, 86400, 604800, 2628003)
+var array<string> mfTfs = array.from("15", "60", "240", "D", "W", "M")
+var array<bool> mfSel = array.from(mf15, mf1h, mf4h, mfd, mfw, mfm)
+var array<int> mfLastT = array.new<int>(6, na)
+
+// only timeframes above the chart are used, never the chart's own
+mfOk(int s) =>
+    s > tfsecs
 
 mfEnabled(int i) =>
     int s = mfSecs.get(i)
-    bool on = domf and s >= tfsecs and mfSel.get(i)
+    bool on = domf and mfOk(s) and mfSel.get(i)
     if domf and s > tfsecs and mfnext > 0
         int rank = 0
         for j = 0 to i - 1
@@ -788,7 +794,7 @@ mfEnabled(int i) =>
 
 wkEnabled(int i) =>
     int s = mfSecs.get(i)
-    dowk and s >= tfsecs and ((i == 1 and wk1h) or (i == 2 and wk4h))
+    dowk and mfOk(s) and ((i == 1 and wk1h) or (i == 2 and wk4h))
 
 method kill(Lvl l) =>
     l.dead := true
@@ -966,7 +972,7 @@ if newW
     processTf(1, wO1, wH1, wL1, wC1, wT1, wO2, wH2, wL2, wC2, wT2, wH3, wL3, wO3, wC3)
 if newM
     processTf(2, mO1, mH1, mL1, mC1, mT1, mO2, mH2, mL2, mC2, mT2, mH3, mL3, mO3, mC3)
-for i = 0 to 4
+for i = 0 to 5
     bool fvgOn = mfEnabled(i)
     bool wkOn = wkEnabled(i)
     if fvgOn or wkOn

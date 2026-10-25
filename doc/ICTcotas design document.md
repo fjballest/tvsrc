@@ -9,14 +9,14 @@ ICTcotas is a standalone Pine Script v6 overlay that draws price-delivery arrays
 It works in two layers:
 
 - **Timeframe levels**: FVGs, VIs and wick CEs of the daily, weekly and monthly candles, drawn as lines with the high, low and CE of each level, in the same style as ICTlevels.
-- **FVGs by timeframe**: FVGs, and optionally wick CEs, of 15m, 1H, 4H, D and W candles, drawn as boxes with a CE box, a formation marker and a label.
+- **FVGs by timeframe**: FVGs, and optionally wick CEs, of 15m, 1H, 4H, D, W and M candles, drawn as boxes with a CE box, a formation marker and a label.
 
 | Level | Kind code | What it is |
 | --- | --- | --- |
 | FVG / IFVG | 0 | Three-candle gap. It becomes an IFVG when a candle closes through it |
 | Volume imbalance | 1 | Gap between the bodies of two consecutive candles while their wicks still overlap |
 | Wick CE | 2 | Midpoint of the longest wick of a group of consecutive same-side wicks |
-| FVG by timeframe | 3 | FVG of a 15m, 1H, 4H, D or W candle selected in its own input group |
+| FVG by timeframe | 3 | FVG of a 15m, 1H, 4H, D, W or M candle selected in its own input group |
 
 Objects are placed with `xloc.bar_time`, and every level extends to the right margin of the chart. Levels removed by the mitigation rule disappear.
 
@@ -28,16 +28,16 @@ The script never reads candles of the chart timeframe. All levels come from `req
 
 | Layer | Timeframes | Condition to run | Call |
 | --- | --- | --- | --- |
-| Daily | D | `dodaily` and chart timeframe of 1D or lower (`dayOk`) | One call |
-| Weekly | W | `doweekly` and chart of 1W or lower (`wkOk`) | One call |
-| Monthly | M | `domonthly` and chart of 1M or lower (`monOk`) | One call |
+| Daily | D | `dodaily` and chart timeframe lower than 1D (`dayOk`) | One call |
+| Weekly | W | `doweekly` and chart lower than 1W (`wkOk`) | One call |
+| Monthly | M | `domonthly` and chart lower than 1M (`monOk`) | One call |
 | By timeframe | 15, 60, 240, D, W | `mfEnabled(i)` for FVGs, `wkEnabled(i)` for wick CEs | One call per enabled timeframe, inside a loop |
 
 When a timeframe is disabled, its `htf` call is made with the chart timeframe instead, so the tuple always exists. The detection is simply skipped.
 
 A new higher timeframe candle is detected when its `time` differs from the previous bar's. At that moment the previous candle has just completed and the detection functions run once for it. The first value seen on the chart is ignored in the by-timeframe loop (`mfLastT`), so history is not replayed on the first bar.
 
-`mfEnabled(i)` combines two rules. A timeframe is on when it is ticked and is not lower than the chart timeframe. It is also on when `mfnext` is greater than zero and it is among the first `mfnext` listed timeframes above the chart timeframe, counted from the nearest. `wkEnabled(i)` enables wick CEs only for 1H and 4H, through their own checkboxes.
+`mfEnabled(i)` combines two rules. A timeframe is on when it is ticked and `mfOk` says it is higher than the chart timeframe (never the chart's own). It is also on when `mfnext` is greater than zero and it is among the first `mfnext` listed timeframes above the chart timeframe, counted from the nearest. `wkEnabled(i)` enables wick CEs only for 1H and 4H, through their own checkboxes, with the same `mfOk` rule. `processTf` skips the kind 0 FVG / IFVG detection of D, W or M when `mfEnabled(tfi + 3)` is on, because the same gaps are then drawn as kind 3 boxes; VIs and wicks of that timeframe are still detected.
 
 ## Inputs
 
@@ -51,7 +51,7 @@ Inputs are grouped by type of level. Related controls share a row with `inline`.
 | Fair Value Gaps | Draw, keep (up to 20), minimum size; line style, width and CE style; show hi, lo, CE; no fill and transparency; label; IFVG inversion and its label; overlap rule (Most recent, Enclosing, Keep all); extend the range to include VIs with candle 2 |
 | Volume Imbalances | Draw, keep, minimum size; styles; show hi, lo, CE; no fill and transparency; label |
 | Wick CE | Draw, keep, minimum wick as a percentage of the candle range (default 30); line style and width; upper and lower wick labels |
-| FVGs and wick CE by timeframe | Draw; plus N next higher timeframes; 15m, 1H, 4H, D, W tick boxes; keep per timeframe and minimum size; bull and bear colors per timeframe; outline style and width; no fill (default on) and transparency; formation marker; CE box and its style; labels with TF, FVG/IFVG and direction parts; label size, position and vertical anchor; wick CE for 1H and 4H; right margin layout (`mfmargin`, off) with offset (`mfmoff`, 4) and box width (`mfmw`, 4); extend levels (`mfext`, off) back `mfextn` (20) candles or to the FVG start (`mfextst`) |
+| FVGs and wick CE by timeframe | Draw; plus N next higher timeframes; 15m, 1H, 4H, D, W, M tick boxes; keep per timeframe and minimum size; bull and bear colors per timeframe; outline style and width; fill (`mffill`: never, at margin (default), always) and transparency; formation marker; CE box and its style; labels with TF, FVG/IFVG and direction parts; label size, position and vertical anchor; wick CE for 1H and 4H; right margin layout (`mfmargin`, off) with offset (`mfmoff`, 4) and box width (`mfmw`, 4); extend levels (`mfext`, off) to the point set by `mfextto` ("for" `mfextn` (20) candles, "to start" of the FVG, or "to creation", the end of its third candle) |
 
 The by-timeframe group has several defaults chosen on purpose. It is on by default (1H and 4H ticked), the fill is off, the CE box has zero height and the label position is Inside right. The label anchor is the CE of the FVG unless set to High or Low.
 
@@ -62,7 +62,7 @@ There is a single user-defined type, `Lvl`. One instance is one level, and it al
 | Field | Meaning |
 | --- | --- |
 | `kind` | 0 FVG or IFVG, 1 volume imbalance, 2 wick CE, 3 FVG by timeframe |
-| `tfi` | Timeframe index: 0 daily, 1 weekly, 2 monthly, and 3 to 7 for 15m, 1H, 4H, D, W of the by-timeframe layer |
+| `tfi` | Timeframe index: 0 daily, 1 weekly, 2 monthly, and 3 to 8 for 15m, 1H, 4H, D, W, M of the by-timeframe layer |
 | `dir` | 1 bullish (support), -1 bearish (resistance). Lower wicks count as bullish, upper wicks as bearish |
 | `hi`, `lo`, `ce` | Upper edge, lower edge and midpoint |
 | `t` | Left edge time. Never earlier than `tfirst`, the first bar of the chart |
@@ -81,7 +81,7 @@ Global state:
 | --- | --- |
 | `lvls` | `array<Lvl>` with every live level of all kinds and timeframes |
 | `wcur` | `array<Lvl>` of 12 entries, indexed `tfi * 2 + side` (side 0 upper wick, 1 lower wick). It holds the level of the wick group currently open for each timeframe and side |
-| `mfSecs`, `mfTfs`, `mfNames` | Seconds, `request.security` strings and display names of the five by-timeframe candidates |
+| `mfSecs`, `mfTfs`, `mfNames` | Seconds, `request.security` strings and display names of the six by-timeframe candidates |
 | `mfSel` | Which of them are ticked |
 | `mfLastT` | Last candle time seen for each, used to detect a new candle |
 | `tfirst` | Time of the first chart bar |
@@ -150,13 +150,13 @@ The script does little work on most bars. Objects are only created and moved on 
 
 &#91;embedded content: execution pipeline · detection per candle, mitigation per bar\]
 
-**Order in the source.** The three `htf` calls for daily, weekly and monthly run first, then `newD`, `newW` and `newM` call `processTf` for each timeframe whose candle just changed. The loop over the five by-timeframe candidates comes next. It calls `htf` again for each enabled timeframe and runs `addFvgs` and `addWicks` when its candle time differs from the last one stored. `runMit` closes the detection part of every bar.
+**Order in the source.** The three `htf` calls for daily, weekly and monthly run first, then `newD`, `newW` and `newM` call `processTf` for each timeframe whose candle just changed. The loop over the six by-timeframe candidates comes next. It calls `htf` again for each enabled timeframe and runs `addFvgs` and `addWicks` when its candle time differs from the last one stored. `runMit` closes the detection part of every bar.
 
 **Formation time.** For levels of kinds 0 to 2 the formation time is the chart bar on which the new candle was detected. For kind 3 it is the candle time returned by the call, which is the start of the candle that has just opened.
 
 **Last bar.** On `barstate.islast` every level in `lvls` is drawn: kind 3 through `drawM`, the others through `draw`. The right edge is `tright(xoff)`, so all objects follow the last bar. Objects already created are updated rather than recreated.
 
-**Warning.** When none of daily, weekly and monthly is available at the chart timeframe, a table in the bottom-right says to use a chart of 1M or lower.
+**Warning.** When none of daily, weekly and monthly is available at the chart timeframe, a table in the bottom-right says to use a chart lower than 1M.
 
 ## Drawing
 
@@ -176,13 +176,13 @@ Label text is built by `lbltxt` as the timeframe text, the level name, the optio
 
 ### FVGs by timeframe (kind 3)
 
-`drawM` draws a box with the level color as its border and, unless no fill is on, a transparent fill. Then it adds:
+`drawM` draws a box with the level color as its border and, only when `mffill` is "always", a transparent fill. `drawMM` fills its margin box unless `mffill` is "never". Then it adds:
 
 - **CE box**: a box whose top and bottom are both the CE, so it has zero height and shows as a line. Its style is set by the CE outline input.
 - **Formation marker**: a vertical line from the high to the low at the formation time `tfm`, drawn only when `tfm` is not before the left edge.
 - **Label**: text made of the timeframe name, the FVG or IFVG name and the direction sign, each optional. Its horizontal position is the box left, center or right, or the right margin. Its vertical anchor is the high, the CE or the low. The label style is chosen to match the position, for example a right-aligned label for Inside right.
 
-**Right margin.** With `mfmargin` on, `drawMM` is used instead of `drawM`. The column of a timeframe is its rank among the enabled timeframes (`mfCol`), so the box spans from bar `bar_index + mfmoff + col * (mfmw + 1)` to `mfmw` bars after it, at the FVG high and low. Only the margin boxes, CE boxes and labels use `xloc.bar_index` (a few hundred bars at most to the right of the last bar): bar times to the right of the last bar collapse to one point while the market is closed (weekends), which turned the boxes into vertical lines. Everything else keeps bar time. It gets the CE box and a label centered in the box at the chosen anchor, on two lines so the boxes can be thin: the optional timeframe, then an up (bullish) or down (bearish) arrow from the current direction. With `mfext` on, the high, low and (with the CE box) the CE are drawn by bar time as lines in the `hiln`, `loln` and `celn` fields, from the time of the bar `mfextn` bars before the last one (or the FVG start `t` with `mfextst`) to the last bar, and continued by short bar-index links (`hiln2`, `loln2`, `celn2`, `mkLineI`) from the last bar to the left edge of the box. Bar time is kept for the long part because a bar index far in the past can raise a runtime error. No formation marker is drawn.
+**Right margin.** With `mfmargin` on, `drawMM` is used instead of `drawM`. The column of a timeframe is its rank among the enabled timeframes (`mfCol`), so the box spans from bar `bar_index + mfmoff + col * (mfmw + 1)` to `mfmw` bars after it, at the FVG high and low. Only the margin boxes, CE boxes and labels use `xloc.bar_index` (a few hundred bars at most to the right of the last bar): bar times to the right of the last bar collapse to one point while the market is closed (weekends), which turned the boxes into vertical lines. Everything else keeps bar time. It gets the CE box and a label centered in the box at the chosen anchor, on two lines so the boxes can be thin: the optional timeframe (with an "i" appended for an IFVG, "1Hi"), then an up (bullish) or down (bearish) arrow from the current direction. With `mfext` on, the high, low and (with the CE box) the CE are drawn by bar time as lines in the `hiln`, `loln` and `celn` fields, from the start chosen by `mfextto` to the last bar: the time of the bar `mfextn` bars before the last one ("for"), the FVG start `t` ("to start") or its formation time `tfm`, the end of the third candle ("to creation"), and continued by short bar-index links (`hiln2`, `loln2`, `celn2`, `mkLineI`) from the last bar to the left edge of the box. Bar time is kept for the long part because a bar index far in the past can raise a runtime error. No formation marker is drawn.
 
 ### Updating
 
@@ -197,7 +197,8 @@ Every function that would otherwise return nothing ends in `true`, because Pine 
 | Function | Behavior |
 | --- | --- |
 | `getstyle(s)`, `getsize(s)` | Turn input strings into line styles and label sizes |
-| `mfEnabled(i)` | Whether the FVGs of by-timeframe candidate `i` are drawn: ticked, or among the next `mfnext` higher ones, and not below the chart timeframe |
+| `mfOk(s)` | Whether a timeframe of `s` seconds is usable: strictly higher than the chart timeframe |
+| `mfEnabled(i)` | Whether the FVGs of by-timeframe candidate `i` are drawn: ticked, or among the next `mfnext` higher ones, and always above the chart timeframe |
 | `wkEnabled(i)` | Whether wick CEs are computed for 1H or 4H candidates |
 | `mfcol(i, d)`, `tcol(tfi, d)` | Color of a by-timeframe candidate or of any timeframe index, by direction |
 | `ksty`, `kcesty`, `kwid`, `kshow`, `kfill` | Style, CE style, width, visibility of a part and fill flag for a kind of level |
@@ -234,7 +235,7 @@ Every function that would otherwise return nothing ends in `true`, because Pine 
 
 - The code has not been compiled or run in TradingView. Expect to fix small errors on first load.
 - Levels exist only for candles completed after the script's first chart bar, and `request.security` history is limited by the chart's bar count, so deep history is not reproduced.
-- The chart timeframe must be no higher than the timeframe of a level: daily levels need 1D or lower, weekly 1W or lower, monthly 1M or lower. The by-timeframe layer only offers timeframes equal to or above the chart.
+- Only timeframes strictly higher than the chart are used, never the chart's own: daily levels need a chart lower than 1D, weekly lower than 1W, monthly lower than 1M, and the by-timeframe layer uses only timeframes above the chart (`mfOk`).
 - Detection uses the exchange candles of the symbol, so weekly and monthly boundaries follow the exchange session, not the platform timezone.
 - A wick group is evaluated candle by candle. If a level is removed by mitigation while its group is still open, a longer wick later in the same group starts a new level.
 - Many enabled timeframes mean many `request.security` calls. One call is made per enabled by-timeframe candidate on top of the three fixed ones.

@@ -1,13 +1,13 @@
 // ICTcotas - NinjaTrader 8 indicator
 //
 // Daily, weekly and monthly Fair Value Gaps (FVG / IFVG), Volume Imbalances (VI) and wick CE
-// levels, plus FVG boxes (and optional 1H / 4H wick CE lines) of 15m / 1H / 4H / D / W candles.
+// levels, plus FVG boxes (and optional 1H / 4H wick CE lines) of 15m / 1H / 4H / D / W / M candles.
 // Each FVG / VI is drawn with high, low and CE (midpoint). Wicks are grouped (consecutive candles
 // with a qualifying wick on the same side) and the CE of the longest wick of the group is drawn.
 // FVGs closed through become IFVGs. Mitigated levels are removed.
 //
 // Port of the TradingView Pine Script v6 indicator ICTcotas.txt by franjballest
-// (source md5 1bec39cfb0678f8b5ae65646aa8b8588). Mozilla Public License 2.0.
+// (source md5 3636809354c6e1a528daa558a99d3b6c). Mozilla Public License 2.0.
 //
 // Install:
 //   1. Copy this file to  Documents\NinjaTrader 8\bin\Custom\Indicators\ICTcotas.cs
@@ -92,6 +92,20 @@ public enum ICTcotasLabelPosition
 	LeftOfBox
 }
 
+public enum ICTcotasFill
+{
+	Never,
+	AtMargin,
+	Always
+}
+
+public enum ICTcotasExtendTo
+{
+	For,
+	ToStart,
+	ToCreation
+}
+
 public enum ICTcotasLabelAnchor
 {
 	High,
@@ -111,7 +125,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 		private const string GFvg = "Fair Value Gaps";
 		private const string GVi = "Volume Imbalances";
 		private const string GWk = "Wick CE";
-		private const string GMf = "FVGs and wick CE by timeframe (15m / 1H / 4H / D / W)";
+		private const string GMf = "FVGs and wick CE by timeframe (15m / 1H / 4H / D / W / M)";
 
 		// series indexes (order of AddDataSeries in State.Configure)
 		private const int SerDay = 1;
@@ -122,10 +136,10 @@ namespace NinjaTrader.NinjaScript.Indicators
 		private const int Ser240 = 6;
 		private const int SerCount = 7;
 
-		// by-timeframe candidates: 15m, 1H, 4H, D, W (kind 3 levels use tfi = 3 + index)
-		private static readonly int[] MfSecs = { 900, 3600, 14400, 86400, 604800 };
-		private static readonly string[] MfNames = { "15m", "1H", "4H", "D", "W" };
-		private static readonly int[] MfSeries = { Ser15, Ser60, Ser240, SerDay, SerWeek };
+		// by-timeframe candidates: 15m, 1H, 4H, D, W, M (kind 3 levels use tfi = 3 + index)
+		private static readonly int[] MfSecs = { 900, 3600, 14400, 86400, 604800, 2628003 };
+		private static readonly string[] MfNames = { "15m", "1H", "4H", "D", "W", "M" };
+		private static readonly int[] MfSeries = { Ser15, Ser60, Ser240, SerDay, SerWeek, SerMonth };
 
 		private class Lvl
 		{
@@ -264,6 +278,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 				Mf4H = true;
 				MfD = false;
 				MfW = false;
+				MfM = false;
 				MfKeep = 6;
 				MfMinSize = 0.0;
 				Mf15Bull = MakeBrush(0x00, 0xE6, 0x76);  // lime
@@ -276,9 +291,11 @@ namespace NinjaTrader.NinjaScript.Indicators
 				MfDBear = MakeBrush(0xE0, 0x40, 0xFB);   // fuchsia
 				MfWBull = MakeBrush(0x31, 0x1B, 0x92);   // navy
 				MfWBear = MakeBrush(0x9C, 0x27, 0xB0);   // purple
+				MfMBull = MakeBrush(0x80, 0x80, 0x00);   // olive
+				MfMBear = MakeBrush(0x78, 0x7B, 0x86);   // gray
 				MfStyle = DashStyleHelper.Solid;
 				MfWidth = 1;
-				MfNoFill = true;
+				MfFill = ICTcotasFill.AtMargin;
 				MfTransparency = 88;
 				MfShowFormation = true;
 				MfShowCE = true;
@@ -297,7 +314,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 				MfMarginWidth = 4;
 				MfExtend = false;
 				MfExtendBars = 20;
-				MfExtendToStart = false;
+				MfExtendTo = ICTcotasExtendTo.For;
 			}
 			else if (State == State.Configure)
 			{
@@ -322,20 +339,21 @@ namespace NinjaTrader.NinjaScript.Indicators
 				dirty = false;
 
 				tfsecs = PeriodSeconds(BarsArray[0].BarsPeriod);
-				dayOk = DoDaily && tfsecs <= 86400;
-				wkOk = DoWeekly && tfsecs <= 604800;
-				monOk = DoMonthly && tfsecs <= 2628003;
+				// D, W and M levels only on lower chart timeframes, never the chart's own
+				dayOk = DoDaily && tfsecs < 86400;
+				wkOk = DoWeekly && tfsecs < 604800;
+				monOk = DoMonthly && tfsecs < 2592000;
 				mmode = Mitigation == ICTcotasMitigation.CETouched ? 1
 					: Mitigation == ICTcotasMitigation.FullyFilledWick ? 2
 					: Mitigation == ICTcotasMitigation.FullyFilledClose ? 3 : 0;
 
-				bool[] sel = { Mf15, Mf1H, Mf4H, MfD, MfW };
-				mfOn = new bool[5];
-				wkOn = new bool[5];
-				for (int i = 0; i < 5; i++)
+				bool[] sel = { Mf15, Mf1H, Mf4H, MfD, MfW, MfM };
+				mfOn = new bool[6];
+				wkOn = new bool[6];
+				for (int i = 0; i < 6; i++)
 				{
 					int s = MfSecs[i];
-					bool on = DrawMf && s >= tfsecs && sel[i];
+					bool on = DrawMf && MfOk(s) && sel[i];
 					if (DrawMf && s > tfsecs && MfNext > 0)
 					{
 						int rank = 0;
@@ -346,11 +364,11 @@ namespace NinjaTrader.NinjaScript.Indicators
 							on = true;
 					}
 					mfOn[i] = on;
-					wkOn[i] = DrawWick && s >= tfsecs && ((i == 1 && Wick1H) || (i == 2 && Wick4H));
+					wkOn[i] = DrawWick && MfOk(s) && ((i == 1 && Wick1H) || (i == 2 && Wick4H));
 				}
 
-				bullB = new Brush[8];
-				bearB = new Brush[8];
+				bullB = new Brush[9];
+				bearB = new Brush[9];
 				bullB[0] = Frz(DailyBull);   bearB[0] = Frz(DailyBear);
 				bullB[1] = Frz(WeeklyBull);  bearB[1] = Frz(WeeklyBear);
 				bullB[2] = Frz(MonthlyBull); bearB[2] = Frz(MonthlyBear);
@@ -359,6 +377,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 				bullB[5] = Frz(Mf4HBull);    bearB[5] = Frz(Mf4HBear);
 				bullB[6] = Frz(MfDBull);     bearB[6] = Frz(MfDBear);
 				bullB[7] = Frz(MfWBull);     bearB[7] = Frz(MfWBear);
+				bullB[8] = Frz(MfMBull);     bearB[8] = Frz(MfMBear);
 
 				lblFont = new SimpleFont("Arial", FontSize(LabelSize)) { Bold = LabelBold };
 				mfFont = new SimpleFont("Arial", FontSize(MfLabelSize)) { Bold = LabelBold };
@@ -393,7 +412,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 			{
 				tfirst = Times[0][0];
 				if (!(dayOk || wkOk || monOk))
-					Draw.TextFixed(this, "ICTc_note", "ICTcotas: use a chart timeframe of 1M or lower",
+					Draw.TextFixed(this, "ICTc_note", "ICTcotas: use a chart timeframe lower than 1M",
 						TextPosition.BottomRight, Brushes.Orange, new SimpleFont("Arial", 10),
 						Brushes.Transparent, Brushes.Transparent, 0);
 			}
@@ -440,7 +459,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 			if (k == SerMonth && monOk)
 				ProcessTf(2, k, off);
 
-			for (int i = 0; i < 5; i++)
+			for (int i = 0; i < 6; i++)
 			{
 				if (MfSeries[i] != k)
 					continue;
@@ -484,6 +503,12 @@ namespace NinjaTrader.NinjaScript.Indicators
 				case ICTcotasLabelSize.Huge: return 20;
 				default: return 12;
 			}
+		}
+
+		// only timeframes above the chart are used, never the chart's own
+		private bool MfOk(int s)
+		{
+			return s > tfsecs;
 		}
 
 		private static int PeriodSeconds(BarsPeriod bp)
@@ -765,7 +790,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 			double topC = Math.Max(o1, c1);
 			double botC = Math.Min(o1, c1);
 
-			if (DrawFvg)
+			// no FVG / IFVG lines for D, W or M when the same timeframe is drawn as boxes (redundant)
+			if (DrawFvg && !mfOn[tfi + 3])
 				AddFvgs(0, tfi, FvgMinSize, k, off);
 			if (DrawVi)
 			{
@@ -910,7 +936,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 			int x1 = x0 - MfMarginWidth;
 
 			NinjaTrader.NinjaScript.DrawingTools.Rectangle r = Draw.Rectangle(this, Tag(l, "bx"), false,
-				x0, l.Hi, x1, l.Lo, c, MfNoFill ? Brushes.Transparent : c, MfNoFill ? 0 : 100 - MfTransparency);
+				x0, l.Hi, x1, l.Lo, c, MfFill == ICTcotasFill.Never ? Brushes.Transparent : c,
+				MfFill == ICTcotasFill.Never ? 0 : 100 - MfTransparency);
 			if (r != null)
 				r.OutlineStroke = new Stroke(c, MfStyle, MfWidth);
 			if (MfShowCE)
@@ -918,7 +945,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 
 			if (MfExtend)
 			{
-				int xs = MfExtendToStart ? BarsAgoOf(l.T) : MfExtendBars;
+				int xs = MfExtendTo == ICTcotasExtendTo.ToStart ? BarsAgoOf(l.T)
+					: MfExtendTo == ICTcotasExtendTo.ToCreation ? BarsAgoOf(l.HasTfm ? l.Tfm : l.T) : MfExtendBars;
 				Draw.Line(this, Tag(l, "hl"), false, xs, l.Hi, x0, l.Hi, c, MfStyle, MfWidth);
 				Draw.Line(this, Tag(l, "ll"), false, xs, l.Lo, x0, l.Lo, c, MfStyle, MfWidth);
 				if (MfShowCE)
@@ -930,7 +958,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 				double y = MfLabelAnchor == ICTcotasLabelAnchor.High ? l.Hi
 					: MfLabelAnchor == ICTcotasLabelAnchor.Low ? l.Lo : l.Ce;
 				// thin boxes: the timeframe on one line, the arrow on the next
-				string tfn = MfLabelShowTf ? MfNames[l.Tfi - 3] + "\n" : "";
+				// TF with an "i" for an IFVG: "1Hi"
+				string tfn = MfLabelShowTf ? MfNames[l.Tfi - 3] + (l.Inv ? "i" : "") + "\n" : "";
 				string txt = tfn + (l.Dir == 1 ? "\u2191" : "\u2193");
 				DrawLabel(Tag(l, "lbl"), (x0 + x1) / 2, y, txt, c, mfFont, TextAlignment.Center);
 			}
@@ -944,7 +973,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 			Brush c = TCol(l.Tfi, l.Dir);
 
 			NinjaTrader.NinjaScript.DrawingTools.Rectangle r = Draw.Rectangle(this, Tag(l, "bx"), false,
-				sba, l.Hi, eba, l.Lo, c, MfNoFill ? Brushes.Transparent : c, MfNoFill ? 0 : 100 - MfTransparency);
+				sba, l.Hi, eba, l.Lo, c, MfFill == ICTcotasFill.Always ? c : Brushes.Transparent,
+				MfFill == ICTcotasFill.Always ? 100 - MfTransparency : 0);
 			if (r != null)
 				r.OutlineStroke = new Stroke(c, MfStyle, MfWidth);
 
@@ -981,15 +1011,15 @@ namespace NinjaTrader.NinjaScript.Indicators
 
 		// ---------------------------------------------------------------- General
 		[NinjaScriptProperty]
-		[Display(Name = "Daily", Description = "Levels from daily candles (chart timeframe must be 1D or lower)", GroupName = GGen, Order = 1)]
+		[Display(Name = "Daily", Description = "Levels from daily candles (chart timeframe must be lower than 1D)", GroupName = GGen, Order = 1)]
 		public bool DoDaily { get; set; }
 
 		[NinjaScriptProperty]
-		[Display(Name = "Weekly", Description = "Levels from weekly candles (chart timeframe must be 1W or lower)", GroupName = GGen, Order = 2)]
+		[Display(Name = "Weekly", Description = "Levels from weekly candles (chart timeframe must be lower than 1W)", GroupName = GGen, Order = 2)]
 		public bool DoWeekly { get; set; }
 
 		[NinjaScriptProperty]
-		[Display(Name = "Monthly", Description = "Levels from monthly candles (chart timeframe must be 1M or lower)", GroupName = GGen, Order = 3)]
+		[Display(Name = "Monthly", Description = "Levels from monthly candles (chart timeframe must be lower than 1M)", GroupName = GGen, Order = 3)]
 		public bool DoMonthly { get; set; }
 
 		[NinjaScriptProperty]
@@ -1276,11 +1306,11 @@ namespace NinjaTrader.NinjaScript.Indicators
 
 		// ---------------------------------------------------------------- FVGs and wick CE by timeframe
 		[NinjaScriptProperty]
-		[Display(Name = "Draw FVGs of selected timeframes", Description = "FVGs found on the timeframes ticked below, drawn with a box, a CE line and a label. Only timeframes equal to or higher than the chart timeframe are used.", GroupName = GMf, Order = 1)]
+		[Display(Name = "Draw FVGs of selected timeframes", Description = "FVGs found on the timeframes ticked below, drawn with a box, a CE line and a label. Only timeframes higher than the chart timeframe are used, never the chart's own.", GroupName = GMf, Order = 1)]
 		public bool DrawMf { get; set; }
 
 		[NinjaScriptProperty]
-		[Range(0, 5)]
+		[Range(0, 6)]
 		[Display(Name = "Plus the next higher", Description = "Also draw the FVGs of this many of the listed timeframes that are above the chart timeframe, starting with the nearest one. 0 = only the ticked ones.", GroupName = GMf, Order = 2)]
 		public int MfNext { get; set; }
 
@@ -1305,18 +1335,22 @@ namespace NinjaTrader.NinjaScript.Indicators
 		public bool MfW { get; set; }
 
 		[NinjaScriptProperty]
+		[Display(Name = "M", GroupName = GMf, Order = 8)]
+		public bool MfM { get; set; }
+
+		[NinjaScriptProperty]
 		[Range(1, 20)]
-		[Display(Name = "Keep per timeframe", GroupName = GMf, Order = 8)]
+		[Display(Name = "Keep per timeframe", GroupName = GMf, Order = 9)]
 		public int MfKeep { get; set; }
 
 		[NinjaScriptProperty]
 		[Range(0.0, double.MaxValue)]
-		[Display(Name = "Min size", Description = "Min gap size in price points", GroupName = GMf, Order = 9)]
+		[Display(Name = "Min size", Description = "Min gap size in price points", GroupName = GMf, Order = 10)]
 		public double MfMinSize { get; set; }
 
 		[NinjaScriptProperty]
 		[XmlIgnore]
-		[Display(Name = "15m: bull", GroupName = GMf, Order = 10)]
+		[Display(Name = "15m: bull", GroupName = GMf, Order = 11)]
 		public Brush Mf15Bull { get; set; }
 
 		[Browsable(false)]
@@ -1328,7 +1362,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 
 		[NinjaScriptProperty]
 		[XmlIgnore]
-		[Display(Name = "15m: bear", GroupName = GMf, Order = 11)]
+		[Display(Name = "15m: bear", GroupName = GMf, Order = 12)]
 		public Brush Mf15Bear { get; set; }
 
 		[Browsable(false)]
@@ -1340,7 +1374,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 
 		[NinjaScriptProperty]
 		[XmlIgnore]
-		[Display(Name = "1H: bull", GroupName = GMf, Order = 12)]
+		[Display(Name = "1H: bull", GroupName = GMf, Order = 13)]
 		public Brush Mf1HBull { get; set; }
 
 		[Browsable(false)]
@@ -1352,7 +1386,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 
 		[NinjaScriptProperty]
 		[XmlIgnore]
-		[Display(Name = "1H: bear", GroupName = GMf, Order = 13)]
+		[Display(Name = "1H: bear", GroupName = GMf, Order = 14)]
 		public Brush Mf1HBear { get; set; }
 
 		[Browsable(false)]
@@ -1364,7 +1398,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 
 		[NinjaScriptProperty]
 		[XmlIgnore]
-		[Display(Name = "4H: bull", GroupName = GMf, Order = 14)]
+		[Display(Name = "4H: bull", GroupName = GMf, Order = 15)]
 		public Brush Mf4HBull { get; set; }
 
 		[Browsable(false)]
@@ -1376,7 +1410,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 
 		[NinjaScriptProperty]
 		[XmlIgnore]
-		[Display(Name = "4H: bear", GroupName = GMf, Order = 15)]
+		[Display(Name = "4H: bear", GroupName = GMf, Order = 16)]
 		public Brush Mf4HBear { get; set; }
 
 		[Browsable(false)]
@@ -1388,7 +1422,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 
 		[NinjaScriptProperty]
 		[XmlIgnore]
-		[Display(Name = "D: bull", GroupName = GMf, Order = 16)]
+		[Display(Name = "D: bull", GroupName = GMf, Order = 17)]
 		public Brush MfDBull { get; set; }
 
 		[Browsable(false)]
@@ -1400,7 +1434,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 
 		[NinjaScriptProperty]
 		[XmlIgnore]
-		[Display(Name = "D: bear", GroupName = GMf, Order = 17)]
+		[Display(Name = "D: bear", GroupName = GMf, Order = 18)]
 		public Brush MfDBear { get; set; }
 
 		[Browsable(false)]
@@ -1412,7 +1446,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 
 		[NinjaScriptProperty]
 		[XmlIgnore]
-		[Display(Name = "W: bull", GroupName = GMf, Order = 18)]
+		[Display(Name = "W: bull", GroupName = GMf, Order = 19)]
 		public Brush MfWBull { get; set; }
 
 		[Browsable(false)]
@@ -1424,7 +1458,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 
 		[NinjaScriptProperty]
 		[XmlIgnore]
-		[Display(Name = "W: bear", GroupName = GMf, Order = 19)]
+		[Display(Name = "W: bear", GroupName = GMf, Order = 20)]
 		public Brush MfWBear { get; set; }
 
 		[Browsable(false)]
@@ -1435,97 +1469,121 @@ namespace NinjaTrader.NinjaScript.Indicators
 		}
 
 		[NinjaScriptProperty]
-		[Display(Name = "Outline style", GroupName = GMf, Order = 20)]
+		[XmlIgnore]
+		[Display(Name = "M: bull", GroupName = GMf, Order = 21)]
+		public Brush MfMBull { get; set; }
+
+		[Browsable(false)]
+		public string MfMBullSerializable
+		{
+			get { return Serialize.BrushToString(MfMBull); }
+			set { MfMBull = Serialize.StringToBrush(value); }
+		}
+
+		[NinjaScriptProperty]
+		[XmlIgnore]
+		[Display(Name = "M: bear", GroupName = GMf, Order = 22)]
+		public Brush MfMBear { get; set; }
+
+		[Browsable(false)]
+		public string MfMBearSerializable
+		{
+			get { return Serialize.BrushToString(MfMBear); }
+			set { MfMBear = Serialize.StringToBrush(value); }
+		}
+
+		[NinjaScriptProperty]
+		[Display(Name = "Outline style", GroupName = GMf, Order = 23)]
 		public DashStyleHelper MfStyle { get; set; }
 
 		[NinjaScriptProperty]
 		[Range(1, 3)]
-		[Display(Name = "Outline width", GroupName = GMf, Order = 21)]
+		[Display(Name = "Outline width", GroupName = GMf, Order = 24)]
 		public int MfWidth { get; set; }
 
 		[NinjaScriptProperty]
-		[Display(Name = "No fill (outline only)", Description = "When checked the FVG box is drawn without fill: only its outline and the CE line remain.", GroupName = GMf, Order = 22)]
-		public bool MfNoFill { get; set; }
+		[Display(Name = "Fill", Description = "Never: boxes drawn as outlines only. AtMargin: filled only when drawn in the right margin. Always: filled over the candles too.", GroupName = GMf, Order = 25)]
+		public ICTcotasFill MfFill { get; set; }
 
 		[NinjaScriptProperty]
 		[Range(0, 100)]
-		[Display(Name = "Transp", GroupName = GMf, Order = 23)]
+		[Display(Name = "Transp", GroupName = GMf, Order = 26)]
 		public int MfTransparency { get; set; }
 
 		[NinjaScriptProperty]
-		[Display(Name = "Formation marker", Description = "Vertical segment inside the FVG box at the close of its last candle, the moment the FVG formed", GroupName = GMf, Order = 24)]
+		[Display(Name = "Formation marker", Description = "Vertical segment inside the FVG box at the close of its last candle, the moment the FVG formed", GroupName = GMf, Order = 27)]
 		public bool MfShowFormation { get; set; }
 
 		[NinjaScriptProperty]
-		[Display(Name = "CE box", Description = "A zero height box (a line) at the CE (midpoint) of the FVG", GroupName = GMf, Order = 25)]
+		[Display(Name = "CE box", Description = "A zero height box (a line) at the CE (midpoint) of the FVG", GroupName = GMf, Order = 28)]
 		public bool MfShowCE { get; set; }
 
 		[NinjaScriptProperty]
-		[Display(Name = "CE outline", GroupName = GMf, Order = 26)]
+		[Display(Name = "CE outline", GroupName = GMf, Order = 29)]
 		public DashStyleHelper MfCEStyle { get; set; }
 
 		[NinjaScriptProperty]
-		[Display(Name = "Labels", GroupName = GMf, Order = 27)]
+		[Display(Name = "Labels", GroupName = GMf, Order = 30)]
 		public bool MfLabels { get; set; }
 
 		[NinjaScriptProperty]
-		[Display(Name = "Label: show TF", GroupName = GMf, Order = 28)]
+		[Display(Name = "Label: show TF", GroupName = GMf, Order = 31)]
 		public bool MfLabelShowTf { get; set; }
 
 		[NinjaScriptProperty]
-		[Display(Name = "Label: FVG / IFVG", GroupName = GMf, Order = 29)]
+		[Display(Name = "Label: FVG / IFVG", GroupName = GMf, Order = 32)]
 		public bool MfLabelShowType { get; set; }
 
 		[NinjaScriptProperty]
-		[Display(Name = "Label: direction (+/-)", Description = "Choose which parts the label shows: the timeframe, the FVG / IFVG name and the direction", GroupName = GMf, Order = 30)]
+		[Display(Name = "Label: direction (+/-)", Description = "Choose which parts the label shows: the timeframe, the FVG / IFVG name and the direction", GroupName = GMf, Order = 33)]
 		public bool MfLabelShowDir { get; set; }
 
 		[NinjaScriptProperty]
-		[Display(Name = "Label size", GroupName = GMf, Order = 31)]
+		[Display(Name = "Label size", GroupName = GMf, Order = 34)]
 		public ICTcotasLabelSize MfLabelSize { get; set; }
 
 		[NinjaScriptProperty]
-		[Display(Name = "Label position", GroupName = GMf, Order = 32)]
+		[Display(Name = "Label position", GroupName = GMf, Order = 35)]
 		public ICTcotasLabelPosition MfLabelPos { get; set; }
 
 		[NinjaScriptProperty]
-		[Display(Name = "Label at", Description = "Price level the label is attached to", GroupName = GMf, Order = 33)]
+		[Display(Name = "Label at", Description = "Price level the label is attached to", GroupName = GMf, Order = 36)]
 		public ICTcotasLabelAnchor MfLabelAnchor { get; set; }
 
 		[NinjaScriptProperty]
-		[Display(Name = "Wick CE: 1H", Description = "Also compute the wick CE levels (needs Draw wick CE on) on 1H candles. Only used when the chart timeframe is 1H or lower.", GroupName = GMf, Order = 34)]
+		[Display(Name = "Wick CE: 1H", Description = "Also compute the wick CE levels (needs Draw wick CE on) on 1H candles. Only used when the chart timeframe is lower than 1H.", GroupName = GMf, Order = 37)]
 		public bool Wick1H { get; set; }
 
 		[NinjaScriptProperty]
-		[Display(Name = "Wick CE: 4H", Description = "Also compute the wick CE levels (needs Draw wick CE on) on 4H candles. Only used when the chart timeframe is 4H or lower.", GroupName = GMf, Order = 35)]
+		[Display(Name = "Wick CE: 4H", Description = "Also compute the wick CE levels (needs Draw wick CE on) on 4H candles. Only used when the chart timeframe is lower than 4H.", GroupName = GMf, Order = 38)]
 		public bool Wick4H { get; set; }
 
 		[NinjaScriptProperty]
-		[Display(Name = "Draw in the right margin", Description = "Instead of over the candles, each FVG / IFVG is drawn as a box in the right margin, one column per timeframe (from the lowest), labeled with the timeframe and, on the next line, an up (bullish) or down (bearish) arrow.", GroupName = GMf, Order = 36)]
+		[Display(Name = "Draw in the right margin", Description = "Instead of over the candles, each FVG / IFVG is drawn as a box in the right margin, one column per timeframe (from the lowest), labeled with the timeframe and, on the next line, an up (bullish) or down (bearish) arrow.", GroupName = GMf, Order = 39)]
 		public bool MfMargin { get; set; }
 
 		[NinjaScriptProperty]
 		[Range(0, 200)]
-		[Display(Name = "Margin: offset", Description = "Bars between the last bar and the first column", GroupName = GMf, Order = 37)]
+		[Display(Name = "Margin: offset", Description = "Bars between the last bar and the first column", GroupName = GMf, Order = 40)]
 		public int MfMarginOffset { get; set; }
 
 		[NinjaScriptProperty]
 		[Range(1, 50)]
-		[Display(Name = "Margin: width", Description = "Bars per box (and per column)", GroupName = GMf, Order = 38)]
+		[Display(Name = "Margin: width", Description = "Bars per box (and per column)", GroupName = GMf, Order = 41)]
 		public int MfMarginWidth { get; set; }
 
 		[NinjaScriptProperty]
-		[Display(Name = "Margin: extend levels", Description = "Lines from the high, low and CE (with CE box on) of each FVG back to the number of candles below, or to the start of the FVG", GroupName = GMf, Order = 39)]
+		[Display(Name = "Margin: extend levels", Description = "Lines from the high, low and CE (with CE box on) of each FVG back to the point chosen in Extend: mode", GroupName = GMf, Order = 42)]
 		public bool MfExtend { get; set; }
 
 		[NinjaScriptProperty]
-		[Range(1, 500)]
-		[Display(Name = "Extend: candles", GroupName = GMf, Order = 40)]
-		public int MfExtendBars { get; set; }
+		[Display(Name = "Extend: mode", Description = "For: the number of candles below, before the last one. ToStart: the start of the FVG. ToCreation: the end of its third candle, when the FVG was formed (so the third candle's own prices are not taken as reactions to the FVG).", GroupName = GMf, Order = 43)]
+		public ICTcotasExtendTo MfExtendTo { get; set; }
 
 		[NinjaScriptProperty]
-		[Display(Name = "Extend: to FVG start", GroupName = GMf, Order = 41)]
-		public bool MfExtendToStart { get; set; }
+		[Range(1, 500)]
+		[Display(Name = "Extend: candles", GroupName = GMf, Order = 44)]
+		public int MfExtendBars { get; set; }
 
 		#endregion
 	}

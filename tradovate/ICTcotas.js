@@ -3,13 +3,13 @@
  * ----------------------------------------------------------------------------
  * Daily, weekly and monthly Fair Value Gaps (FVG / IFVG), Volume Imbalances (VI)
  * and wick CE levels, plus FVG boxes (and optional wick CEs) of the 15m / 1H /
- * 4H / D / W candles. Each FVG / VI is drawn with its high, low and CE
+ * 4H / D / W / M candles. Each FVG / VI is drawn with its high, low and CE
  * (midpoint). Wicks are grouped (consecutive candles with a qualifying wick on
  * the same side) and the CE of the longest wick of the group is drawn. FVGs
  * closed through become IFVGs. Mitigated levels are removed.
  *
  * Port of the TradingView Pine Script v6 indicator ICTcotas.txt
- * (md5 1bec39cfb0678f8b5ae65646aa8b8588), (c) franjballest, Mozilla Public
+ * (md5 3636809354c6e1a528daa558a99d3b6c), (c) franjballest, Mozilla Public
  * License 2.0 (https://mozilla.org/MPL/2.0/). Same logic, same inputs (as
  * camelCase parameters) and the same defaults.
  *
@@ -56,8 +56,13 @@ const { px, du, op } = require("./tools/graphics");
 // ============================================================ constants
 const HOUR = 3600000;
 const DAY = 86400000;
-const MF_SECS = [900, 3600, 14400, 86400, 604800];
-const MF_NAMES = ["15m", "1H", "4H", "D", "W"];
+const MF_SECS = [900, 3600, 14400, 86400, 604800, 2628003];
+
+// only timeframes above the chart are used, never the chart's own
+function mfOk(s, tfs) {
+    return s > tfs;
+}
+const MF_NAMES = ["15m", "1H", "4H", "D", "W", "M"];
 const FONT = { tiny: 7, small: 9, normal: 11, large: 14, huge: 18 };
 const DASH = { solid: 1, dashed: 4, dotted: 3 };
 const STYLES = { solid: "solid", dashed: "dashed", dotted: "dotted" };
@@ -186,7 +191,7 @@ class Engine {
         const c = this.cfg;
         const tfs = this.tfsecs();
         const s = MF_SECS[i];
-        let on = c.doMf && s >= tfs && c.mfSel[i];
+        let on = c.doMf && mfOk(s, tfs) && c.mfSel[i];
         if (c.doMf && s > tfs && c.mfNext > 0) {
             let rank = 0;
             for (let j = 0; j < i; j++) if (MF_SECS[j] > tfs) rank++;
@@ -197,7 +202,7 @@ class Engine {
 
     wkEnabled(i) {
         const c = this.cfg;
-        return c.doWk && MF_SECS[i] >= this.tfsecs() && ((i === 1 && c.wk1h) || (i === 2 && c.wk4h));
+        return c.doWk && mfOk(MF_SECS[i], this.tfsecs()) && ((i === 1 && c.wk1h) || (i === 2 && c.wk4h));
     }
 
     kill(l) {
@@ -336,7 +341,8 @@ class Engine {
         const k1 = agg.get(1), k2 = agg.get(2), k3 = agg.get(3);
         const topP = Math.max(k2.o, k2.c), botP = Math.min(k2.o, k2.c);
         const topC = Math.max(k1.o, k1.c), botC = Math.min(k1.o, k1.c);
-        if (c.doFvg) this.addFvgs(0, tfi, c.fvgMin, k1, k2, k3, barIdx);
+        // no FVG / IFVG lines for D, W or M when the same timeframe is drawn as boxes (redundant)
+        if (c.doFvg && !this.mfEnabled(tfi + 3)) this.addFvgs(0, tfi, c.fvgMin, k1, k2, k3, barIdx);
         if (c.doVi) {
             if (botC > topP && k1.l <= k2.h && botC - topP >= c.viMin) this.addLvl(1, tfi, 1, topP, botC, k1.t);
             if (topC < botP && k1.h >= k2.l && botP - topC >= c.viMin) this.addLvl(1, tfi, -1, topC, botP, k1.t);
@@ -383,14 +389,15 @@ class Engine {
         const barMs = tfs * 1000;
         const ev = {};
         for (const k of ["d", "w", "m", "m15", "h1", "h4"]) ev[k] = A[k].push(j, b, barMs);
-        const dayOk = c.doDaily && tfs <= 86400;
-        const wkOk = c.doWeekly && tfs <= 604800;
-        const monOk = c.doMonthly && tfs <= 2592000;
+        // D, W and M levels only on lower chart timeframes, never the chart's own
+        const dayOk = c.doDaily && tfs < 86400;
+        const wkOk = c.doWeekly && tfs < 604800;
+        const monOk = c.doMonthly && tfs < 2592000;
         if (dayOk && ev.d) this.processTf(0, A.d, j);
         if (wkOk && ev.w) this.processTf(1, A.w, j);
         if (monOk && ev.m) this.processTf(2, A.m, j);
-        const mfAgg = ["m15", "h1", "h4", "d", "w"];
-        for (let i = 0; i < 5; i++) {
+        const mfAgg = ["m15", "h1", "h4", "d", "w", "m"];
+        for (let i = 0; i < 6; i++) {
             const fvgOn = this.mfEnabled(i);
             const wkOn = this.wkEnabled(i);
             const name = mfAgg[i];
@@ -478,8 +485,8 @@ function buildConfig(p, chart) {
         txtWkU: str(p.txtWkU, "UW"), txtWkL: str(p.txtWkL, "LW"),
 
         doMf: bool(p.doMf, true),
-        mfNext: clamp(Math.round(num(p.mfNext, 0)), 0, 5),
-        mfSel: [bool(p.mf15, false), bool(p.mf1h, true), bool(p.mf4h, true), bool(p.mfD, false), bool(p.mfW, false)],
+        mfNext: clamp(Math.round(num(p.mfNext, 0)), 0, 6),
+        mfSel: [bool(p.mf15, false), bool(p.mf1h, true), bool(p.mf4h, true), bool(p.mfD, false), bool(p.mfW, false), bool(p.mfM, false)],
         nMf: clamp(Math.round(num(p.nMf, 6)), 1, 20),
         mfMin: Math.max(0, num(p.mfMin, 0)),
         mfCol: [
@@ -487,11 +494,12 @@ function buildConfig(p, chart) {
             [str(p.mf1hBull, "#4CAF50"), str(p.mf1hBear, "#F23645")],
             [str(p.mf4hBull, "#089981"), str(p.mf4hBear, "#FF9800")],
             [str(p.mfDBull, "#2196F3"), str(p.mfDBear, "#E040FB")],
-            [str(p.mfWBull, "#311B92"), str(p.mfWBear, "#9C27B0")]
+            [str(p.mfWBull, "#311B92"), str(p.mfWBear, "#9C27B0")],
+            [str(p.mfMBull, "#808000"), str(p.mfMBear, "#787B86")]
         ],
         mfSty: sty(p.mfSty, "solid"),
         mfWid: clamp(Math.round(num(p.mfWid, 1)), 1, 3),
-        mfNoFill: bool(p.mfNoFill, true),
+        mfFill: ["never", "margin", "always"].includes(p.mfFill) ? p.mfFill : "margin",
         mfTr: clamp(num(p.mfTr, 88), 0, 100),
         mfShowForm: bool(p.mfShowForm, true),
         mfShowCe: bool(p.mfShowCe, true),
@@ -510,7 +518,7 @@ function buildConfig(p, chart) {
         mfMW: clamp(Math.round(num(p.mfMW, 4)), 1, 50),
         mfExt: bool(p.mfExt, false),
         mfExtN: clamp(Math.round(num(p.mfExtN, 20)), 1, 500),
-        mfExtSt: bool(p.mfExtSt, false)
+        mfExtTo: ["for", "start", "creation"].includes(p.mfExtTo) ? p.mfExtTo : "for"
     };
     // chart timeframe in seconds from the chart description, when time based
     c.fixedTfSecs = 0;
@@ -605,7 +613,7 @@ function drawLvl(c, l, x, items) {
 function drawMf(c, l, x, items) {
     const col = c.mfCol[l.tfi - 3][l.dir === 1 ? 0 : 1];
     const k = "ictc" + l.id;
-    if (!c.mfNoFill) items.push(rectItem(k + "fill", l.t, l.hi, x, l.lo, col, c.mfTr));
+    if (c.mfFill === "always") items.push(rectItem(k + "fill", l.t, l.hi, x, l.lo, col, c.mfTr));
     items.push(linesItem(k + "bx", [
         seg(l.t, l.hi, x, l.hi), seg(x, l.hi, x, l.lo), seg(x, l.lo, l.t, l.lo), seg(l.t, l.lo, l.t, l.hi)
     ], col, c.mfWid, c.mfSty));
@@ -635,20 +643,23 @@ function drawMfMargin(c, l, eng, lastIdx, items) {
     for (let j = 0; j < l.tfi - 3; j++) if (eng.mfEnabled(j)) cn++;
     const x0 = lastIdx + c.mfMOff + cn * (c.mfMW + 1);
     const x1 = x0 + c.mfMW;
-    if (!c.mfNoFill) items.push(rectItem(k + "fill", x0, l.hi, x1, l.lo, col, c.mfTr));
+    if (c.mfFill !== "never") items.push(rectItem(k + "fill", x0, l.hi, x1, l.lo, col, c.mfTr));
     items.push(linesItem(k + "bx", [
         seg(x0, l.hi, x1, l.hi), seg(x1, l.hi, x1, l.lo), seg(x1, l.lo, x0, l.lo), seg(x0, l.lo, x0, l.hi)
     ], col, c.mfWid, c.mfSty));
     if (c.mfShowCe) items.push(linesItem(k + "ce", [seg(x0, l.ce, x1, l.ce)], col, c.mfWid, c.mfCeSty));
     if (c.mfExt) {
-        const xs = c.mfExtSt ? l.t : lastIdx - c.mfExtN;
+        // "for" N candles, "start" of the FVG, or "creation": end of its third candle
+        const xs = c.mfExtTo === "start" ? l.t : c.mfExtTo === "creation" ? (l.tfm !== null ? l.tfm : l.t)
+            : lastIdx - c.mfExtN;
         items.push(linesItem(k + "ext", [seg(xs, l.hi, x0, l.hi), seg(xs, l.lo, x0, l.lo)], col, c.mfWid, c.mfSty));
         if (c.mfShowCe) items.push(linesItem(k + "extce", [seg(xs, l.ce, x0, l.ce)], col, c.mfWid, c.mfCeSty));
     }
     if (c.mfLbl) {
         const y = c.mfLVert === "high" ? l.hi : c.mfLVert === "low" ? l.lo : l.ce;
         // thin boxes: the timeframe on one line, the arrow on the next
-        const tfn = c.mfLShowTf ? MF_NAMES[l.tfi - 3] + "\n" : "";
+        // TF with an "i" for an IFVG: "1Hi"
+        const tfn = c.mfLShowTf ? MF_NAMES[l.tfi - 3] + (l.inv ? "i" : "") + "\n" : "";
         const txt = tfn + (l.dir === 1 ? "\u2191" : "\u2193");
         items.push(textItem(k + "lb", Math.floor((x0 + x1) / 2), y, txt, col, c.mfLFont, c.lblBold, "center"));
     }
@@ -666,9 +677,9 @@ function drawAll(c, eng, lastIdx, lastBar) {
         else drawLvl(c, l, x, items);
     }
     const tfs = eng.tfsecs();
-    const any = (c.doDaily && tfs <= 86400) || (c.doWeekly && tfs <= 604800) || (c.doMonthly && tfs <= 2592000);
+    const any = (c.doDaily && tfs < 86400) || (c.doWeekly && tfs < 604800) || (c.doMonthly && tfs < 2592000);
     if (!any) {
-        items.push(textItem("ictcnote", x, lastBar.c, "ICTcotas: use a chart timeframe of 1M or lower",
+        items.push(textItem("ictcnote", x, lastBar.c, "ICTcotas: use a chart timeframe lower than 1M",
             "#FF9800", FONT.small, false, "left"));
     }
     return items;
@@ -836,7 +847,7 @@ module.exports = {
         wkWid: int(1, 1),
         txtWkU: predef.paramSpecs.text("UW"),
         txtWkL: predef.paramSpecs.text("LW"),
-        // FVGs and wick CE by timeframe (15m / 1H / 4H / D / W)
+        // FVGs and wick CE by timeframe (15m / 1H / 4H / D / W / M)
         doMf: predef.paramSpecs.bool(true),
         mfNext: int(0, 0),
         mf15: predef.paramSpecs.bool(false),
@@ -844,6 +855,7 @@ module.exports = {
         mf4h: predef.paramSpecs.bool(true),
         mfD: predef.paramSpecs.bool(false),
         mfW: predef.paramSpecs.bool(false),
+        mfM: predef.paramSpecs.bool(false),
         nMf: int(6, 1),
         mfMin: num0(0),
         mf15Bull: predef.paramSpecs.color("#00E676"),
@@ -856,9 +868,11 @@ module.exports = {
         mfDBear: predef.paramSpecs.color("#E040FB"),
         mfWBull: predef.paramSpecs.color("#311B92"),
         mfWBear: predef.paramSpecs.color("#9C27B0"),
+        mfMBull: predef.paramSpecs.color("#808000"),
+        mfMBear: predef.paramSpecs.color("#787B86"),
         mfSty: styleEnum("solid"),
         mfWid: int(1, 1),
-        mfNoFill: predef.paramSpecs.bool(true),
+        mfFill: predef.paramSpecs.enum({ never: "never", margin: "at margin", always: "always" }, "margin"),
         mfTr: int(88, 0),
         mfShowForm: predef.paramSpecs.bool(true),
         mfShowCe: predef.paramSpecs.bool(true),
@@ -880,8 +894,8 @@ module.exports = {
         mfMOff: int(4, 0),
         mfMW: int(4, 1),
         mfExt: predef.paramSpecs.bool(false),
-        mfExtN: int(20, 1),
-        mfExtSt: predef.paramSpecs.bool(false)
+        mfExtTo: predef.paramSpecs.enum({ for: "for", start: "to start", creation: "to creation" }, "for"),
+        mfExtN: int(20, 1)
     },
     inputType: meta.InputType.BARS,
     areaChoice: meta.AreaChoice.OVERLAY,

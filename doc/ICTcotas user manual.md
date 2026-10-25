@@ -11,7 +11,7 @@ ICTcotas draws higher timeframe PD arrays (price delivery arrays) on your chart 
 | Fair Value Gap (FVG) and Inversion FVG (IFVG) | Daily, weekly, monthly | High line, low line, CE line, optional shaded rectangle, labels |
 | Volume Imbalance (VI) | Daily, weekly, monthly | High line, low line, CE line, optional shaded rectangle, labels |
 | Wick CE (upper and lower) | Daily, weekly, monthly; optionally 1H and 4H | One CE line with a label |
-| FVG by timeframe (and its IFVG) | 15m, 1H, 4H, D, W (your choice) | Outline box, CE line, formation marker, one label |
+| FVG by timeframe (and its IFVG) | 15m, 1H, 4H, D, W, M (your choice) | Outline box, CE line, formation marker, one label |
 
 Every level extends from the candle where it formed to a few bars to the right of the current bar. When a level is mitigated (according to the rule you choose) it is removed from the chart. FVGs that are closed through can instead turn into IFVGs and keep being drawn with the opposite direction.
 
@@ -20,12 +20,12 @@ The indicator computes no entry signals and has no alerts. It is a map of levels
 ### The two layers
 
 - **Timeframe levels** (sections General through Wick CE in the settings): FVGs, VIs and wick CEs of the daily (D), weekly (W) and monthly (M) candles, drawn as horizontal lines. Weekly lines are thicker than daily ones and monthly lines thicker still.
-- **FVGs by timeframe** (the last settings section): FVGs of 15m, 1H, 4H, D and W candles drawn as boxes, each with its own colors. This layer is on by default with 1H and 4H selected. It can also add wick CE lines for 1H and 4H.
+- **FVGs by timeframe** (the last settings section): FVGs of 15m, 1H, 4H, D, W and M candles drawn as boxes, each with its own colors. This layer is on by default with 1H and 4H selected. It can also add wick CE lines for 1H and 4H.
 
 ## 2. Quick start
 
 1. Add ICTcotas to the chart (Indicators, then search for ICTcotas in your scripts).
-2. Use an intraday execution chart for NQ or DAX, for example 1m, 3m, 5m or 15m. All daily, weekly and monthly levels require a chart timeframe of 1D or lower (see section 9 for monthly).
+2. Use an intraday execution chart for NQ or DAX, for example 1m, 3m, 5m or 15m. ICTcotas only shows levels of timeframes higher than the chart, never the chart's own: daily levels need a chart below 1D, weekly below 1W and monthly below 1M.
 3. Leave the defaults to start: D, W and M levels on, FVG / VI / wick CE on, 8 of each kept per timeframe, levels removed when fully filled by a wick, FVGs turning into IFVGs on a close through them, and 1H and 4H FVG boxes.
 4. If the chart looks crowded, untick the kinds you do not use (for example Draw VIs), or reduce **keep**.
 5. Scroll the chart to the left once or twice if weekly or monthly levels are missing: the script only finds levels as higher timeframe candles complete inside the loaded chart history (section 9).
@@ -36,7 +36,7 @@ The indicator computes no entry signals and has no alerts. It is a map of levels
 | ------- | ----- | -------------- |
 | Intraday NQ / DAX execution | 1m to 5m | Defaults. Optionally tick 15m in the by-timeframe section, or set **plus the next higher** to 2 |
 | Intraday bias and planning | 15m | Defaults; 1H and 4H boxes give the intraday PD arrays, lines give D/W/M |
-| Swing context | 1H or 4H | Defaults; tick D and W in the by-timeframe section only if you want box versions (they duplicate the D/W lines) |
+| Swing context | 1H or 4H | Defaults; tick D, W or M in the by-timeframe section only if you want box versions (they duplicate the D/W/M lines) |
 
 ### Platform time zone
 
@@ -182,7 +182,7 @@ The 1H and 4H wick CE options in the last settings section add the same kind of 
 
 Each FVG of a selected timeframe is a box in that timeframe's color:
 
-- **Outline**: solid, width 1, no fill by default (fill can be turned on).
+- **Outline**: solid, width 1. With the default **fill** "at margin", boxes over the candles are outlines only and boxes in the right margin are filled; "never" and "always" turn the fill off or on everywhere.
 - **CE box**: a zero-height box at the midpoint, so it looks like a dotted line across the box.
 - **Formation marker**: a short vertical line inside the box, from the high to the low, at the moment the FVG formed (the close of its third candle). Everything left of the marker is the pattern itself; everything right of it is time after the FVG was confirmed.
 - **Label**: by default inside the box at its right end, at CE height, for example `1H FVG` or `4H IFVG`.
@@ -193,10 +193,10 @@ Inversion, the overlap rule and the VI extension work exactly as in section 4; t
 
 A timeframe is drawn when **Draw FVGs of selected timeframes** is on and either:
 
-- it is ticked and is equal to or higher than the chart timeframe; or
+- it is ticked and is higher than the chart timeframe; or
 - **plus the next higher** is above 0 and it is one of that many listed timeframes strictly above the chart timeframe, counting from the nearest.
 
-Ticked timeframes below the chart timeframe are ignored. Example: on a 5m chart with nothing ticked and **plus the next higher** set to 2, the 15m and 1H FVGs are drawn; on a 1H chart the same setting draws 4H and D. This lets one setting follow you across chart timeframes.
+Ticked timeframes equal to or below the chart timeframe are ignored, so a D box is never drawn on a 1D chart. Example: on a 5m chart with nothing ticked and **plus the next higher** set to 2, the 15m and 1H FVGs are drawn; on a 1H chart the same setting draws 4H and D. This lets one setting follow you across chart timeframes.
 
 ### Label layout
 
@@ -212,15 +212,15 @@ Ticked timeframes below the chart timeframe are ignored. Example: on a 5m chart 
 
 ### Right margin layout
 
-With **Draw in the right margin** on, the boxes are drawn in the right margin instead of over the candles. Each enabled timeframe gets its own column, from the lowest timeframe on the left to the highest on the right. Each FVG or IFVG is a box at its own high and low, with its CE box, and a label centered in the box: the timeframe on one line and, below it, an up arrow (bullish) or a down arrow (bearish), so the boxes can be thin. An IFVG shows its new direction. The show TF option still applies (off leaves just the arrow); the FVG / IFVG, direction (+/-) and position options do not, and there is no formation marker.
+With **Draw in the right margin** on, the boxes are drawn in the right margin instead of over the candles. Each enabled timeframe gets its own column, from the lowest timeframe on the left to the highest on the right. Each FVG or IFVG is a box at its own high and low, with its CE box, and a label centered in the box: the timeframe on one line and, below it, an up arrow (bullish) or a down arrow (bearish), so the boxes can be thin. An IFVG adds an "i" to the timeframe ("1Hi") and shows its new direction. The show TF option still applies (off leaves just the arrow); the FVG / IFVG, direction (+/-) and position options do not, and there is no formation marker.
 
 - **offset**: bars between the last bar and the first column (default 4).
 - **width**: bars per box; columns are one bar apart (default 4).
-- **extend levels** (off): draws the high, the low and (with CE box on) the CE of each FVG as lines from the left edge of its box back to **candles** bars before the last one (default 20), or back to the start of the FVG when **to FVG start** is checked.
+- **extend levels** (off): draws the high, the low and (with CE box on) the CE of each FVG as lines from the left edge of its box back to the point chosen next to it: **for** goes back **candles** bars before the last one (default 20), **to start** goes to the start of the FVG, and **to creation** goes to the end of the FVG's third candle, when the gap was formed, so the third candle's own highs and lows are not read as bounces on the FVG levels.
 
 ### How to use it
 
-The 1H and 4H boxes are the intraday PD arrays for entries and targets inside the daily range: look for price to retrace into a 1H or 4H FVG in the direction of the D/W bias, and use the CE line as the reaction level. The formation marker shows how fresh a gap is. Ticking D or W here draws box versions of the same daily and weekly FVGs already shown as lines, so keep them off unless you prefer boxes.
+The 1H and 4H boxes are the intraday PD arrays for entries and targets inside the daily range: look for price to retrace into a 1H or 4H FVG in the direction of the D/W bias, and use the CE line as the reaction level. The formation marker shows how fresh a gap is. Ticking D, W or M here draws box versions of the daily, weekly and monthly FVGs. While a timeframe is drawn as boxes (ticked, or added by **plus the next higher**, and above the chart timeframe), its FVG and IFVG lines are not drawn, since they would repeat the boxes; its VI and wick CE lines stay. The boxes then follow the box settings, including **keep per timeframe** (6 by default, against 8 for the lines).
 
 ## 8. Settings reference
 
@@ -230,9 +230,9 @@ The tables follow the order of the settings dialog. Several controls often share
 
 | Label | Default | What it does |
 | ------- | ----- | -------------- |
-| Daily | on | Levels from daily candles. Chart timeframe must be 1D or lower |
-| Weekly | on | Levels from weekly candles. Chart timeframe must be 1W or lower |
-| Monthly | on | Levels from monthly candles. Chart timeframe must be 1M or lower |
+| Daily | on | Levels from daily candles. Chart timeframe must be lower than 1D |
+| Weekly | on | Levels from weekly candles. Chart timeframe must be lower than 1W |
+| Monthly | on | Levels from monthly candles. Chart timeframe must be lower than 1M |
 | extra line width per timeframe step | 1 (0 to 2) | Extra width added to weekly lines (1 step) and monthly lines (2 steps) over daily ones. 0 makes all timeframes the same width. Does not affect the by-timeframe layer |
 | remove when | Fully filled (wick) | Mitigation rule for all levels (see table below). FVGs follow the IFVG rule instead while it is enabled; IFVGs, VIs and wick CEs always follow this rule |
 
@@ -331,12 +331,13 @@ Fills use these colors with the transparency set in each section.
 | Label | Default | What it does |
 | ------- | ----- | -------------- |
 | Draw FVGs of selected timeframes | on | Turns the box layer on or off |
-| plus the next higher | 0 (0 to 5) | Also draws this many of the listed timeframes above the chart timeframe, nearest first. 0 means only the ticked ones |
+| plus the next higher | 0 (0 to 6) | Also draws this many of the listed timeframes above the chart timeframe, nearest first. 0 means only the ticked ones |
 | 15m | off | 15-minute FVGs |
 | 1H | on | 1-hour FVGs |
 | 4H | on | 4-hour FVGs |
 | D | off | Daily FVGs as boxes |
 | W | off | Weekly FVGs as boxes |
+| M | off | Monthly FVGs as boxes |
 | keep per timeframe | 6 (1 to 20) | Maximum boxes (FVG and IFVG) kept per timeframe |
 | min size | 0.0 | Minimum gap size in price points |
 | 15m: bull / bear | lime / maroon | Colors of 15m boxes |
@@ -344,30 +345,31 @@ Fills use these colors with the transparency set in each section.
 | 4H: bull / bear | teal / orange | Colors of 4H boxes and 4H wick CE lines |
 | D: bull / bear | blue / fuchsia | Colors of D boxes |
 | W: bull / bear | navy / purple | Colors of W boxes |
+| M: bull / bear | olive / gray | Colors of M boxes |
 | outline | solid | Style of the box border |
 | (blank) | 1 | Border width: 1, 2 or 3 (also used for the CE box; the formation marker is one thinner when above 1) |
-| no fill (outline only) | on | When checked the box has no fill, only the outline and CE box |
+| fill | at margin | **never**: outline and CE box only. **at margin**: filled only when drawn in the right margin. **always**: filled over the candles too |
 | transp | 88 (0 to 100) | Fill transparency when the fill is on |
 | formation marker | on | Vertical line inside the box at the close of the FVG's last candle |
 | CE box | on | Zero-height box (a line) at the CE |
 | CE outline | dotted | Style of the CE box |
 | Labels | on | Box labels on or off |
 | size | normal | Box label size |
-| show TF | on | Include the timeframe (15m, 1H, 4H, D, W) in the label |
+| show TF | on | Include the timeframe (15m, 1H, 4H, D, W, M) in the label |
 | FVG / IFVG | on | Include the FVG / IFVG name |
 | direction (+/-) | off | Include + or - |
 | position | Inside right | Right margin, Inside left, Inside right, Center, Left of box (section 7) |
 | at | CE | Vertical anchor of the label: High, CE or Low |
-| wick CE: 1H | off | Adds 1H wick CE lines (needs Draw wick CE on and a chart of 1H or lower) |
-| 4H | off | Adds 4H wick CE lines (needs Draw wick CE on and a chart of 4H or lower) |
+| wick CE: 1H | off | Adds 1H wick CE lines (needs Draw wick CE on and a chart lower than 1H) |
+| 4H | off | Adds 4H wick CE lines (needs Draw wick CE on and a chart lower than 4H) |
 | Draw in the right margin | off | Draws the boxes in the right margin, one column per timeframe, labeled with the timeframe and an up / down arrow below it (section 7) |
 | offset | 4 | Bars between the last bar and the first margin column |
 | width | 4 | Bars per margin box |
 | extend levels | off | Margin only: lines from the high, low and CE of each FVG back into the chart |
-| candles | 20 | How far back the extended lines go, in candles before the last one |
-| to FVG start | off | Extend the lines to the start of each FVG instead |
+| (mode) | for | Where the extended lines start: **for** the number of candles below, **to start** the start of the FVG, **to creation** the end of its third candle |
+| candles | 20 | How far back the extended lines go with **for**, in candles before the last one |
 
-The by-timeframe timeframe names in labels (15m, 1H, 4H, D, W) are fixed; the **text: daily / weekly / monthly** inputs do not change them.
+The by-timeframe timeframe names in labels (15m, 1H, 4H, D, W, M) are fixed; the **text: daily / weekly / monthly** inputs do not change them.
 
 ## 9. Alerts, limits and behaviour
 
@@ -391,20 +393,19 @@ ICTcotas defines no alerts and no alert conditions. To be alerted at a level, dr
 
 ### Timeframe requirements
 
-- Daily levels need a chart of 1D or lower, weekly 1W or lower, monthly 1M or lower. A by-timeframe timeframe is used only when it is equal to or higher than the chart (or strictly higher when added by **plus the next higher**).
-- When none of Daily, Weekly and Monthly is available (all unticked, or the chart timeframe is too high), the text "ICTcotas: use a chart timeframe of 1M or lower" appears in the bottom-right corner.
-- Monthly on a 1M chart: the monthly check compares the chart timeframe with 30 days. TradingView may count a month as slightly more than 30 days, in which case monthly levels (and therefore everything) are off on a 1M chart. Use 1W or lower.
+- Only timeframes higher than the chart are used, never the chart's own: daily levels need a chart lower than 1D, weekly lower than 1W, monthly lower than 1M, and a by-timeframe timeframe is used only when it is higher than the chart.
+- When none of Daily, Weekly and Monthly is available (all unticked, or the chart timeframe is too high), the text "ICTcotas: use a chart timeframe lower than 1M" appears in the bottom-right corner.
 
 ### Object limits and performance
 
 - The script may use up to 500 lines, 500 labels and 500 boxes in total. When that is exceeded, TradingView deletes the oldest objects.
 - With defaults, the D/W/M layer needs at most about 168 lines, 168 labels and 48 boxes, and the 1H and 4H boxes add 24 boxes, 12 lines and 12 labels, well within limits. Setting every **keep** to 20 with all timeframes and all kinds on can exceed 500 lines and labels.
 - **keep** limits apply per kind and per timeframe, counting both directions; the oldest stored level of that kind and timeframe is removed first.
-- The script makes three higher timeframe data requests (D, W, M) plus one per enabled by-timeframe timeframe. Enabling all five adds load time on long histories.
+- The script makes three higher timeframe data requests (D, W, M) plus one per enabled by-timeframe timeframe. Enabling all six adds load time on long histories.
 
 ## 10. Troubleshooting and FAQ
 
-**No levels at all.** Check that the chart timeframe is 1D or lower and that at least one of Daily, Weekly and Monthly is ticked. If the bottom-right warning is shown, one of those is the cause. Also check that the chart has enough history (section 9).
+**No levels at all.** Check that the chart timeframe is lower than 1D and that at least one of Daily, Weekly and Monthly is ticked. If the bottom-right warning is shown, one of those is the cause. Also check that the chart has enough history (section 9).
 
 **No monthly (or weekly) levels on a 1m chart.** The loaded history probably does not contain a month (or week) start. Scroll left until more bars load, or open a 15m or 1H chart.
 

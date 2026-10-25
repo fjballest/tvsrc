@@ -30,11 +30,11 @@ getsize(string s) =>
 // ============================================================ inputs
 const string G_GEN = "General"
 bool dodaily = input.bool(true, "Daily", group = G_GEN, inline = "tf",
-     tooltip = "Levels from daily candles (chart timeframe must be 1D or lower)")
+     tooltip = "Levels from daily candles (chart timeframe must be lower than 1D)")
 bool doweekly = input.bool(true, "Weekly", group = G_GEN, inline = "tf",
-     tooltip = "Levels from weekly candles (chart timeframe must be 1W or lower)")
+     tooltip = "Levels from weekly candles (chart timeframe must be lower than 1W)")
 bool domonthly = input.bool(true, "Monthly", group = G_GEN, inline = "tf",
-     tooltip = "Levels from monthly candles (chart timeframe must be 1M or lower)")
+     tooltip = "Levels from monthly candles (chart timeframe must be lower than 1M)")
 int wextra = input.int(1, "extra line width per timeframe step", minval = 0, maxval = 2,
      group = G_GEN, inline = "tfw", tooltip = "Weekly levels get this much extra width over daily "
      + "ones, monthly levels twice as much")
@@ -149,12 +149,12 @@ int wkwid = input.int(1, "", options = [1, 2, 3], group = G_WK, inline = "w2")
 string txtwku = input.string("UW", "labels: upper", group = G_WK, inline = "w3")
 string txtwkl = input.string("LW", "lower", group = G_WK, inline = "w3")
 
-const string G_MF = "FVGs and wick CE by timeframe (15m / 1H / 4H / D / W)"
+const string G_MF = "FVGs and wick CE by timeframe (15m / 1H / 4H / D / W / M)"
 bool domf = input.bool(true, "Draw FVGs of selected timeframes", group = G_MF, inline = "m0",
      tooltip = "FVGs found on the timeframes ticked below, drawn with a "
-     + "box, a CE box and a label. Only timeframes equal to or "
-     + "higher than the chart timeframe are available.")
-int mfnext = input.int(0, "plus the next higher", minval = 0, maxval = 5, group = G_MF,
+     + "box, a CE box and a label. Only timeframes higher than "
+     + "the chart timeframe are used, never the chart's own.")
+int mfnext = input.int(0, "plus the next higher", minval = 0, maxval = 6, group = G_MF,
      inline = "m0",
      tooltip = "Also draw the FVGs of this many of the listed "
      + "timeframes that are above the chart timeframe, starting "
@@ -164,6 +164,7 @@ bool mf1h = input.bool(true, "1H", group = G_MF, inline = "m1")
 bool mf4h = input.bool(true, "4H", group = G_MF, inline = "m1")
 bool mfd = input.bool(false, "D", group = G_MF, inline = "m1")
 bool mfw = input.bool(false, "W", group = G_MF, inline = "m1")
+bool mfm = input.bool(false, "M", group = G_MF, inline = "m1")
 int nmf = input.int(6, "keep per timeframe", minval = 1, maxval = 20, group = G_MF, inline = "m2")
 float mfmin = input.float(0.0, "min size", minval = 0.0, group = G_MF, inline = "m2",
      tooltip = "Min gap size in price points")
@@ -177,12 +178,14 @@ color mfdb = input.color(color.new(color.blue, 0), "D: bull", group = G_MF, inli
 color mfds = input.color(color.new(color.fuchsia, 0), "bear", group = G_MF, inline = "mc4")
 color mfwb = input.color(color.new(color.navy, 0), "W: bull", group = G_MF, inline = "mc5")
 color mfws = input.color(color.new(color.purple, 0), "bear", group = G_MF, inline = "mc5")
+color mfmb = input.color(color.new(color.olive, 0), "M: bull", group = G_MF, inline = "mc6")
+color mfms = input.color(color.new(color.gray, 0), "bear", group = G_MF, inline = "mc6")
 string mfsty = getstyle(input.string("solid", "outline", options = ["solid", "dashed", "dotted"],
      group = G_MF, inline = "m3"))
 int mfwid = input.int(1, "", options = [1, 2, 3], group = G_MF, inline = "m3")
-bool mfnofill = input.bool(true, "no fill (outline only)", group = G_MF, inline = "m4",
-     tooltip = "When checked the FVG box is drawn without fill: only "
-     + "its outline and the CE box remain.")
+string mffill = input.string("at margin", "fill", options = ["never", "at margin", "always"], group = G_MF,
+     inline = "m4", tooltip = "never: boxes drawn as outlines only. at margin: filled only when drawn in "
+     + "the right margin. always: filled over the candles too.")
 int mftr = input.int(88, "transp", minval = 0, maxval = 100, group = G_MF, inline = "m4")
 bool mfshowform = input.bool(true, "formation marker", group = G_MF, inline = "m4b",
      tooltip = "Vertical segment inside the FVG box at the close of its "
@@ -207,7 +210,7 @@ string mflvert = input.string("CE", "at", options = ["High", "CE", "Low"], group
 bool wk1h = input.bool(false, "wick CE: 1H", group = G_MF, inline = "m9",
      tooltip = "Also compute the wick CE levels (see Wick CE group, "
      + "needs Draw wick CE on) on these timeframes. Only "
-     + "timeframes equal to or higher than the chart timeframe are available.")
+     + "timeframes higher than the chart timeframe are used.")
 bool wk4h = input.bool(false, "4H", group = G_MF, inline = "m9")
 bool mfmargin = input.bool(false, "Draw in the right margin", group = G_MF, inline = "mm1",
      tooltip = "Instead of over the candles, each FVG / IFVG is drawn as a box in the right margin, one column "
@@ -215,18 +218,22 @@ bool mfmargin = input.bool(false, "Draw in the right margin", group = G_MF, inli
      + "between the last bar and the first column. Width: bars per box (and per column).")
 int mfmoff = input.int(4, "offset", minval = 0, maxval = 200, group = G_MF, inline = "mm1")
 int mfmw = input.int(4, "width", minval = 1, maxval = 50, group = G_MF, inline = "mm1")
-bool mfext = input.bool(false, "extend levels", group = G_MF, inline = "mm2",
-     tooltip = "Margin only: lines from the high, low and CE (with CE box on) of each FVG back to this many "
-     + "candles before the last one, or to the start of the FVG when \"to FVG start\" is checked.")
-int mfextn = input.int(20, "candles", minval = 1, maxval = 500, group = G_MF, inline = "mm2")
-bool mfextst = input.bool(false, "to FVG start", group = G_MF, inline = "mm2")
+bool mfext = input.bool(false, "extend levels", group = G_MF, inline = "mm2")
+string mfextto = input.string("for", "", options = ["for", "to start", "to creation"], group = G_MF,
+     inline = "mm2")
+int mfextn = input.int(20, "candles", minval = 1, maxval = 500, group = G_MF, inline = "mm2",
+     tooltip = "Margin only: lines from the high, low and CE (with CE box on) of each FVG back to: "
+     + "\"for\" this many candles before the last one, \"to start\" the start of the FVG, or "
+     + "\"to creation\" the end of its third candle, when the FVG was formed (so the third candle's "
+     + "own prices are not taken as reactions to the FVG).")
 
 // ============================================================ setup
 int tfsecs = timeframe.in_seconds()
 int tfms = tfsecs * 1000
-bool dayOk = dodaily and tfsecs <= 86400
-bool wkOk = doweekly and tfsecs <= 604800
-bool monOk = domonthly and tfsecs <= 2592000
+// D, W and M levels only on lower chart timeframes, never the chart's own
+bool dayOk = dodaily and tfsecs < 86400
+bool wkOk = doweekly and tfsecs < 604800
+bool monOk = domonthly and tfsecs < 2592000
 int mmode = mitig == "CE touched" ? 1 : mitig == "Fully filled (wick)" ? 2
      : mitig == "Fully filled (close)" ? 3 : 0
 string lblsz = getsize(lblsize)
@@ -262,15 +269,19 @@ var array<Lvl> lvls = array.new<Lvl>()
 var array<Lvl> wcur = array.new<Lvl>(12, na)   // current wick group level: tf * 2 + side
 
 // timeframe list for the FVGs by timeframe (kind 3 levels use tfi = 3 + index)
-var array<int> mfSecs = array.from(900, 3600, 14400, 86400, 604800)
-var array<string> mfTfs = array.from("15", "60", "240", "D", "W")
-var array<string> mfNames = array.from("15m", "1H", "4H", "D", "W")
-var array<bool> mfSel = array.from(mf15, mf1h, mf4h, mfd, mfw)
-var array<int> mfLastT = array.new<int>(5, na)
+var array<int> mfSecs = array.from(900, 3600, 14400, 86400, 604800, 2628003)
+var array<string> mfTfs = array.from("15", "60", "240", "D", "W", "M")
+var array<string> mfNames = array.from("15m", "1H", "4H", "D", "W", "M")
+var array<bool> mfSel = array.from(mf15, mf1h, mf4h, mfd, mfw, mfm)
+var array<int> mfLastT = array.new<int>(6, na)
+
+// only timeframes above the chart are used, never the chart's own
+mfOk(int s) =>
+    s > tfsecs
 
 mfEnabled(int i) =>
     int s = mfSecs.get(i)
-    bool on = domf and s >= tfsecs and mfSel.get(i)
+    bool on = domf and mfOk(s) and mfSel.get(i)
     if domf and s > tfsecs and mfnext > 0
         int rank = 0
         for j = 0 to i - 1
@@ -282,11 +293,12 @@ mfEnabled(int i) =>
 
 wkEnabled(int i) =>
     int s = mfSecs.get(i)
-    dowk and s >= tfsecs and ((i == 1 and wk1h) or (i == 2 and wk4h))
+    dowk and mfOk(s) and ((i == 1 and wk1h) or (i == 2 and wk4h))
 
 mfcol(int i, int d) =>
     i == 0 ? (d == 1 ? mf15b : mf15s) : i == 1 ? (d == 1 ? mf1hb : mf1hs) : i == 2
-         ? (d == 1 ? mf4hb : mf4hs) : i == 3 ? (d == 1 ? mfdb : mfds) : (d == 1 ? mfwb : mfws)
+         ? (d == 1 ? mf4hb : mf4hs) : i == 3 ? (d == 1 ? mfdb : mfds) : i == 4 ? (d == 1 ? mfwb : mfws)
+         : (d == 1 ? mfmb : mfms)
 
 // ============================================================ helpers
 rmLine(line l) =>
@@ -428,7 +440,7 @@ mkLineI(line cur, int x1, float p, int x2, color c, string sty, int w) =>
 // market is closed); the extended levels use bar time up to the last bar, then a bar-index link to the box.
 method drawMM(Lvl l) =>
     color c = mfcol(l.tfi - 3, l.dir)
-    color bg = mfnofill ? transparent : color.new(c, mftr)
+    color bg = mffill == "never" ? transparent : color.new(c, mftr)
     int x0 = bar_index + mfmoff + mfCol(l.tfi - 3) * (mfmw + 1)
     int x1 = x0 + mfmw
     if na(l.bx)
@@ -448,7 +460,8 @@ method drawMM(Lvl l) =>
             l.cebx.set_rightbottom(x1, l.ce)
             l.cebx.set_border_color(c)
     if mfext
-        int xs = mfextst ? l.t : time[math.min(mfextn, bar_index)]
+        int xs = mfextto == "to start" ? l.t : mfextto == "to creation" ? nz(l.tfm, l.t)
+             : time[math.min(mfextn, bar_index)]
         l.hiln := mkLine(l.hiln, xs, l.hi, time, c, mfsty, mfwid)
         l.loln := mkLine(l.loln, xs, l.lo, time, c, mfsty, mfwid)
         l.hiln2 := mkLineI(l.hiln2, bar_index, l.hi, x0, c, mfsty, mfwid)
@@ -459,7 +472,8 @@ method drawMM(Lvl l) =>
     if mflbl
         float y = mflvert == "High" ? l.hi : mflvert == "Low" ? l.lo : l.ce
         // thin boxes: the timeframe on one line, the arrow on the next
-        string tfn = mflshowtf ? mfNames.get(l.tfi - 3) + "\n" : ""
+        // TF with an "i" for an IFVG: "1Hi"
+        string tfn = mflshowtf ? mfNames.get(l.tfi - 3) + (l.inv ? "i" : "") + "\n" : ""
         string txt = tfn + (l.dir == 1 ? "↑" : "↓")
         if na(l.celb)
             l.celb := label.new(int((x0 + x1) / 2), y, txt, xloc = xloc.bar_index,
@@ -475,7 +489,7 @@ method drawMM(Lvl l) =>
 method drawM(Lvl l) =>
     int x = tright(xoff)
     color c = mfcol(l.tfi - 3, l.dir)
-    color bg = mfnofill ? transparent : color.new(c, mftr)
+    color bg = mffill == "always" ? color.new(c, mftr) : transparent
     if na(l.bx)
         l.bx := box.new(l.t, l.hi, x, l.lo, xloc = xloc.bar_time, border_color = c,
              border_style = mfsty, border_width = mfwid, bgcolor = bg)
@@ -642,7 +656,8 @@ processTf(int tfi, float o1, float h1, float l1, float c1, int t1,
     float botP = math.min(o2, c2)
     float topC = math.max(o1, c1)
     float botC = math.min(o1, c1)
-    if dofvg
+    // no FVG / IFVG lines for D, W or M when the same timeframe is drawn as boxes (redundant)
+    if dofvg and not mfEnabled(tfi + 3)
         addFvgs(0, tfi, fvgmin, o1, h1, l1, c1, o2, h2, l2, c2, h3, l3, o3, c3, t2, time)
     if dovi
         if botC > topP and l1 <= h2 and botC - topP >= vimin
@@ -707,7 +722,7 @@ if newW
 if newM
     processTf(2, mO1, mH1, mL1, mC1, mT1, mO2, mH2, mL2, mC2, mT2, mH3, mL3, mO3, mC3)
 // FVGs by timeframe: one request per enabled timeframe, processed on each new candle
-for i = 0 to 4
+for i = 0 to 5
     bool fvgOn = mfEnabled(i)
     bool wkOn = wkEnabled(i)
     if fvgOn or wkOn
@@ -736,6 +751,6 @@ if barstate.islast
 var table note = table.new(position.bottom_right, 1, 1)
 if barstate.islast
     table.cell(note, 0, 0, dayOk or wkOk or monOk ? ""
-         : "ICTcotas: use a chart timeframe of 1M or lower",
+         : "ICTcotas: use a chart timeframe lower than 1M",
          text_color = color.orange, text_size = size.small)
 
