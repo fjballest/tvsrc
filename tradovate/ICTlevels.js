@@ -12,7 +12,7 @@
  *
  *   It is a port of the TradingView Pine Script v6 indicator ICTlevels.txt
  *   (md5 0d076ecfcaddbeb73756f31e4e1eaaa6). Parameter names are the Pine variable names and the
- *   defaults are the Pine defaults; see "ICTlevels user manual.md" for what every level means.
+ *   defaults are the Pine defaults; see "doc/ICTlevels-user-manual.md" for what every level means.
  *
  * How to install
  *   1. In Tradovate open Code Explorer (the "{ }" / Code Explorer module from the app menu).

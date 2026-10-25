@@ -81,16 +81,22 @@ var dowick = input.bool(true, "Wick C.E.", group = GRP_EN, inline = "en",
 drawMode = input.string("all", "Draw", options = ["all", "1PFVGs", "IFVGs", "1PFVGs+IFVGs"], group = GRP_EN, inline = "dr",
     tooltip = "all: everything.\n1PFVGs: only 1PFVGs, no other FVG.\nIFVGs: only IFVG boxes and OTE bands.\n"+
         "1PFVGs+IFVGs: both.\nThe IFVGs modes hide regular FVGs, wick C.E., swing labels and signals (alerts keep working).")
-fltMode = input.string("none", "FVG filter", options = ["none", "sweeps", "sweeps&mid"], group = GRP_EN, inline = "dr",
+fltMode = input.string("none", "FVG filter", options = ["none", "sweeps", "sweeps&mid", "relevant"], group = GRP_EN, inline = "dr",
     tooltip = "Which FVGs are drawn (1PFVGs and the close-mode IFVG logic are not filtered).\n"+
         "A sweep is a bar breaking the last confirmed short-term high / low.\n"+
         "sweeps: the last FVG before the sweep and the first one after it.\n"+
-        "sweeps&mid: also the largest FVG near the middle of the arm (last opposite pivot -> sweep).")
+        "sweeps&mid: also the largest FVG near the middle of the arm (last opposite pivot -> sweep).\n"+
+        "relevant: the first FVG after a sweep; the last one before it only once it becomes an IFVG (a close "+
+        "through it); FVGs flagged OTE (needs 'Flag OTE FVGs'); and, on the last bar, the live FVGs within "+
+        "min swing (ATR) x ATR of the price. FVGs too small for a C.E. are drawn lighter and without border, and "+
+        "are hidden once filled unless they formed at a swing high / low (Swing pivot left / right) or were "+
+        "extended by a merged FVG.")
 bool fponly = drawMode == "1PFVGs"            // regular FVGs are discarded
 bool ifvgOnly = drawMode == "IFVGs"           // all FVGs are hidden, 1PFVGs included
 bool hideReg = drawMode == "IFVGs" or drawMode == "1PFVGs+IFVGs"  // regular FVGs, wicks, swing labels, signals hidden
 bool fltOff = fltMode == "none"
 bool fltMid = fltMode == "sweeps&mid"
+bool fltRel = fltMode == "relevant"
 // fixed filter values (no inputs)
 int flN = 1      // FVGs kept after a sweep
 int flWin = 25   // "near the middle of the arm" = % of the arm length on each side of its middle
@@ -461,6 +467,9 @@ type FVG
     bool ote = false // [OTEF] OTE FVG
     float oLo = na // [OTEF] leg low / high: origin and extreme since the FVG
     float oHi = na
+    bool swp = false // [REL] last FVG before a sweep: shown once it becomes an IFVG
+    bool ext = false // [REL] extended by a merged duplicate
+    int dbar = na // [REL] bar index where it was filled
 
 
 // [DE] border width: thicker for flagged displacement FVGs
@@ -652,6 +661,10 @@ method endsAt(FVG f) =>
 method isDone(FVG f, o, c) =>
     f.islong ? (c < f.lo or o < f.lo) : (c>f.hi or o > f.hi)
 
+// [REL] "relevant" filter: a plain FVG too small to draw its C.E.
+method relSmall(FVG f) =>
+    fltRel and not f.isfp and not f.isifp and f.hi - f.lo <= mince
+
 method bgColor(FVG f) =>
     c = f.islong ? lcol : scol
     if f.isfp
@@ -661,6 +674,9 @@ method bgColor(FVG f) =>
     if f.isifp
         c := ifpcol
     bool hid = hideReg and (ifvgOnly or (not f.isfp and not f.isifp))
+    // [REL] too small for a C.E.: a little more transparent
+    if f.relSmall()
+        c := color.new(c, color.t(c) + (100 - color.t(c)) / 2)
     styNoFill ? color(na) : (hid ? color.new(c, 100) : c)
     
 
@@ -673,7 +689,8 @@ method lnColor(FVG f) =>
     if f.isifp
         c := ilnfpcol
     bool hid = hideReg and (ifvgOnly or (not f.isfp and not f.isifp))
-    hid ? color.new(c, 100) : c
+    // [REL] too small for a C.E.: no border (boxes only; segments are the lines themselves)
+    hid or (f.relSmall() and not stySeg) ? color.new(c, 100) : c
 
 // IFVG boxes: the FVG box itself is turned into the IFVG box (no second box on the same place) ====
 var array<FVG> keptIf = array.new<FVG>()   // FVGs whose box is currently shown as IFVG
@@ -787,6 +804,7 @@ method mergeZone(FVG g, FVG f) =>
             g.celine.set_y1(g.ce)
             g.celine.set_y2(g.ce)
         g.end := na
+        g.ext := true
     true
 
 // FVG filtering around liquidity sweeps ==============================================
@@ -799,6 +817,9 @@ type FltState
 
 var FltState fs = FltState.new()
 var array<FVG> pendF = array.new<FVG>()  // FVGs since the last sweep that are not shown (yet)
+var array<FVG> relF = array.new<FVG>()   // [REL] live FVGs not shown (yet)
+var array<box> relB = array.new<box>()   // [REL] boxes of the live FVGs near the price (last bar only)
+var array<FVG> relS = array.new<FVG>()   // [REL] small drawn FVGs just filled, waiting for the swing check
 
 insertSorted(array<FVG> a, FVG f) =>
     int pos = a.size()
@@ -843,6 +864,10 @@ method route(FltState s, FVG f) =>
         pendF.push(f)
         if pendF.size() > 60
             pendF.shift()
+        if fltRel
+            relF.push(f)
+            if relF.size() > 300
+                relF.shift()
     true
 
 // show a pending FVG: if a drawn one is almost the same zone, merge into it instead of drawing a second box
@@ -870,6 +895,10 @@ onSweep(int armStart) =>
     int n = pendF.size()
     if n > 0
         FVG lastF = pendF.get(n - 1)
+        // [REL] the last FVG before the sweep waits to become an IFVG
+        if fltRel
+            lastF.swp := true
+            lastF := na
         FVG midF = na
         if fltMid and n > 1 and not na(armStart) and armStart < bar_index
             int mb = math.round((armStart + bar_index) / 2.0)
@@ -881,7 +910,8 @@ onSweep(int armStart) =>
                 if g.sbar >= mb - w and g.sbar <= mb + w and sz > best
                     best := sz
                     midF := g
-        reveal(lastF)
+        if not na(lastF)
+            reveal(lastF)
         if not na(midF)
             reveal(midF)
         pendF.clear()
@@ -1111,6 +1141,10 @@ updfvgs(array<FVG> fvgs) =>
             // check if filled
             if not isdone and f.isDone(open,close)
                 f.end := f.endsAt()
+                // [REL] small FVG filled: hidden later unless it formed at a swing
+                if f.relSmall() and not f.swp and not f.ext and not f.kept and not f.cand
+                    f.dbar := bar_index
+                    relS.push(f)
             // [OTEF] retraced into while matching the OTE band of its leg (FVG shown as a plain FVG)
             if not isdone and na(f.end) and na(f.dup) and f.oteFvgStep() and not na(f.rect) and not f.cand and not f.kept
                 f.rect.set_text(fvgLbl(f))
@@ -1185,6 +1219,37 @@ if not fltOff
         fs.stL := fPL
         fs.stLbar := bar_index - flR
 
+// [REL] "relevant" filter: live FVGs not shown yet ===============
+float relAtr = ta.atr(atrLen)
+if fltRel and barstate.isconfirmed and relF.size() > 0
+    for i = relF.size() - 1 to 0
+        FVG f = relF.get(i)
+        if f.shown or not na(f.dup)
+            relF.remove(i)
+        else if f.isDone(open, close)
+            // the last FVG before a sweep, closed through after it: an IFVG, shown up to the close
+            if f.swp
+                f.end := time
+                reveal(f)
+            relF.remove(i)
+        else if f.oteFvgStep()
+            // retraced into while matching the OTE band of its leg
+            reveal(f)
+            relF.remove(i)
+if fltRel and barstate.islast
+    // live FVGs near the price: redrawn on each update of the last bar
+    while relB.size() > 0
+        relB.pop().delete()
+    float rng = nz(relAtr) * minATR
+    for f in relF
+        if not f.shown and na(f.dup) and na(f.end) and relB.size() < 40
+            float dist = close > f.hi ? close - f.hi : close < f.lo ? f.lo - close : 0.0
+            if dist <= rng
+                relB.push(box.new(f.start, f.hi, time, f.lo, xloc = xloc.bar_time,
+                     bgcolor = f.bgColor(), border_color = f.lnColor(), border_width = f.bw(),
+                     border_style = line.style_solid, text = fvgLbl(f), text_size = ifvgtsz,
+                     text_halign = ifvgha, text_valign = ifvgva))
+
 if not visible and barstate.isnew
     updfvgs(lfvgs)
     updfvgs(sfvgs)
@@ -1249,6 +1314,43 @@ if not na(oph)
     pv0.addHigh(bar_index - pivR, oph)
 if not na(opl)
     pv0.addLow(bar_index - pivR, opl)
+
+// [REL] small filled FVGs: once a pivot at its candles would be confirmed, hide it if there is none and it
+// was not extended by a merged FVG (or became an IFVG box) meanwhile
+hasPiv(array<int> bars, int b0, int b1) =>
+    bool r = false
+    int n = bars.size()
+    if n > 0
+        for k = n - 1 to 0
+            int b = bars.get(k)
+            if b < b0
+                break
+            if b <= b1
+                r := true
+                break
+    r
+
+relHide(FVG f) =>
+    array<FVG> arr = f.islong ? lfvgs : sfvgs
+    int n = arr.size()
+    if n > 0
+        for k = n - 1 to 0
+            FVG g = arr.get(k)
+            if g.start == f.start and g.hi == f.hi and g.lo == f.lo
+                arr.remove(k)
+                break
+    f.shown := false
+    f.kill()
+
+if fltRel and relS.size() > 0
+    for i = relS.size() - 1 to 0
+        FVG f = relS.get(i)
+        if bar_index >= math.max(f.dbar, f.sbar + 3 + pivR)
+            relS.remove(i)
+            bool keep = f.ext or f.kept or f.cand or not f.relSmall()
+                 or hasPiv(pv0.hb, f.sbar - 1, f.sbar + 3) or hasPiv(pv0.lb, f.sbar - 1, f.sbar + 3)
+            if not keep
+                relHide(f)
 
 // --- higher timeframe ladder: 3m(or lower) -> 5m -> 15m -> 1h -> 4h -> D
 // The chart is placed on the highest rung that is <= the chart timeframe, and the next two rungs are used.
