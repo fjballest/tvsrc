@@ -390,6 +390,50 @@ function pivotAt(vals, len, isHigh) {
 }
 
 // ============================================================ calculator
+// fill style with its opacity. Tradovate reads fillStyle.opacity as a percentage (0 to 100), although its
+// documentation says 0 to 1: 0 to 1 values left the fills invisible, and an alpha in the color is ignored
+function fillStyleOf(color, opacity) {
+    let c = String(color || "").trim();
+    if (/^#[0-9a-fA-F]{8}$/.test(c)) c = c.slice(0, 7);
+    return { color: c, opacity: Math.round(Math.max(0, Math.min(1, Number(opacity))) * 100) };
+}
+
+// Index of the bar on the chart. The index argument of map() is not always the bar's position: with the
+// market closed, after the chart reloads its bars, it no longer matched the chart and everything was drawn
+// shifted to the right. The bar's own index() is used when there is one.
+function barIndexOf(d, i) {
+    try {
+        if (d && typeof d.index === "function") {
+            const k = Number(d.index());
+            if (Number.isInteger(k) && k >= 0) return k;
+        }
+    } catch (e) { /* ignore */ }
+    return i;
+}
+
+// Last bar of the chart. d.isLast() alone is not enough: with the market closed it can stay false
+// when the chart reloads its bars (for example after loading older history), which left the drawing of
+// the previous pass on the chart, at the old bar indices. So the history length is checked too.
+function chartLastBar(d, i, history) {
+    let hasFn = false;
+    try {
+        if (d && typeof d.isLast === "function") {
+            hasFn = true;
+            if (d.isLast()) return true;
+        }
+    } catch (e) { /* ignore */ }
+    try {
+        if (history && typeof history.size === "function") {
+            const n = history.size();
+            if (n > 0) return i >= n - 1;
+        }
+        if (history && history.data && typeof history.data.length === "number" && history.data.length > 0) {
+            return i >= history.data.length - 1;
+        }
+    } catch (e) { /* ignore */ }
+    return !hasFn;
+}
+
 class ICTlevels {
     init() {
         const P = this.P = Object.assign({}, DEFAULTS, this.props || {});
@@ -500,20 +544,20 @@ class ICTlevels {
         };
     }
 
-    isLast(d, i, history) {
-        if (d && typeof d.isLast === "function") {
-            return !!d.isLast();
-        }
-        if (history && typeof history.size === "function") {
-            return i >= history.size() - 1;
-        }
-        return true;
-    }
-
     map(d, i, history) {
-        const last = this.isLast(d, i, history);
+        i = barIndexOf(d, i);
+        const last = chartLastBar(d, i, history);
         if (i < this.lastIdx) {
-            return undefined;
+            // a recalculation from an earlier bar (the chart reloaded its bars): start again, and drop the
+            // previous drawing, whose bar indices may no longer match
+            if (this.lastOut && this.lastOut.graphics) {
+                try {
+                    this.lastOut.graphics.items = [];
+                } catch (e) {
+                    // frozen by the host: nothing to do
+                }
+            }
+            this.init();
         }
         if (i === this.lastIdx) {
             if (this.snapIdx !== i) {
@@ -924,7 +968,7 @@ class ICTlevels {
                         position: { x: du(i - 0.5), y: px(0) },
                         size: { width: du(1), height: px(10000) }
                     }],
-                    fillStyle: { color: P.macrobgcolor, opacity: (100 - P.macrobgtransp) / 100 }
+                    fillStyle: fillStyleOf(P.macrobgcolor, (100 - P.macrobgtransp) / 100)
                 });
             }
         }
@@ -1617,7 +1661,7 @@ class Gfx {
         let s = this.polys.get(k);
         if (!s) {
             s = { tag: "Shapes", key: "sh" + this.polys.size, primitives: [],
-                fillStyle: { color: col, opacity: opacity }, global: true };
+                fillStyle: fillStyleOf(col, opacity), global: true };
             this.polys.set(k, s);
         }
         s.primitives.push({

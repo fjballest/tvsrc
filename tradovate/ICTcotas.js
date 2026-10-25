@@ -579,7 +579,7 @@ function rectItem(key, x1, y1, x2, y2, color, transp) {
     return {
         tag: "Shapes", key, global: true,
         primitives: [{ tag: "Polygon", points: [pt(x1, y1), pt(x2, y1), pt(x2, y2), pt(x1, y2)] }],
-        fillStyle: { color, opacity: (100 - transp) / 100 }
+        fillStyle: fillStyleOf(color, (100 - transp) / 100)
     };
 }
 // align: "left" text extends to the right of x, "right" to the left, "center"
@@ -694,6 +694,50 @@ function barOf(d) {
     };
 }
 
+// fill style with its opacity. Tradovate reads fillStyle.opacity as a percentage (0 to 100), although its
+// documentation says 0 to 1: 0 to 1 values left the fills invisible, and an alpha in the color is ignored
+function fillStyleOf(color, opacity) {
+    let c = String(color || "").trim();
+    if (/^#[0-9a-fA-F]{8}$/.test(c)) c = c.slice(0, 7);
+    return { color: c, opacity: Math.round(Math.max(0, Math.min(1, Number(opacity))) * 100) };
+}
+
+// Index of the bar on the chart. The index argument of map() is not always the bar's position: with the
+// market closed, after the chart reloads its bars, it no longer matched the chart and everything was drawn
+// shifted to the right. The bar's own index() is used when there is one.
+function barIndexOf(d, i) {
+    try {
+        if (d && typeof d.index === "function") {
+            const k = Number(d.index());
+            if (Number.isInteger(k) && k >= 0) return k;
+        }
+    } catch (e) { /* ignore */ }
+    return i;
+}
+
+// Last bar of the chart. d.isLast() alone is not enough: with the market closed it can stay false
+// when the chart reloads its bars (for example after loading older history), which left the drawing of
+// the previous pass on the chart, at the old bar indices. So the history length is checked too.
+function chartLastBar(d, i, history) {
+    let hasFn = false;
+    try {
+        if (d && typeof d.isLast === "function") {
+            hasFn = true;
+            if (d.isLast()) return true;
+        }
+    } catch (e) { /* ignore */ }
+    try {
+        if (history && typeof history.size === "function") {
+            const n = history.size();
+            if (n > 0) return i >= n - 1;
+        }
+        if (history && history.data && typeof history.data.length === "number" && history.data.length > 0) {
+            return i >= history.data.length - 1;
+        }
+    } catch (e) { /* ignore */ }
+    return !hasFn;
+}
+
 class ICTcotasClass {
     init() {
         this.cfg = null;
@@ -728,13 +772,27 @@ class ICTcotasClass {
     }
 
     map(d, i, history) {
+        i = barIndexOf(d, i);
         if (this.bars === undefined) this.init();
         this.setup();
         const b = barOf(d);
-        // a recalculation from an earlier bar without init(): rebuild
+        // a recalculation from an earlier bar without init() (the chart reloaded its bars): rebuild, and
+        // drop the previous drawing, whose bar indices may no longer match
         if (i <= this.committed) {
             this.S = newState(this.cfg.keys);
             this.committed = -1;
+            this.bars = [];
+            this.bars[i] = b;
+            this.minDelta = 0;
+            if (this.lastOut) {
+                try {
+                    this.lastOut.graphics.items = [];
+                } catch (e) {
+                    // frozen by the host: nothing to do
+                }
+                this.lastOut = null;
+                this.lastOutIdx = -1;
+            }
         }
         this.bars[i] = b;
         const prev = this.bars[i - 1];
@@ -745,10 +803,7 @@ class ICTcotasClass {
         // bars before i are complete: commit them (bar i may still be forming)
         while (this.committed < i - 1) this.commit(this.committed + 1, history);
 
-        let isLast = true;
-        if (typeof d.isLast === "function") isLast = !!d.isLast();
-        else if (history && typeof history.size === "function") isLast = i >= history.size() - 1;
-        if (!isLast) return undefined;
+        if (!chartLastBar(d, i, history)) return undefined;
 
         // outputs of earlier bars must not keep stale global graphics
         if (this.lastOut && this.lastOutIdx !== i) {

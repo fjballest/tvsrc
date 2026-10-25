@@ -53,8 +53,9 @@
  *     (Text items, bold = fontWeight bold). x positions are bar indexes instead of bar times (same result
  *     except across missing bars). The Pine object limits (500 boxes, 500 lines, 50 labels) are emulated:
  *     the oldest object is removed first.
- *   - Graphics are returned as one "global" set from the last bar only (d.isLast() or history.data.length),
- *     with stable keys. If neither is available the set is returned on every bar (slower on long histories).
+ *   - Graphics are returned as one "global" set from the last bar only (d.isLast(), or the history length,
+ *     since d.isLast() can stay false when the chart reloads its bars with the market closed), with stable
+ *     keys. If neither is available the set is returned on every bar (slower on long histories).
  */
 
 "use strict";
@@ -64,7 +65,7 @@ const meta = require("./tools/meta");
 const { du } = require("./tools/graphics");
 
 // ---- rendering constants (platform dependent) ---------------------------------------------------------
-const OPACITY_SCALE = 1;            // fillStyle / lineStyle opacity: 1 -> 0..1 scale, 100 -> 0..100 scale
+const OPACITY_SCALE = 1;            // (unused: see fillStyleOf)
 const LS_SOLID = 1;                 // lineStyle.lineStyle values
 const LS_DOTTED = 2;
 const LS_DASHED = 3;
@@ -322,6 +323,56 @@ class Gfx {
 }
 
 // ============================================================================================================
+// fill style with its opacity. Tradovate reads fillStyle.opacity as a percentage (0 to 100), although its
+// documentation says 0 to 1: 0 to 1 values left the fills invisible, and an alpha in the color is ignored
+function fillStyleOf(color, opacity) {
+    let c = String(color || "").trim();
+    if (/^#[0-9a-fA-F]{8}$/.test(c)) c = c.slice(0, 7);
+    return { color: c, opacity: Math.round(Math.max(0, Math.min(1, Number(opacity))) * 100) };
+}
+
+// Index of the bar on the chart. The index argument of map() is not always the bar's position: with the
+// market closed, after the chart reloads its bars, it no longer matched the chart and everything was drawn
+// shifted to the right. The bar's own index() is used when there is one.
+function barIndexOf(d, i) {
+    try {
+        if (d && typeof d.index === "function") {
+            const k = Number(d.index());
+            if (Number.isInteger(k) && k >= 0) return k;
+        }
+    } catch (e) { /* ignore */ }
+    return i;
+}
+
+// a copy of a bar's values, with the bar's accessors
+function snapBar(d) {
+    const o = +d.open(), h = +d.high(), l = +d.low(), c = +d.close(), t = +d.timestamp();
+    return { open: () => o, high: () => h, low: () => l, close: () => c, timestamp: () => new Date(t) };
+}
+
+// Last bar of the chart. d.isLast() alone is not enough: with the market closed it can stay false
+// when the chart reloads its bars (for example after loading older history), which left the drawing of
+// the previous pass on the chart, at the old bar indices. So the history length is checked too.
+function chartLastBar(d, i, history) {
+    let hasFn = false;
+    try {
+        if (d && typeof d.isLast === "function") {
+            hasFn = true;
+            if (d.isLast()) return true;
+        }
+    } catch (e) { /* ignore */ }
+    try {
+        if (history && typeof history.size === "function") {
+            const n = history.size();
+            if (n > 0) return i >= n - 1;
+        }
+        if (history && history.data && typeof history.data.length === "number" && history.data.length > 0) {
+            return i >= history.data.length - 1;
+        }
+    } catch (e) { /* ignore */ }
+    return !hasFn;
+}
+
 class FVGSIFVGOTE {
     init() {
         // parameters
@@ -351,6 +402,9 @@ class FVGSIFVGOTE {
         this.O = []; this.H = []; this.L = []; this.C = []; this.T = [];
         this.nextJ = 0;          // next bar index to commit
         this.curI = -1;          // last index map() was called with
+        this.seen = [];          // bar values received by map(), by bar index
+        this.gfxRes = null;      // last result that carried the graphics, and its index
+        this.gfxI = -1;
         this.out = [];           // plot values per map index
         this.tfsecs = null;
         this.tfSamples = 0;
@@ -403,16 +457,23 @@ class FVGSIFVGOTE {
 
     // ---------------------------------------------------------------------------------------------- map
     map(d, i, history) {
+        i = barIndexOf(d, i);
         if (i < this.curI) {
-            // recalculation from an earlier bar: start again
+            // recalculation from an earlier bar (the chart reloaded its bars): start again, and drop the
+            // previous drawing, whose bar indices may no longer match
+            const prev = this.gfxRes;
             this.init();
+            this.dropGfx(prev);
         }
         this.curI = i;
+        // the bar's values as map() received them: the history object is read only for bars never seen,
+        // since its numbering need not match the chart's after a reload (the bars came out of place)
+        this.seen[i] = snapBar(d);
         // commit every closed bar before i
         while (this.nextJ < i) {
             const j = this.nextJ;
-            const bar = this.histGet(history, j, i);
-            const nxt = j + 1 === i ? d : this.histGet(history, j + 1, i);
+            const bar = this.seen[j] || this.histGet(history, j, i);
+            const nxt = j + 1 === i ? d : this.seen[j + 1] || this.histGet(history, j + 1, i);
             if (!bar) break;
             this.commit(j, bar, nxt);
             this.nextJ = j + 1;
@@ -420,24 +481,29 @@ class FVGSIFVGOTE {
         if (!this.out[i]) this.out[i] = { signal: 0, oteSignal: 0, bounce: 0 };
         const o = this.out[i];
         const res = { signal: o.signal, oteSignal: o.oteSignal, bounce: o.bounce };
-        if (this.wantGraphics(d, i, history)) res.graphics = { items: this.render(i) };
+        if (chartLastBar(d, i, history)) {
+            res.graphics = { items: this.render(i) };
+            // an earlier bar's result must not keep its global graphics
+            if (this.gfxRes && this.gfxI !== i) this.dropGfx(this.gfxRes);
+            this.gfxRes = res;
+            this.gfxI = i;
+        }
         return res;
+    }
+
+    dropGfx(r) {
+        if (!r || !r.graphics) return;
+        try {
+            r.graphics.items = [];
+        } catch (e) {
+            // frozen by the host: nothing to do
+        }
     }
 
     histGet(history, k, i) {
         try { if (history && typeof history.get === "function") { const b = history.get(k); if (b) return b; } } catch (e) { /* ignore */ }
         try { if (history && typeof history.back === "function") return history.back(i - k); } catch (e) { /* ignore */ }
         return null;
-    }
-
-    // graphics only from the last bar; fallback: every bar (stable keys, the newest set wins)
-    wantGraphics(d, i, history) {
-        try { if (d && typeof d.isLast === "function") return !!d.isLast(); } catch (e) { /* ignore */ }
-        try {
-            if (history && history.data && typeof history.data.length === "number" && history.data.length > 0)
-                return i >= history.data.length - 1;
-        } catch (e) { /* ignore */ }
-        return true;
     }
 
     // --------------------------------------------------------------------------------------- commit bar
@@ -1789,7 +1855,7 @@ class FVGSIFVGOTE {
             lines.push({
                 tag: "LineSegments", key, global: true,
                 lines: [{ tag: "Line", a: { x: du(x1), y: du(y1) }, b: { x: du(x2), y: du(y2) }, infiniteStart: false, infiniteEnd: !!infEnd }],
-                lineStyle: { lineWidth: width, color: c.c, opacity: c.a * OPACITY_SCALE, lineStyle: lsOf(style) }
+                lineStyle: { lineWidth: width, color: c.c, lineStyle: lsOf(style) }
             });
         };
         for (const b of this.g.boxes.values()) {
@@ -1802,12 +1868,18 @@ class FVGSIFVGOTE {
             if (b.bg && b.bg.a > 0) {
                 fills.push({
                     tag: "Shapes", key: "bf" + b.id, global: true,
-                    primitives: [{ tag: "Rectangle", position: { x: du(left), y: du(top) }, size: { width: du(Math.max(rr - left, 0.3)), height: du(top - bot) } }],
-                    fillStyle: { color: b.bg.c, opacity: b.bg.a * OPACITY_SCALE }
+                    // a polygon by its corners, as in the other ports (a Rectangle's position and size did not
+                    // show the boxes on Tradovate)
+                    primitives: [{ tag: "Polygon", points: [
+                        { x: du(left), y: du(top) }, { x: du(left + Math.max(rr - left, 0.3)), y: du(top) },
+                        { x: du(left + Math.max(rr - left, 0.3)), y: du(bot) }, { x: du(left), y: du(bot) }
+                    ] }],
+                    fillStyle: fillStyleOf(b.bg.c, b.bg.a)
                 });
             }
             if (b.border && b.border.a > 0 && b.bw > 0) {
-                const c = b.border, ls = { lineWidth: b.bw, color: c.c, opacity: c.a * OPACITY_SCALE, lineStyle: lsOf(b.bstyle) };
+                // no lineStyle opacity: lines with it were not shown on Tradovate (the ICTcotas lines, without it, are)
+                const c = b.border, ls = { lineWidth: b.bw, color: c.c, lineStyle: lsOf(b.bstyle) };
                 const segs = [
                     { tag: "Line", a: { x: du(left), y: du(top) }, b: { x: du(right), y: du(top) }, infiniteStart: false, infiniteEnd: ext },
                     { tag: "Line", a: { x: du(left), y: du(bot) }, b: { x: du(right), y: du(bot) }, infiniteStart: false, infiniteEnd: ext },
