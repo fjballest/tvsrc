@@ -583,13 +583,14 @@ function rectItem(key, x1, y1, x2, y2, color, transp) {
     };
 }
 // align: "left" text extends to the right of x, "right" to the left, "center"
+// (Tradovate's alignment names the side of the point the text goes to, so "left" is "rightMiddle")
 function textItem(key, x, y, text, color, size, bold, align) {
     const xb = align === "left" ? op(du(x), "+", px(4)) : align === "right" ? op(du(x), "-", px(4)) : du(x);
     const style = { fontSize: size, fill: color };
     if (bold) style.fontWeight = "bold";
     return {
         tag: "Text", key, global: true, point: { x: xb, y: du(y) }, text, style,
-        textAlignment: align === "left" ? "leftMiddle" : align === "right" ? "rightMiddle" : "centerMiddle"
+        textAlignment: align === "left" ? "rightMiddle" : align === "right" ? "leftMiddle" : "centerMiddle"
     };
 }
 
@@ -657,11 +658,11 @@ function drawMfMargin(c, l, eng, lastIdx, items) {
     }
     if (c.mfLbl) {
         const y = c.mfLVert === "high" ? l.hi : c.mfLVert === "low" ? l.lo : l.ce;
-        // thin boxes: the timeframe on one line, the arrow on the next
-        // TF with an "i" for an IFVG: "1Hi"
-        const tfn = c.mfLShowTf ? MF_NAMES[l.tfi - 3] + (l.inv ? "i" : "") + "\n" : "";
-        const txt = tfn + (l.dir === 1 ? "\u2191" : "\u2193");
-        items.push(textItem(k + "lb", Math.floor((x0 + x1) / 2), y, txt, col, c.mfLFont, c.lblBold, "center"));
+        // TF and arrow on one line, centered on the box: "1Hi \u2193"
+        // (Tradovate does not break text at "\n" and misplaces centerBottom / centerTop text)
+        const xm = Math.floor((x0 + x1) / 2);
+        const tf = c.mfLShowTf ? MF_NAMES[l.tfi - 3] + (l.inv ? "i" : "") + " " : "";
+        items.push(textItem(k + "lb", xm, y, tf + (l.dir === 1 ? "\u2191" : "\u2193"), col, c.mfLFont, c.lblBold, "center"));
     }
 }
 

@@ -2,7 +2,7 @@
 // FVGSIFVGOTE - Fair value gaps, 1st presented FVGs, inverse FVGs (IFVG) and ICT OTE, for NinjaTrader 8
 // ---------------------------------------------------------------------------------------------------------------------
 // Port of the TradingView Pine Script v6 indicator "FVGs+IFVG+OTE5" by franjballest
-// (source file FVGS+IFVG+OTE.txt, md5 293b404f326300851283fa50d741890f). Mozilla Public License 2.0, as the original.
+// (source file FVGS+IFVG+OTE.txt, md5 06f06f42dacc49e4a5da52bfb6f57903). Mozilla Public License 2.0, as the original.
 //
 // What it draws: FVG boxes (or no-fill boxes, or hi / lo / C.E. segments) with C.E. lines, the 1st presented FVG of the
 // session open (New York 09:30, or Madrid 09:00 for DAX) and its optional inverse, wick C.E. segments, IFVG candidates
@@ -163,6 +163,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             public bool rejHit;
             public GBox rej;
             public string tag = "";
+            public int col;   // margin column of its timeframe (chart, then each higher timeframe)
         }
 
         private sealed class OteGroup
@@ -1917,7 +1918,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                         t.rejHit = true;
                         if (DrawOteBands)
                         {
-                            GBox r = NewBarBox(bi + OteBandStart, rHi, bi + OteBandStart + OteBandWidth, rLo);
+                            GBox r = NewBarBox(OteX0(t, bi), rHi, OteX0(t, bi) + OteBandWidth, rLo);
                             r.Bg = cOteBand;
                             r.Bd = cOteHi;
                             r.Sty = DashStyleHelper.Dash;
@@ -1985,8 +1986,8 @@ namespace NinjaTrader.NinjaScript.Indicators
                 {
                     if (t.rej != null)
                     {
-                        t.rej.B1 = bi + OteBandStart;
-                        t.rej.B2 = bi + OteBandStart + OteBandWidth;
+                        t.rej.B1 = OteX0(t, bi);
+                        t.rej.B2 = OteX0(t, bi) + OteBandWidth;
                         Touch(t.rej);
                     }
                     // rejection of the prior-leg OTE flagged on the confirming candle
@@ -2020,7 +2021,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                             Color bd = m ? cOteHi : Tr(CGray, 60);
                             if (t.band == null)
                             {
-                                GBox nb = NewBarBox(bi + OteBandStart, bHi, bi + OteBandStart + OteBandWidth, bLo);
+                                GBox nb = NewBarBox(OteX0(t, bi), bHi, OteX0(t, bi) + OteBandWidth, bLo);
                                 nb.Sty = DashStyleHelper.Dash;
                                 nb.Bw = 1;
                                 nb.Ts = 8;
@@ -2032,8 +2033,8 @@ namespace NinjaTrader.NinjaScript.Indicators
                             GBox bd2 = t.band;
                             bd2.Top = bHi;
                             bd2.Bot = bLo;
-                            bd2.B1 = bi + OteBandStart;
-                            bd2.B2 = bi + OteBandStart + OteBandWidth;
+                            bd2.B1 = OteX0(t, bi);
+                            bd2.B2 = OteX0(t, bi) + OteBandWidth;
                             bd2.Bg = bg;
                             bd2.Bd = bd;
                             bd2.Txt = t.tag + (t.dir == 1 ? " \u2191" : " \u2193");
@@ -2055,10 +2056,19 @@ namespace NinjaTrader.NinjaScript.Indicators
             return s;
         }
 
+        // first bar of the OTE bands of t: one column per timeframe, so several timeframes do not overlap
+        private int OteX0(OteTrack t, int bi)
+        {
+            return bi + OteBandStart + t.col * (OteBandWidth + 1);
+        }
+
         private void GStart(OteGroup g, int dir, double zlo, double zhi, double origin, int sbar)
         {
             g.flagged = false;
             g.tags = "";
+            g.t0.col = 0;
+            g.t1.col = 1;
+            g.t2.col = hasH1 ? 2 : 1;
             OteStart(g.t0, dir, zlo, zhi, origin, sbar, pv0);
             if (hasH1) OteStart(g.t1, dir, zlo, zhi, origin, sbar, pv1);
             if (hasH2) OteStart(g.t2, dir, zlo, zhi, origin, sbar, pv2);

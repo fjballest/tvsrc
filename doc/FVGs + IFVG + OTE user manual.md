@@ -15,7 +15,7 @@ The indicator works on the chart timeframe. It finds fair value gaps (FVGs) on y
 | IFVG candidate | The latest bullish and bearish FVG, under watch for inversion | The FVG's own box restyled in IFVG colors, thicker border, no label |
 | IFVG | An FVG that a candle closed through | The same box with a label: `IFVG+` (bullish) or `IFVG-` (bearish); bold at a breaker, bold with an arrow at a mitigation block |
 | OTE IFVG | An IFVG that matches the 0.62 - 0.79 retracement of a leg | Label `IFVG+ OTE 5m+15m` (timeframes that matched), yellow border |
-| OTE bands | The OTE zone of each tracked leg | Dashed boxes to the right of the last candle, one per timeframe |
+| OTE bands | The OTE zone of each tracked leg | Dashed boxes to the right of the last candle, one column per timeframe |
 | A+ tag | Delivery Engine setup: IFVG or FVG right after a liquidity sweep / MSS | `A+` in the label or on the FVG box |
 | Signals | Optional markers where the alerts fire | `LONG` / `SHORT` triangles and `OTE` diamonds |
 
@@ -276,7 +276,7 @@ The ladder is 3m (or lower), 5m, 15m, 1h, 4h, D. The chart sits on the highest r
 
 ### OTE bands
 
-The bands are drawn to the right of the last candle, **start** (5) candles after it and **width** (8) candles wide, and move with the chart. Up to two bands per timeframe can exist for each IFVG under watch (the retrace band and the prior-leg rejection band), and the bands of the bullish and the bearish candidate share the same space, so read the timeframe tag on each band. Bands are removed when the IFVG is cancelled or replaced.
+The bands are drawn to the right of the last candle, **start** (5) candles after it and **width** (8) candles wide, and move with the chart. Each timeframe has its own column, the chart timeframe first and then each higher timeframe, one candle apart, so their bands and tags do not overlap. Up to two bands per timeframe can exist for each IFVG under watch (the retrace band and the prior-leg rejection band), and the bands of the bullish and the bearish candidate share the same column, so read the timeframe tag on each band. Bands are removed when the IFVG is cancelled or replaced.
 
 ### OTE FVGs
 
@@ -471,7 +471,7 @@ Inputs on one line in the settings dialog are listed together; a field without i
 | Next higher TF | On | Track the OTE on the next rung of the ladder. |
 | 2nd higher TF | On | Track the OTE on the second rung. |
 | HTF pivot left / right | 5 / 2 | Pivot lengths, in higher-timeframe candles. |
-| Band: draw / start / width | On / 5 / 8 | Draw the OTE bands, starting this many candles right of the last candle, this many candles wide. |
+| Band: draw / start / width | On / 5 / 8 | Draw the OTE bands, starting this many candles right of the last candle, this many candles wide. Each timeframe gets its own column. |
 | Colors: band / border / text | Yellow 85% / Yellow / Black | Matching band fill, OTE IFVG border and band border, band text. |
 
 ### Breakers
@@ -573,7 +573,7 @@ The script makes three `request.security` calls (two OTE ladder timeframes and t
 
 **No OTE labels.** **IFVGs** and **Detect OTE IFVGs** must be on. On D and above there are no higher-timeframe trackers. Prior-leg rejection needs a swing (Swing pivot left / right) before the FVG; with large pivot lengths there may be none nearby. Try **match** = `Overlap`.
 
-**The OTE bands overlap.** The bands of all trackers and of both candidates are drawn in the same space right of the last candle. Read the timeframe tag, or turn off **Band: draw**.
+**The OTE bands overlap.** Each timeframe has its own column, but the bands of the bullish and the bearish candidate, and the retrace and rejection bands of one timeframe, share it. Read the tag, or turn off **Band: draw**.
 
 **The IFVG label disappeared.** The IFVG was cancelled (a close back through it), invalidated (inversion rules), or replaced while **Keep confirmed IFVGs** is off.
 

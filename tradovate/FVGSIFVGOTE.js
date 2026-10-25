@@ -13,7 +13,7 @@
  *   Mb+/Mb-, inheritance of the tags by IFVGs) and LONG / SHORT / OTE signal markers.
  *
  *   Port of the TradingView Pine Script v6 indicator "FVGS+IFVG+OTE.txt"
- *   (md5 293b404f326300851283fa50d741890f, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
+ *   (md5 06f06f42dacc49e4a5da52bfb6f57903, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
  *   input variable names (camelCase). See the design document (d.md) and user manual (m.md) for the logic.
  *
  * How to install
@@ -62,7 +62,7 @@
 
 const predef = require("./tools/predef");
 const meta = require("./tools/meta");
-const { du } = require("./tools/graphics");
+const { du, px, op } = require("./tools/graphics");
 
 // ---- rendering constants (platform dependent) ---------------------------------------------------------
 const OPACITY_SCALE = 1;            // (unused: see fillStyleOf)
@@ -1522,7 +1522,7 @@ class FVGSIFVGOTE {
     }
     newTrack() {
         return { dir: 0, zlo: null, zhi: null, legHi: null, legLo: null, rext: null, armed: false, fired: false,
-            ctime: null, cbar: null, band: null, pHi: null, pLo: null, sbar: null, rejHit: false, rej: null, tag: "" };
+            ctime: null, cbar: null, band: null, pHi: null, pLo: null, sbar: null, rejHit: false, rej: null, tag: "", col: 0 };
     }
     newGroup() { return { t0: this.newTrack(), t1: this.newTrack(), t2: this.newTrack(), flagged: false, tags: "" }; }
     oteStart(t, dir, zlo, zhi, origin, sbar, ps) {
@@ -1567,8 +1567,8 @@ class FVGSIFVGOTE {
                 if (hit) {
                     t.rejHit = true;
                     if (P.showOTEband) {
-                        t.rej = this.g.box({ rel: true, relL: P.oteOffset, relR: P.oteOffset + P.oteWidth,
-                            left: j + P.oteOffset, right: j + P.oteOffset + P.oteWidth, top: rHi, bottom: rLo,
+                        t.rej = this.g.box({ rel: true, relL: this.oteOff(t), relR: this.oteOff(t) + P.oteWidth,
+                            left: j + this.oteOff(t), right: j + this.oteOff(t) + P.oteWidth, top: rHi, bottom: rLo,
                             bg: col(P.oteBandCol, 85), border: col(P.oteHighlight, 0), bstyle: "dashed", bw: 1,
                             text: t.tag + " OTE" + (t.dir === 1 ? " ↑" : " ↓"), tsize: "small",
                             textCol: col(P.oteTextCol, 0), halign: "center" });
@@ -1583,6 +1583,8 @@ class FVGSIFVGOTE {
             else { t.legLo = this.nmin(t.legLo, this.l); t.legHi = this.h; }
         }
     }
+    // bars from the last one to the first bar of the OTE bands of t (its timeframe column)
+    oteOff(t) { return this.P.oteOffset + t.col * (this.P.oteWidth + 1); }
     oteCancel(t) {
         this.g.del(t.band); t.band = null;
         this.g.del(t.rej); t.rej = null;
@@ -1598,7 +1600,7 @@ class FVGSIFVGOTE {
                 if (t.dir === -1) { t.legHi = this.nmax(t.legHi, this.h); t.rext = this.nmax(t.rext, this.h); }
                 else { t.legLo = this.nmin(t.legLo, this.l); t.rext = this.nmin(t.rext, this.l); }
             } else {
-                if (t.rej) { t.rej.left = j + P.oteOffset; t.rej.right = j + P.oteOffset + P.oteWidth; }
+                if (t.rej) { t.rej.left = j + this.oteOff(t); t.rej.right = j + this.oteOff(t) + P.oteWidth; }
                 if (t.rejHit) { s = t.dir; t.rejHit = false; }
                 if (t.legHi !== null && t.legLo !== null) {
                     const r = t.legHi - t.legLo;
@@ -1616,13 +1618,13 @@ class FVGSIFVGOTE {
                             const bd = m ? col(P.oteHighlight, 0) : col(TV.gray, 60);
                             const txt = t.tag + (t.dir === 1 ? " ↑" : " ↓");
                             if (!t.band) {
-                                t.band = this.g.box({ rel: true, relL: P.oteOffset, relR: P.oteOffset + P.oteWidth,
-                                    left: j + P.oteOffset, right: j + P.oteOffset + P.oteWidth, top: bHi, bottom: bLo,
+                                t.band = this.g.box({ rel: true, relL: this.oteOff(t), relR: this.oteOff(t) + P.oteWidth,
+                                    left: j + this.oteOff(t), right: j + this.oteOff(t) + P.oteWidth, top: bHi, bottom: bLo,
                                     bg, border: bd, bstyle: "dashed", bw: 1, text: txt, tsize: "tiny",
                                     textCol: col(P.oteTextCol, 0), halign: "left" });
                             } else {
-                                Object.assign(t.band, { top: bHi, bottom: bLo, left: j + P.oteOffset,
-                                    right: j + P.oteOffset + P.oteWidth, bg, border: bd, text: txt });
+                                Object.assign(t.band, { top: bHi, bottom: bLo, left: j + this.oteOff(t),
+                                    right: j + this.oteOff(t) + P.oteWidth, bg, border: bd, text: txt });
                             }
                         }
                         const tap = t.dir === -1 ? this.h >= t.zlo : this.l <= t.zhi;
@@ -1638,6 +1640,10 @@ class FVGSIFVGOTE {
     gStart(g, dir, zlo, zhi, origin, sbar) {
         g.flagged = false;
         g.tags = "";
+        // one margin column per timeframe, so the bands and labels of several timeframes do not overlap
+        g.t0.col = 0;
+        g.t1.col = 1;
+        g.t2.col = this.hasH1 ? 2 : 1;
         this.oteStart(g.t0, dir, zlo, zhi, origin, sbar, this.pv0);
         if (this.hasH1) this.oteStart(g.t1, dir, zlo, zhi, origin, sbar, this.pv1);
         if (this.hasH2) this.oteStart(g.t2, dir, zlo, zhi, origin, sbar, this.pv2);
@@ -1891,13 +1897,20 @@ class FVGSIFVGOTE {
             if (b.text && b.textCol && b.textCol.a > 0) {
                 const xr = ext ? now : right;
                 const x = b.halign === "left" ? left : b.halign === "right" ? xr : (left + xr) / 2;
-                const y = b.valign === "top" ? top : b.valign === "bottom" ? bot : (top + bot) / 2;
+                // always vertically centered on the point (Tradovate misplaces top / bottom aligned text), so
+                // top / bottom text sits a quarter of the box height inside the edge
+                const y = b.valign === "top" ? top - (top - bot) / 4 : b.valign === "bottom" ? bot + (top - bot) / 4 : (top + bot) / 2;
                 const ha = b.halign === "left" ? "left" : b.halign === "right" ? "right" : "center";
-                const va = b.valign === "top" ? "Top" : b.valign === "bottom" ? "Bottom" : "Middle";
+                // Tradovate's alignment names the side of the point the text goes to: left aligned box text
+                // (extending to the right) is "rightMiddle"
+                const ta = ha === "left" ? "rightMiddle" : ha === "right" ? "leftMiddle" : "centerMiddle";
                 texts.push({
-                    tag: "Text", key: "bt" + b.id, global: true, point: { x: du(x), y: du(y) }, text: b.text,
+                    // a few pixels off the box edge for left / right aligned text, as Pine pads box text
+                    tag: "Text", key: "bt" + b.id, global: true,
+                    point: { x: ha === "left" ? op(du(x), "+", px(4)) : ha === "right" ? op(du(x), "-", px(4)) : du(x), y: du(y) },
+                    text: b.text,
                     style: { fontSize: FONT[b.tsize] || 11, fontWeight: b.bold ? "bold" : "normal", fill: b.textCol.c },
-                    textAlignment: ha + va
+                    textAlignment: ta
                 });
             }
         }
@@ -1909,7 +1922,7 @@ class FVGSIFVGOTE {
         for (const lb of this.g.labels.values()) {
             texts.push({
                 tag: "Text", key: "lb" + lb.id, global: true, point: { x: du(lb.x), y: du(lb.y) }, text: lb.text,
-                style: { fontSize: 9, fontWeight: "bold", fill: TV.blue }, textAlignment: lb.up ? "centerTop" : "centerBottom"
+                style: { fontSize: 9, fontWeight: "bold", fill: TV.blue }, textAlignment: "centerMiddle"
             });
         }
         if (P.deDispBar) {
@@ -1924,8 +1937,9 @@ class FVGSIFVGOTE {
             const c = mk.ote ? P.oteHighlight : (long ? P.bullIFVGColor : P.bearIFVGColor);
             texts.push({
                 tag: "Text", key: (mk.ote ? "mo" : "ms") + mk.x, global: true, point: { x: du(mk.x), y: du(mk.y) },
-                text: mk.ote ? (long ? "◆\nOTE" : "OTE\n◆") : (long ? "▲\nLONG" : "SHORT\n▼"),
-                style: { fontSize: 11, fontWeight: "bold", fill: c }, textAlignment: long ? "centerTop" : "centerBottom"
+                // one line: Tradovate does not break text at "\n"
+                text: mk.ote ? "◆ OTE" : (long ? "▲ LONG" : "SHORT ▼"),
+                style: { fontSize: 11, fontWeight: "bold", fill: c }, textAlignment: "centerMiddle"
             });
         }
         return fills.concat(lines, texts);

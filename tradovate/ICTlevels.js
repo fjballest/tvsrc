@@ -55,7 +55,7 @@
 
 const predef = require("./tools/predef");
 const meta = require("./tools/meta");
-const { px, du } = require("./tools/graphics");
+const { px, du, op } = require("./tools/graphics");
 
 // ============================================================ params
 const STYLES = { solid: "solid", dashed: "dashed", dotted: "dotted" };
@@ -1707,10 +1707,12 @@ class Gfx {
             out.push({
                 tag: "Text",
                 key: "tx" + (n++),
-                point: { x: du(t.x), y: du(t.y) },
+                // Tradovate's alignment names the side of the point the text goes to: "rightMiddle" puts it
+                // to the right of the line end, a few pixels off it
+                point: { x: op(du(t.x), "+", px(4)), y: du(t.y) },
                 text: t.text,
                 style: t.style,
-                textAlignment: "leftMiddle",
+                textAlignment: "rightMiddle",
                 global: true
             });
         }

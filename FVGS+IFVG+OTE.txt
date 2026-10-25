@@ -253,7 +253,8 @@ oteHtfL = input.int(5, "HTF pivot left / right", minval = 1, group = G_OTE, inli
 oteHtfR = input.int(2, "", minval = 1, group = G_OTE, inline = "hpiv")
 
 showOTEband = input.bool(true, "Band: draw / start / width", group = G_OTE, inline = "pos",
-    tooltip = "OTE bands are drawn right of the last candle, starting 'start' candles after it and 'width' candles wide.")
+    tooltip = "OTE bands are drawn right of the last candle, starting 'start' candles after it and 'width' candles wide. "+
+         "Each timeframe gets its own column (chart timeframe first), one candle apart.")
 oteOffset = input.int(5, "", minval = 0, maxval = 200, group = G_OTE, inline = "pos")
 oteWidth = input.int(8, "", minval = 1, maxval = 100, group = G_OTE, inline = "pos")
 oteBandCol = input.color(color.new(color.yellow, 85), "Colors: band", group = G_OTE, inline = "oc",
@@ -1359,6 +1360,12 @@ type OteTrack
     bool rejHit = false // confirming candle rejected the OTE of the prior leg
     box rej = na        // prior-leg OTE band drawn
     string tag = ""     // timeframe label
+    int col = 0         // margin column of its timeframe (chart, then each higher timeframe)
+
+// first bar of the OTE bands of t: one column per timeframe, so the bands and labels of several
+// timeframes do not overlap
+oteX0(OteTrack t) =>
+    bar_index + oteOffset + t.col * (oteWidth + 1)
 
 // new IFVG candidate under watch (not yet confirmed). origin = retrace extreme since the FVG
 method oteStart(OteTrack t, int dir, float zlo, float zhi, float origin, int sbar, PivSet ps) =>
@@ -1412,7 +1419,7 @@ method oteConfirm(OteTrack t) =>
             if hit
                 t.rejHit := true
                 if showOTEband
-                    t.rej := box.new(bar_index + oteOffset, rHi, bar_index + oteOffset + oteWidth, rLo,
+                    t.rej := box.new(oteX0(t), rHi, oteX0(t) + oteWidth, rLo,
                         xloc = xloc.bar_index,
                         bgcolor = oteBandCol,
                         border_color = oteHighlight,
@@ -1460,8 +1467,8 @@ method oteStep(OteTrack t) =>
                 t.rext := math.min(t.rext, low)
         else
             if not na(t.rej)
-                t.rej.set_left(bar_index + oteOffset)
-                t.rej.set_right(bar_index + oteOffset + oteWidth)
+                t.rej.set_left(oteX0(t))
+                t.rej.set_right(oteX0(t) + oteWidth)
             // rejection of the prior-leg OTE flagged on the confirming candle
             if t.rejHit
                 s := t.dir
@@ -1488,7 +1495,7 @@ method oteStep(OteTrack t) =>
                     color bg = m ? oteBandCol : color.new(color.gray, 92)
                     color bd = m ? oteHighlight : color.new(color.gray, 60)
                     if na(t.band)
-                        t.band := box.new(bar_index + oteOffset, bHi, bar_index + oteOffset + oteWidth, bLo,
+                        t.band := box.new(oteX0(t), bHi, oteX0(t) + oteWidth, bLo,
                             xloc = xloc.bar_index,
                             bgcolor = bg,
                             border_color = bd,
@@ -1501,8 +1508,8 @@ method oteStep(OteTrack t) =>
                     else
                         t.band.set_top(bHi)
                         t.band.set_bottom(bLo)
-                        t.band.set_left(bar_index + oteOffset)
-                        t.band.set_right(bar_index + oteOffset + oteWidth)
+                        t.band.set_left(oteX0(t))
+                        t.band.set_right(oteX0(t) + oteWidth)
                         t.band.set_bgcolor(bg)
                         t.band.set_border_color(bd)
                         t.band.set_text(t.tag + (t.dir == 1 ? " ↑" : " ↓"))
@@ -1530,6 +1537,9 @@ type OteGroup
 method gStart(OteGroup g, int dir, float zlo, float zhi, float origin, int sbar) =>
     g.flagged := false
     g.tags := ""
+    g.t0.col := 0
+    g.t1.col := 1
+    g.t2.col := hasH1 ? 2 : 1
     g.t0.oteStart(dir, zlo, zhi, origin, sbar, pv0)
     if hasH1
         g.t1.oteStart(dir, zlo, zhi, origin, sbar, pv1)

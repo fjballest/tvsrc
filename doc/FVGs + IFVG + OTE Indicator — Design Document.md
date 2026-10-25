@@ -19,7 +19,7 @@ What it produces:
 
 - FVG boxes (or no-fill boxes, or high / low / C.E. segments), with mitigated FVGs closed at the bar that mitigated them.
 - IFVG candidates and confirmed IFVGs, drawn on the FVG's own box and labelled "IFVG+", "IFVG-" or "IFVG± OTE \<timeframes>".
-- OTE bands drawn to the right of the last candle, one per tracked timeframe.
+- OTE bands drawn to the right of the last candle, one column per tracked timeframe.
 - Wick C.E. segments, optional signal markers and alerts.
 
 ## Execution model
@@ -52,7 +52,7 @@ The settings dialog has seven sections, ordered so that what to draw and which F
 | 1st Presented FVGs | `fpfvgtime` \[0930\], `tz` \[Auto\], `nfp` keep \[6\]; day / week / inverse colors; `doifp` \[off\] | Session open for the 1PFVG; the week variant (Monday) has its own color. |
 | Wick Settings | `nwicks` \[30\], `minwick` \[20\], `wickdx` \[0 = auto\], style, color, `dowickalert` | Wick C.E. segments and their bounce alerts. |
 | IFVG Settings | Alerts, signals, labels; label parts `lblTf` OTE TF, `lblSign` + / -, `lblAp` A+ \[all on\]; `keepIFVG` + `keepMax` \[on / 20\]; `deConf` IFVG confirmation \[Close\]; `deInv` inversion rules \[off\], `deMaxInv` \[1\], `deDead` invalidated IFVG \[Fade\] + color; `ifvgswings` \[off\], significant swing, swing labels; `pivL` / `pivR` \[10 / 3\]; `atrLen` \[14\], `minATR` \[4\]; IFVG colors, transparency, text size and alignment | `ifvgswings` switches from the close-mode logic to the swing logic. `pivL` / `pivR` also set the pivots that find the leg before the FVG for OTE. |
-| IFVG + OTE | `oteFvg` \[on\], `useOTE`, `oteOnly`, `showOTEsig`; `oteMin` / `oteMax` \[0.62 / 0.79\], `oteMode` \[Overlap\]; prior-leg rejection (`oteRej`, `oteRejAny`, `oteRejCap`); `oteHtf1`, `oteHtf2`, `oteHtfL` / `oteHtfR` \[5 / 2\]; band draw, offset \[5\], width \[8\]; band, border and text colors | `oteMode` is Overlap, Fully inside or C.E. inside. The band is drawn `oteOffset` candles right of the last candle and is `oteWidth` candles wide. |
+| IFVG + OTE | `oteFvg` \[on\], `useOTE`, `oteOnly`, `showOTEsig`; `oteMin` / `oteMax` \[0.62 / 0.79\], `oteMode` \[Overlap\]; prior-leg rejection (`oteRej`, `oteRejAny`, `oteRejCap`); `oteHtf1`, `oteHtf2`, `oteHtfL` / `oteHtfR` \[5 / 2\]; band draw, offset \[5\], width \[8\]; band, border and text colors | `oteMode` is Overlap, Fully inside or C.E. inside. The band is drawn `oteOffset` candles right of the last candle, plus `col * (oteWidth + 1)` for its timeframe column, and is `oteWidth` candles wide. |
 | Delivery Engine (Nuno) | `deDisp` displacement FVGs only \[off\], `deDispType` \[Open to Close\], `deStdLen` / `deStdX` \[100 / 4\], `deDispBar` \[off\] + color, `deFlag` + `deFlagW` \[off / 3\]; `deAplus` A+ setups \[off\], `deLiqLen` / `deSeqWin` \[5 / 50\], `deMssLen` \[3\], `deMssX` / `deMssWin` \[2 / 2\], `deKz` \[on\], `deHtfOn` + `deHtf` \[off / 60\] | Features of Nuno's Delivery Engine V20. See "Delivery Engine features". |
 
 Two values are not inputs but globals next to the filter inputs: `flN = 1` (FVGs shown after a sweep) and `flWin = 25` (the mid-arm window, as % of the arm length on each side of its middle).
@@ -101,6 +101,7 @@ Follows one IFVG against the pivots of one timeframe.
 | `ctime`, `cbar` | Confirmation time and bar. |
 | `pHi`, `pLo`, `rejHit`, `rej` | Prior leg, whether the confirming candle rejected its OTE, and the band drawn for it. |
 | `band`, `tag`, `sbar` | Retrace OTE band, timeframe label, FVG start bar. |
+| `col` | Margin column of the tracker: 0 for the chart timeframe, then 1 and 2 for the enabled higher timeframes (set by `gStart`). |
 
 ### OteGroup
 
@@ -273,7 +274,7 @@ Plain FVGs are flagged with chart-timeframe swings only. `otePL` / `otePH` keep 
 
 ### Bands and signals
 
-Bands are drawn right of the last candle, `oteOffset` candles away and `oteWidth` candles wide, and are moved every bar. A band is yellow while the IFVG matches the OTE and gray while it does not. When a group raises a signal, `oteSig` is -1 or 1, a diamond is plotted if `showOTEsig` is on, the IFVG label becomes "IFVG± OTE \<timeframes>", and the OTE alert fires.
+Bands are drawn right of the last candle, `oteOffset` candles away and `oteWidth` candles wide, and are moved every bar. `oteX0(t)` gives the first bar of a band: each timeframe gets its own column, `t.col * (oteWidth + 1)` further right, so the bands and tags of several timeframes do not overlap. A band is yellow while the IFVG matches the OTE and gray while it does not. When a group raises a signal, `oteSig` is -1 or 1, a diamond is plotted if `showOTEsig` is on, the IFVG label becomes "IFVG± OTE \<timeframes>", and the OTE alert fires.
 
 ## Delivery Engine features
 
