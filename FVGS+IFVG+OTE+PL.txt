@@ -1,5 +1,7 @@
 // This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
 // © franjballest
+// [PL] copy of FVGS+IFVG+OTE.txt for thin markets (NNQ): every feature change there is made here too;
+//   only the PL extras live just here (data from another symbol, global max_bars_back 4050 / 5000 for time)
 // [OTE] modified: IFVGs can now be filtered/flagged by ICT OTE (0.62 - 0.79 retracement of the leg)
 // [OTEF] plain FVGs flagged OTE too: leg from the last swing low (bullish) / high (bearish) before the FVG to the
 //   extreme since; the FVG is tagged OTE when price retraces into it while it matches the OTE band of that leg
