@@ -378,6 +378,16 @@ deHtfOn = input.bool(false, "A+ only with the HTF structure", group = G_DE, inli
         "Ignored when not higher than the chart timeframe.")
 deHtf = input.timeframe("60", "", group = G_DE, inline = "dh")
 
+// Poor liquidity ============================================
+G_PL = "Poor liquidity"
+plMode = input.string("auto", "Poor liquidity", options = ["auto", "yes", "no"], group = G_PL,
+    tooltip = "For thin markets, where price often jumps between two candles. On: volume imbalances are "+
+        "ignored (FVG boxes are not extended over body gaps), and two up-close (down-close) candles in a row "+
+        "with a gap between them make a bullish (bearish) FVG, as if an up (down) candle was in the middle. "+
+        "auto: on for nano futures only (symbol or description with Nano / NNQ).")
+bool poorLiq = plMode == "yes" or (plMode == "auto" and (str.contains(str.lower(syminfo.description), "nano")
+     or str.startswith(syminfo.root, "NNQ") or str.startswith(syminfo.ticker, "NNQ")))
+
 bounces(p) =>
     (math.abs(p-low) < 2 and close > low+10) or (math.abs(p-high)<2 and close < high-10)
 
@@ -618,9 +628,9 @@ longFVGHL(o1,c1,h1,l1,o2,c2,h2,l2,o3,c3,h3,l3) =>
     // include suspension blocks
     fhi = hi
     flo = lo
-    if bhi3 < blow2
+    if bhi3 < blow2 and not poorLiq
         lo := bhi3
-    if blow1 > bhi2
+    if blow1 > bhi2 and not poorLiq
         hi := blow1
     [hi,lo, fhi, flo]
 
@@ -636,9 +646,9 @@ shortFVGHL(o1,c1,h1,l1,o2,c2,h2,l2,o3,c3,h3,l3) =>
     // include suspension blocks
     fhi = hi
     flo = lo
-    if blow3 > bhi2
+    if blow3 > bhi2 and not poorLiq
         hi := blow3
-    if bhi1 < blow2
+    if bhi1 < blow2 and not poorLiq
         lo := bhi1
     [hi, lo, fhi, flo]
 
@@ -1091,9 +1101,17 @@ if true
     [hi, lo, fhi, flo] = longFVGHL(open[1],close[1],high[1],low[1],
          open[2],close[2],high[2],low[2],
          open[3],close[3],high[3],low[3])
+    // [PL] poor liquidity: two up-close candles in a row with a gap make an FVG (as if one more was between)
+    int fk = 3
+    if poorLiq and not (fhi - flo > minfvg) and close[1] > open[1] and close[2] > open[2] and low[1] > high[2]
+        hi := low[1]
+        lo := high[2]
+        fhi := hi
+        flo := lo
+        fk := 2
     if fhi - flo > minfvg and fhi-flo < maxfvg and (not deDisp or deDispOK or isFPFVG())
-        f = FVG.new(hi,lo,math.avg(hi,lo),true,timeat(-3))
-        f.sbar := bar_index - 3 // [OTE]
+        f = FVG.new(hi,lo,math.avg(hi,lo),true,timeat(-fk))
+        f.sbar := bar_index - fk // [OTE]
         f.oteInit() // [OTEF]
         f.aplus := deAplus and not na(deMssUpBar) and bar_index - deMssUpBar <= 3 // [DE]
         f.disp := deDispOK // [DE]
@@ -1118,9 +1136,17 @@ if true
     [hi, lo, fhi, flo] = shortFVGHL(open[1],close[1],high[1],low[1],
          open[2],close[2],high[2],low[2],
          open[3],close[3],high[3],low[3])
+    // [PL] poor liquidity: two down-close candles in a row with a gap make an FVG (as if one more was between)
+    int fk = 3
+    if poorLiq and not (fhi - flo > minfvg) and close[1] < open[1] and close[2] < open[2] and high[1] < low[2]
+        hi := low[2]
+        lo := high[1]
+        fhi := hi
+        flo := lo
+        fk := 2
     if fhi - flo > minfvg and fhi - flo < maxfvg and (not deDisp or deDispOK or isFPFVG())
-        f = FVG.new(hi,lo,math.avg(hi,lo),false,timeat(-3))
-        f.sbar := bar_index - 3 // [OTE]
+        f = FVG.new(hi,lo,math.avg(hi,lo),false,timeat(-fk))
+        f.sbar := bar_index - fk // [OTE]
         f.oteInit() // [OTEF]
         f.aplus := deAplus and not na(deMssDnBar) and bar_index - deMssDnBar <= 3 // [DE]
         f.disp := deDispOK // [DE]

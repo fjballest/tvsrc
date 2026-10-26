@@ -65,6 +65,7 @@ public enum FioHAlign { Left, Center, Right }
 public enum FioVAlign { Top, Center, Bottom }
 public enum FioOteMode { Overlap, FullyInside, CEInside }
 public enum FioZoneMode { LastCandle, WholeSequence }
+public enum FioPoorLiq { Auto, Yes, No }
 public enum FioRangeType { OpenToClose, HighToLow }
 public enum FioHtf { Min5, Min15, Hour1, Hour4, Daily }
 
@@ -232,6 +233,7 @@ namespace NinjaTrader.NinjaScript.Indicators
         private string tfStr;
         private TimeZoneInfo localTz, tzInfo, exchTz;
         private bool tzMadrid;
+        private bool poorLiq;   // [PL] poor liquidity: no volume imbalance extension, two-candle FVGs
         private int fph, fpm;
 
         // wicks
@@ -440,6 +442,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                 APlusKillzones = true;
                 APlusHtfStructure = false;
                 APlusHtf = FioHtf.Hour1;
+                PoorLiquidity = FioPoorLiq.Auto;
             }
             else if (State == State.Configure)
             {
@@ -604,6 +607,13 @@ namespace NinjaTrader.NinjaScript.Indicators
             localTz = NinjaTrader.Core.Globals.GeneralOptions.TimeZoneInfo;
             string tz = string.IsNullOrEmpty(FpTimeZone) ? "Auto" : FpTimeZone.Trim();
             string fpt = FpTime ?? "0930";
+            {
+                // [PL] auto: nano futures only
+                string d = Instrument != null && Instrument.MasterInstrument != null
+                    ? (Instrument.MasterInstrument.Description ?? "") + " " + (Instrument.MasterInstrument.Name ?? "") : "";
+                bool nano = d.ToLowerInvariant().Contains("nano") || d.Contains("NNQ");
+                poorLiq = PoorLiquidity == FioPoorLiq.Yes || (PoorLiquidity == FioPoorLiq.Auto && nano);
+            }
             if (tz == "Auto")
             {
                 string desc = Instrument != null && Instrument.MasterInstrument != null ? (Instrument.MasterInstrument.Description ?? "") : "";
@@ -1769,16 +1779,16 @@ namespace NinjaTrader.NinjaScript.Indicators
             if (l1 - h3 > MinFvgSize && l1 - h3 < MaxFvgSize && !(ifpWin && fpLong))
             {
                 double hi = l1, lo = h3;
-                if (Math.Max(o3, c3) < blow2) lo = Math.Max(o3, c3);
-                if (Math.Min(o1, c1) > bhi2) hi = Math.Min(o1, c1);
+                if (Math.Max(o3, c3) < blow2 && !poorLiq) lo = Math.Max(o3, c3);
+                if (Math.Min(o1, c1) > bhi2 && !poorLiq) hi = Math.Min(o1, c1);
                 f = new Fvg { hi = hi, lo = lo, ce = (hi + lo) / 2.0, islong = true };
             }
             // short: high of [1] below the low of [3]
             if (f == null && l3 - h1 > MinFvgSize && l3 - h1 < MaxFvgSize && !(ifpWin && !fpLong))
             {
                 double hi = l3, lo = h1;
-                if (Math.Min(o3, c3) > bhi2) hi = Math.Min(o3, c3);
-                if (Math.Max(o1, c1) < blow2) lo = Math.Max(o1, c1);
+                if (Math.Min(o3, c3) > bhi2 && !poorLiq) hi = Math.Min(o3, c3);
+                if (Math.Max(o1, c1) < blow2 && !poorLiq) lo = Math.Max(o1, c1);
                 f = new Fvg { hi = hi, lo = lo, ce = (hi + lo) / 2.0, islong = false };
             }
             if (f == null) return;
@@ -2728,8 +2738,18 @@ namespace NinjaTrader.NinjaScript.Indicators
                     double hi = l1, lo = h3;
                     double fhi = hi, flo = lo;
                     double blow1 = Math.Min(o1, c1), bhi2 = Math.Max(o2, c2), blow2 = Math.Min(o2, c2), bhi3 = Math.Max(o3, c3);
-                    if (bhi3 < blow2) lo = bhi3;
-                    if (blow1 > bhi2) hi = blow1;
+                    if (bhi3 < blow2 && !poorLiq) lo = bhi3;
+                    if (blow1 > bhi2 && !poorLiq) hi = blow1;
+                    // [PL] poor liquidity: two up-close candles in a row with a gap make an FVG (as if one more was between)
+                    int fk = 3;
+                    if (poorLiq && !(fhi - flo > MinFvgSize) && c1 > o1 && c2 > o2 && l1 > Hp(2))
+                    {
+                        hi = l1;
+                        lo = Hp(2);
+                        fhi = hi;
+                        flo = lo;
+                        fk = 2;
+                    }
                     if (fhi - flo > MinFvgSize && fhi - flo < MaxFvgSize && (!DisplacementOnly || deDispOK || fpNow))
                     {
                         Fvg f = new Fvg();
@@ -2737,8 +2757,8 @@ namespace NinjaTrader.NinjaScript.Indicators
                         f.lo = lo;
                         f.ce = (hi + lo) / 2.0;
                         f.islong = true;
-                        f.start = Tm(3);
-                        f.sbar = bi - 3;
+                        f.start = Tm(fk);
+                        f.sbar = bi - fk;
                         OteInit(f); // [OTEF]
                         f.aplus = APlusSetups && deMssUpBar.HasValue && bi - deMssUpBar.Value <= 3;
                         f.disp = deDispOK;
@@ -2751,8 +2771,18 @@ namespace NinjaTrader.NinjaScript.Indicators
                     double hi = l3, lo = h1;
                     double fhi = hi, flo = lo;
                     double blow3 = Math.Min(o3, c3), bhi2 = Math.Max(o2, c2), blow2 = Math.Min(o2, c2), bhi1 = Math.Max(o1, c1);
-                    if (blow3 > bhi2) hi = blow3;
-                    if (bhi1 < blow2) lo = bhi1;
+                    if (blow3 > bhi2 && !poorLiq) hi = blow3;
+                    if (bhi1 < blow2 && !poorLiq) lo = bhi1;
+                    // [PL] poor liquidity: two down-close candles in a row with a gap make an FVG
+                    int fk = 3;
+                    if (poorLiq && !(fhi - flo > MinFvgSize) && c1 < o1 && c2 < o2 && h1 < Lp(2))
+                    {
+                        hi = Lp(2);
+                        lo = h1;
+                        fhi = hi;
+                        flo = lo;
+                        fk = 2;
+                    }
                     if (fhi - flo > MinFvgSize && fhi - flo < MaxFvgSize && (!DisplacementOnly || deDispOK || fpNow))
                     {
                         Fvg f = new Fvg();
@@ -2760,8 +2790,8 @@ namespace NinjaTrader.NinjaScript.Indicators
                         f.lo = lo;
                         f.ce = (hi + lo) / 2.0;
                         f.islong = false;
-                        f.start = Tm(3);
-                        f.sbar = bi - 3;
+                        f.start = Tm(fk);
+                        f.sbar = bi - fk;
                         OteInit(f); // [OTEF]
                         f.aplus = APlusSetups && deMssDnBar.HasValue && bi - deMssDnBar.Value <= 3;
                         f.disp = deDispOK;
@@ -3925,6 +3955,10 @@ namespace NinjaTrader.NinjaScript.Indicators
         [NinjaScriptProperty]
         [Display(Name = "HTF structure timeframe", GroupName = "Delivery Engine (Nuno)", Order = 917, Description = "Limited to the loaded ladder series: 5m, 15m, 1h, 4h, D.")]
         public FioHtf APlusHtf { get; set; }
+
+        [NinjaScriptProperty]
+        [Display(Name = "Poor liquidity", GroupName = "Poor liquidity", Order = 1000, Description = "For thin markets, where price often jumps between two candles. Yes: volume imbalances are ignored (FVG boxes are not extended over body gaps), and two up-close (down-close) candles in a row with a gap between them make a bullish (bearish) FVG, as if an up (down) candle was in the middle. Auto: yes for nano futures only (instrument with Nano / NNQ).")]
+        public FioPoorLiq PoorLiquidity { get; set; }
         #endregion
     }
 }

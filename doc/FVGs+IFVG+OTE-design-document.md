@@ -319,6 +319,10 @@ Block marked `[MB]`, a copy of the `[BRK]` block placed right after it, with its
 - **Inheritance (`ifvgInherit`):** on confirmed bars, each confirmed IFVG (`bullifvg` / `bearifvg`, or `swFvg`) is compared with the FVGs of its direction (`lfvgs` for IFVG+, `sfvgs` for IFVG-) that overlap it and are live or ended at or after the IFVG's FVG start. One tagged by a breaker of that direction (new FVG field `brkD`, set by `brkTag`) makes the IFVG label bold; one tagged by a mitigation block of that direction (`mbD`, now set on every overlapping plain FVG, labelled or not) sets the IFVG's `mbD` and rebuilds its text with the arrow (`mbTxt`, shared with `mbTag`).
 - **Not copied** to ICTScalp.
 
+## Poor liquidity
+
+Inputs group **Poor liquidity**, the last one: `plMode` auto / yes / no \[auto\]; `poorLiq` is yes, or auto with a nano future (`syminfo.description` containing "nano", or root / ticker starting with NNQ). With `poorLiq`, `longFVGHL` / `shortFVGHL` skip the suspension block (volume imbalance) extension, so `hi` / `lo` are the wick gap; and on the detection bar, when the three-candle FVG of a side does not pass `minfvg`, two candles \[2\], \[1\] closing in that direction with a wick gap (`low[1] > high[2]` bullish, `high[1] < low[2]` bearish) make the FVG instead, starting at \[2\] (`fk` = 2 for `timeat` and `sbar`). Everything after (filters, 1PFVG, routing) is unchanged. The 1m 1PFVG path also loses the extension. NinjaTrader: `PoorLiquidity` (FioPoorLiq), auto from the master instrument description / name. Tradovate: `plMode`, auto from the contract text (`symbolText`, NANO / NNQ), resolved once per init.
+
 ## Drawing, alerts, limits and known risks
 
 ### Drawing

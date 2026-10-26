@@ -145,7 +145,9 @@ const PARAMS = [
     ["deAplus", "b", false], ["deLiqLen", "n", 5, [1, 1]], ["deSeqWin", "n", 50, [1, 1]], ["deMssLen", "n", 3, [1, 1]],
     ["deMssX", "n", 2.0, [0.25, 0.5]], ["deMssWin", "n", 2, [1, 0]], ["deKz", "b", true],
     ["deHtfOn", "b", false],
-    ["deHtf", "e", "60", { "5": "5m", "15": "15m", "30": "30m", "60": "1h", "120": "2h", "240": "4h", "D": "D" }]
+    ["deHtf", "e", "60", { "5": "5m", "15": "15m", "30": "30m", "60": "1h", "120": "2h", "240": "4h", "D": "D" }],
+    // Poor liquidity
+    ["plMode", "e", "auto", { auto: "auto", yes: "yes", no: "no" }]
 ];
 
 // integer parameters (Pine input.int)
@@ -405,6 +407,7 @@ class FVGSIFVGOTE {
         this.O = []; this.H = []; this.L = []; this.C = []; this.T = [];
         this.nextJ = 0;          // next bar index to commit
         this.curI = -1;          // last index map() was called with
+        this.plCache = undefined; // [PL] poor liquidity, resolved on first use
         this.dg = { maps: 0, fvgs: 0, err: "", errJ: -1, d: "" };   // "diag": counters shown on the chart
         this.seen = [];          // bar values received by map(), by bar index
         this.gfxRes = null;      // last result that carried the graphics, and its index
@@ -771,11 +774,17 @@ class FVGSIFVGOTE {
             const isfpNow = this.isFPFVG();
             for (const islong of [true, false]) {
                 const z = islong ? this.longFVGHL() : this.shortFVGHL();
-                const [hi, lo, fhi, flo] = z;
+                let [hi, lo, fhi, flo] = z;
+                // [PL] poor liquidity: two candles of the same direction with a gap, as if one more was between
+                let fk = 3;
+                if (this.poorLiq() && !(fhi - flo > P.minfvg)) {
+                    const g = this.twoCandleFVG(islong);
+                    if (g) { [hi, lo] = g; fhi = hi; flo = lo; fk = 2; }
+                }
                 if (fhi - flo > P.minfvg && fhi - flo < P.maxfvg && (!P.deDisp || deDispOK || isfpNow)) {
-                    const f = this.newFVG(hi, lo, avg(hi, lo), islong, j - 3);
+                    const f = this.newFVG(hi, lo, avg(hi, lo), islong, j - fk);
                     this.dg.fvgs++;
-                    f.sbar = j - 3;
+                    f.sbar = j - fk;
                     this.oteInit(f); // [OTEF]
                     const mssBar = islong ? this.deMssUpBar : this.deMssDnBar;
                     f.aplus = P.deAplus && mssBar !== null && j - mssBar <= 3;
@@ -1167,8 +1176,8 @@ class FVGSIFVGOTE {
         let hi = l1, lo = h3;
         const blow1 = Math.min(o1, c1), bhi2 = Math.max(o2, c2), blow2 = Math.min(o2, c2), bhi3 = Math.max(o3, c3);
         const fhi = hi, flo = lo;
-        if (bhi3 < blow2) lo = bhi3;
-        if (blow1 > bhi2) hi = blow1;
+        if (bhi3 < blow2 && !this.poorLiq()) lo = bhi3;
+        if (blow1 > bhi2 && !this.poorLiq()) hi = blow1;
         return [hi, lo, fhi, flo];
     }
     shortFVGHL() {
@@ -1178,9 +1187,24 @@ class FVGSIFVGOTE {
         let hi = l3, lo = h1;
         const blow3 = Math.min(o3, c3), bhi2 = Math.max(o2, c2), blow2 = Math.min(o2, c2), bhi1 = Math.max(o1, c1);
         const fhi = hi, flo = lo;
-        if (blow3 > bhi2) hi = blow3;
-        if (bhi1 < blow2) lo = bhi1;
+        if (blow3 > bhi2 && !this.poorLiq()) hi = blow3;
+        if (bhi1 < blow2 && !this.poorLiq()) lo = bhi1;
         return [hi, lo, fhi, flo];
+    }
+    // [PL] poor liquidity: no volume imbalance extension, two-candle FVGs; auto: nano futures only
+    poorLiq() {
+        if (this.plCache === undefined) {
+            const m = this.P.plMode;
+            const s = m === "auto" ? this.symbolText() : "";
+            this.plCache = m === "yes" || (m === "auto" && (s.indexOf("NANO") >= 0 || s.indexOf("NNQ") >= 0));
+        }
+        return this.plCache;
+    }
+    // [PL] two up-close (islong) / down-close candles in a row with a gap: [hi, lo] of the gap, else null
+    twoCandleFVG(islong) {
+        const o1 = this.opB(1), c1 = this.clB(1), o2 = this.opB(2), c2 = this.clB(2);
+        if (islong) return c1 > o1 && c2 > o2 && this.loB(1) > this.hiB(2) ? [this.loB(1), this.hiB(2)] : null;
+        return c1 < o1 && c2 < o2 && this.hiB(1) < this.loB(2) ? [this.loB(2), this.hiB(1)] : null;
     }
     isFPFVG() {
         const P = this.P;
