@@ -2,7 +2,7 @@
 // FVGSIFVGOTE - Fair value gaps, 1st presented FVGs, inverse FVGs (IFVG) and ICT OTE, for NinjaTrader 8
 // ---------------------------------------------------------------------------------------------------------------------
 // Port of the TradingView Pine Script v6 indicator "FVGs+IFVG+OTE5" by franjballest
-// (source file FVGS+IFVG+OTE.txt, md5 06f06f42dacc49e4a5da52bfb6f57903). Mozilla Public License 2.0, as the original.
+// (source file FVGS+IFVG+OTE.txt, md5 816345d99ad0cae0fb95a11a2f83f53c). Mozilla Public License 2.0, as the original.
 //
 // What it draws: FVG boxes (or no-fill boxes, or hi / lo / C.E. segments) with C.E. lines, the 1st presented FVG of the
 // session open (New York 09:30, or Madrid 09:00 for DAX) and its optional inverse, wick C.E. segments, IFVG candidates
@@ -56,7 +56,7 @@ using NinjaTrader.NinjaScript.DrawingTools;
 
 // option lists of the Pine string inputs (global, uniquely prefixed, so the generated factory code can see them)
 public enum FioDrawMode { All, OnlyPFVGs, IFVGs, PFVGsAndIFVGs }
-public enum FioFilterMode { None, Sweeps, SweepsAndMid }
+public enum FioFilterMode { None, Sweeps, SweepsAndMid, Relevant }
 public enum FioFvgStyle { Box, BoxNoFill, Segments }
 public enum FioConfirm { Close, FullBody }
 public enum FioDeadMode { Fade, BackToFVG }
@@ -65,6 +65,7 @@ public enum FioHAlign { Left, Center, Right }
 public enum FioVAlign { Top, Center, Bottom }
 public enum FioOteMode { Overlap, FullyInside, CEInside }
 public enum FioZoneMode { LastCandle, WholeSequence }
+public enum FioPoorLiq { Auto, Yes, No }
 public enum FioRangeType { OpenToClose, HighToLow }
 public enum FioHtf { Min5, Min15, Hour1, Hour4, Daily }
 
@@ -135,9 +136,12 @@ namespace NinjaTrader.NinjaScript.Indicators
             public Fvg dup;
             public bool cand, own, shown, aplus, disp, brk;
             public int brkD, mbD;
-            public int lblD;                       // direction of the b / M / Mb label
+            public int lblD;                       // direction of the B / M / BM label
             public bool ote;                       // [OTEF] OTE FVG
             public double oLo = double.NaN, oHi = double.NaN; // [OTEF] leg low / high
+            public bool swp;                       // [REL] last FVG before a sweep: shown once it becomes an IFVG
+            public bool ext;                       // [REL] extended by a merged duplicate
+            public int dbar = -1;                  // [REL] bar index where it was filled
         }
 
         private sealed class PivSet
@@ -220,7 +224,7 @@ namespace NinjaTrader.NinjaScript.Indicators
         private bool loggedErr;
 
         // derived inputs
-        private bool fponly, ifvgOnly, hideReg, fltOff, fltMid, styNoFill, stySeg;
+        private bool fponly, ifvgOnly, hideReg, fltOff, fltMid, fltRel, styNoFill, stySeg;
         private Color cL, cLn, cS, cSn, cFp, cFpn, cWfp, cWfpn, cIfp, cIfpn, cWick, cDead, cBullIf, cBearIf;
         private Color cOteBand, cOteHi, cOteTxt, cBrk, cMb, cIfvgTxt;
         private Brush dispBrush;
@@ -232,6 +236,7 @@ namespace NinjaTrader.NinjaScript.Indicators
         private string tfStr;
         private TimeZoneInfo localTz, tzInfo, exchTz;
         private bool tzMadrid;
+        private bool poorLiq;   // [PL] poor liquidity: no volume imbalance extension, two-candle FVGs
         private int fph, fpm;
 
         // wicks
@@ -239,6 +244,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 
         // FVGs
         private List<Fvg> lfvgs, sfvgs, fpfvgs, keptIf, pendF;
+        private List<Fvg> relF, relS;   // [REL] live FVGs not shown (yet); small drawn FVGs just filled (swing check)
+        private List<GBox> relB;        // [REL] boxes of the live FVGs near the price
         private bool hasfp, hasifp;
 
         // FVG filter state (FltState)
@@ -267,6 +274,7 @@ namespace NinjaTrader.NinjaScript.Indicators
         private PivSet pv0, pv1, pv2;
         private List<HtfPiv> pend1, pend2;
         private int htfIdx1, htfIdx2;
+        private int fp1mIdx = -1;   // BarsInProgress of the 1m series of the 1PFVG, -1 when not used
         private bool hasH1, hasH2;
         private OteGroup gBear, gBull, gSw;
 
@@ -318,6 +326,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                 BarsRequiredToPlot = 0;
 
                 Show1PFVGs = true;
+                FpFrom1m = true;
                 ShowIFVGs = true;
                 ShowWickCE = true;
                 DrawSelection = FioDrawMode.All;
@@ -403,7 +412,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                 OteTextColor = MkBrush(0x363A45, 0);
                 BreakersOn = true;
                 BreakerZone = FioZoneMode.LastCandle;
-                BreakerSwingLength = 3;
+                BreakerSwingLength = 5;
                 BreakersKept = 3;
                 BreakerRectangle = false;
                 BreakerColor = MkBrush(0xE040FB, 0);
@@ -413,7 +422,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                 BreakerShadow = false;
                 MitigationOn = true;
                 MitigationZone = FioZoneMode.LastCandle;
-                MitigationSwingLength = 3;
+                MitigationSwingLength = 5;
                 MitigationKept = 3;
                 MitigationRectangle = false;
                 MitigationColor = MkBrush(0xFF9800, 0);
@@ -438,6 +447,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                 APlusKillzones = true;
                 APlusHtfStructure = false;
                 APlusHtf = FioHtf.Hour1;
+                PoorLiquidity = FioPoorLiq.Auto;
             }
             else if (State == State.Configure)
             {
@@ -447,6 +457,14 @@ namespace NinjaTrader.NinjaScript.Indicators
                 AddDataSeries(BarsPeriodType.Minute, 60);   // 3
                 AddDataSeries(BarsPeriodType.Minute, 240);  // 4
                 AddDataSeries(BarsPeriodType.Day, 1);       // 5
+                // 1PFVG from the 1m candles on charts above 1m and below 15m
+                fp1mIdx = -1;
+                if (Show1PFVGs && FpFrom1m && BarsPeriod.BarsPeriodType == BarsPeriodType.Minute
+                    && BarsPeriod.Value > 1 && BarsPeriod.Value < 15)
+                {
+                    AddDataSeries(BarsPeriodType.Minute, 1); // 6
+                    fp1mIdx = 6;
+                }
             }
             else if (State == State.DataLoaded)
             {
@@ -531,6 +549,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             hideReg = DrawSelection == FioDrawMode.IFVGs || DrawSelection == FioDrawMode.PFVGsAndIFVGs;
             fltOff = FvgFilter == FioFilterMode.None;
             fltMid = FvgFilter == FioFilterMode.SweepsAndMid;
+            fltRel = FvgFilter == FioFilterMode.Relevant;
             styNoFill = FvgStyle == FioFvgStyle.BoxNoFill;
             stySeg = FvgStyle == FioFvgStyle.Segments;
 
@@ -594,6 +613,13 @@ namespace NinjaTrader.NinjaScript.Indicators
             localTz = NinjaTrader.Core.Globals.GeneralOptions.TimeZoneInfo;
             string tz = string.IsNullOrEmpty(FpTimeZone) ? "Auto" : FpTimeZone.Trim();
             string fpt = FpTime ?? "0930";
+            {
+                // [PL] auto: nano futures only
+                string d = Instrument != null && Instrument.MasterInstrument != null
+                    ? (Instrument.MasterInstrument.Description ?? "") + " " + (Instrument.MasterInstrument.Name ?? "") : "";
+                bool nano = d.ToLowerInvariant().Contains("nano") || d.Contains("NNQ");
+                poorLiq = PoorLiquidity == FioPoorLiq.Yes || (PoorLiquidity == FioPoorLiq.Auto && nano);
+            }
             if (tz == "Auto")
             {
                 string desc = Instrument != null && Instrument.MasterInstrument != null ? (Instrument.MasterInstrument.Description ?? "") : "";
@@ -626,6 +652,9 @@ namespace NinjaTrader.NinjaScript.Indicators
             fpfvgs = new List<Fvg>();
             keptIf = new List<Fvg>();
             pendF = new List<Fvg>();
+            relF = new List<Fvg>();
+            relS = new List<Fvg>();
+            relB = new List<GBox>();
             hasfp = false;
             hasifp = false;
 
@@ -735,6 +764,11 @@ namespace NinjaTrader.NinjaScript.Indicators
         protected override void OnBarUpdate()
         {
             if (b0 == null) return;
+            if (BarsInProgress != 0 && BarsInProgress == fp1mIdx)
+            {
+                OnFp1mBar();
+                return;
+            }
             if (BarsInProgress != 0)
             {
                 OnHtfBar(BarsInProgress);
@@ -1146,14 +1180,14 @@ namespace NinjaTrader.NinjaScript.Indicators
 
         private int Bw(Fvg f) { return FlagDispFvgs && f.disp ? FlagDispWidth : 1; }
 
-        // label of a plain FVG box: A+, or the breaker / mitigation block tag (b+, M-, Mb+...), plus OTE
+        // label of a plain FVG box: A+, or the breaker / mitigation block tag (B↑, M↓, BM↑...), plus OTE
         private string FvgLbl(Fvg f)
         {
             string t = "";
             if (f.aplus && LabelAPlus)
                 t = hideReg ? "" : "A+";
             else if (f.brk || f.mbD != 0)
-                t = (f.brk && f.mbD != 0 ? "Mb" : f.brk ? "b" : "M") + (f.lblD == 1 ? "+" : "-");
+                t = (f.brk && f.mbD != 0 ? "BM" : f.brk ? "B" : "M") + (f.lblD == 1 ? "\u2191" : "\u2193");
             if (f.ote && !hideReg)
                 t += (t == "" ? "" : " ") + "OTE";
             return t;
@@ -1262,7 +1296,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                 DateTime t = ToZone(BarOpen(0), tzInfo);
                 int nmin = 2;
                 if (isMinutes) nmin = (int)(tfmin * 2);
-                r = t.Hour == fph && t.Minute > fpm + nmin && isMinutes && tfmin <= 3;
+                r = t.Hour == fph && t.Minute > fpm + nmin && isMinutes && tfmin <= 3 && fp1mIdx < 0;
             }
             return r;
         }
@@ -1280,6 +1314,8 @@ namespace NinjaTrader.NinjaScript.Indicators
                 if (f.iswfp) c = cWfp;
             }
             if (f.isifp) c = cIfp;
+            // [REL] too small for a C.E.: a little more transparent
+            if (RelSmall(f)) c = Color.FromArgb((byte)(c.A / 2), c.R, c.G, c.B);
             bool hid = hideReg && (ifvgOnly || (!f.isfp && !f.isifp));
             return styNoFill ? CTransp : (hid ? Tr(c, 100) : c);
         }
@@ -1294,8 +1330,12 @@ namespace NinjaTrader.NinjaScript.Indicators
             }
             if (f.isifp) c = cIfpn;
             bool hid = hideReg && (ifvgOnly || (!f.isfp && !f.isifp));
-            return hid ? Tr(c, 100) : c;
+            // [REL] too small for a C.E.: no border (boxes only; segments are the lines themselves)
+            return hid || (RelSmall(f) && !stySeg) ? Tr(c, 100) : c;
         }
+
+        // [REL] "relevant" filter: a plain FVG too small to draw its C.E.
+        private bool RelSmall(Fvg f) { return fltRel && !f.isfp && !f.isifp && f.hi - f.lo <= CeMinHeight; }
 
         // back to the plain FVG, as it was before becoming an IFVG
         private void Restore(Fvg f)
@@ -1352,7 +1392,8 @@ namespace NinjaTrader.NinjaScript.Indicators
                 SetExt(r, false);
             }
             r.T2 = curTime;
-            r.Txt = "";
+            // an unconfirmed candidate keeps its B / M / BM label (confirming it sets the IFVG label)
+            r.Txt = f.brk || f.mbD != 0 ? FvgLbl(f) : "";
             r.Tc = cIfvgTxt;
             r.Ts = ifvgTs;
             r.Ha = ifvgHa;
@@ -1447,6 +1488,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                 Touch(g.celine);
             }
             g.end = null;
+            g.ext = true;
         }
 
         private static void InsertSorted(List<Fvg> a, Fvg f)
@@ -1504,6 +1546,11 @@ namespace NinjaTrader.NinjaScript.Indicators
             {
                 pendF.Add(f);
                 if (pendF.Count > 60) pendF.RemoveAt(0);
+                if (fltRel)
+                {
+                    relF.Add(f);
+                    if (relF.Count > 300) relF.RemoveAt(0);
+                }
             }
         }
 
@@ -1535,6 +1582,12 @@ namespace NinjaTrader.NinjaScript.Indicators
             if (n > 0)
             {
                 Fvg lastF = pendF[n - 1];
+                // [REL] the last FVG before the sweep waits to become an IFVG
+                if (fltRel)
+                {
+                    lastF.swp = true;
+                    lastF = null;
+                }
                 Fvg midF = null;
                 if (fltMid && n > 1 && armStart.HasValue && armStart.Value < bi)
                 {
@@ -1552,7 +1605,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                         }
                     }
                 }
-                Reveal(lastF);
+                if (lastF != null) Reveal(lastF);
                 if (midF != null) Reveal(midF);
                 pendF.Clear();
             }
@@ -1560,7 +1613,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 
         private void Classify(Fvg f, bool fpNow)
         {
-            if (!hasifp && hasfp && FpInverse && fpfvgs.Count > 0)
+            if (!hasifp && hasfp && FpInverse && fpfvgs.Count > 0 && fp1mIdx < 0)
             {
                 Fvg fp = fpfvgs[fpfvgs.Count - 1];
                 if (fp.islong != f.islong)
@@ -1584,6 +1637,76 @@ namespace NinjaTrader.NinjaScript.Indicators
                 Kill(f);
         }
 
+        private static bool HasPiv(List<int> bars, int b0, int b1)
+        {
+            for (int k = bars.Count - 1; k >= 0; k--)
+            {
+                if (bars[k] < b0) break;
+                if (bars[k] <= b1) return true;
+            }
+            return false;
+        }
+
+        // [REL] "relevant" filter, once per closed bar: reveal the live FVGs not shown yet that became IFVGs (the last
+        // one before a sweep) or OTE FVGs; hide the small filled FVGs not formed at a swing (once a pivot there would
+        // be confirmed); and box the live FVGs within MinSwingAtr x ATR of the price
+        private void RelStep()
+        {
+            for (int k = relF.Count - 1; k >= 0; k--)
+            {
+                Fvg f = relF[k];
+                if (f.shown || f.dup != null) relF.RemoveAt(k);
+                else if (IsDone(f, bo, bc))
+                {
+                    if (f.swp)
+                    {
+                        f.end = curTime;
+                        Reveal(f);
+                    }
+                    relF.RemoveAt(k);
+                }
+                else if (OteFvgStep(f))
+                {
+                    Reveal(f);
+                    relF.RemoveAt(k);
+                }
+            }
+            for (int k = relS.Count - 1; k >= 0; k--)
+            {
+                Fvg f = relS[k];
+                if (bi < Math.Max(f.dbar, f.sbar + 3 + SwingPivotRight)) continue;
+                relS.RemoveAt(k);
+                bool keep = f.ext || f.kept || f.cand || !RelSmall(f)
+                    || HasPiv(pv0.hb, f.sbar - 1, f.sbar + 3) || HasPiv(pv0.lb, f.sbar - 1, f.sbar + 3);
+                if (!keep)
+                {
+                    (f.islong ? lfvgs : sfvgs).Remove(f);
+                    f.shown = false;
+                    Kill(f);
+                }
+            }
+            foreach (GBox b in relB) Del(b);
+            relB.Clear();
+            double atr = bi < atrL.Count ? atrL[bi] : double.NaN;
+            double rng = (double.IsNaN(atr) ? 0.0 : atr) * MinSwingAtr;
+            foreach (Fvg f in relF)
+            {
+                if (relB.Count >= 40) break;
+                if (f.shown || f.dup != null || f.end.HasValue) continue;
+                double dist = bc > f.hi ? bc - f.hi : bc < f.lo ? f.lo - bc : 0.0;
+                if (dist > rng) continue;
+                GBox b = NewBox(f.start, f.hi, curTime, f.lo);
+                b.Bg = BgColor(f);
+                b.Bd = LnColor(f);
+                b.Bw = Bw(f);
+                b.Txt = FvgLbl(f);
+                b.Ts = ifvgTs;
+                b.Ha = ifvgHa;
+                b.Va = ifvgVa;
+                relB.Add(b);
+            }
+        }
+
         private void UpdFvgs(List<Fvg> fvgs)
         {
             for (int i = 0; i < fvgs.Count; i++)
@@ -1591,7 +1714,16 @@ namespace NinjaTrader.NinjaScript.Indicators
                 Fvg f = fvgs[i];
                 // check if filled
                 bool isdone = f.end.HasValue;
-                if (!f.end.HasValue && IsDone(f, bo, bc)) f.end = EndsAt(f);
+                if (!f.end.HasValue && IsDone(f, bo, bc))
+                {
+                    f.end = EndsAt(f);
+                    // [REL] small FVG filled: hidden later unless it formed at a swing
+                    if (RelSmall(f) && !f.swp && !f.ext && !f.kept && !f.cand)
+                    {
+                        f.dbar = bi;
+                        relS.Add(f);
+                    }
+                }
                 // [OTEF] retraced into while matching the OTE band of its leg (FVG shown as a plain FVG)
                 if (!isdone && !f.end.HasValue && f.dup == null && OteFvgStep(f) && f.rect != null && !f.cand && !f.kept)
                 {
@@ -1723,6 +1855,63 @@ namespace NinjaTrader.NinjaScript.Indicators
             if (hasH1 && k == htfIdx1) HtfPivots(hb, p, pend1);
             if (hasH2 && k == htfIdx2) HtfPivots(hb, p, pend2);
             if (deHtfUse && k == deHtfIdx) HtfStruct(hb, p);
+        }
+
+        // 1PFVG from the 1m candles: each completed 1m candle is candle [0] of IsFPFVG on the 1m chart
+        // (candles [1] to [3] are the three before it); Pine: request.security_lower_tf
+        private void OnFp1mBar()
+        {
+            int ho = 0;
+            if (Calculate != Calculate.OnBarClose)
+            {
+                if (!IsFirstTickOfBar) return;
+                ho = 1; // completed 1m bars only
+            }
+            int p = CurrentBars[fp1mIdx] - ho;
+            if (p < 3 || fpfvgs == null) return;
+            NinjaTrader.Data.Bars mb = BarsArray[fp1mIdx];
+            DateTime t0 = ToZone(mb.GetTime(p).AddMinutes(-1), tzInfo); // open time of candle [0]
+            bool fpWin = !hasfp && t0.Minute > fpm + 2;
+            // inverse 1PFVG: the first 1m FVG of the opposite bias after the 1PFVG
+            bool ifpWin = hasfp && FpInverse && !hasifp && fpfvgs.Count > 0;
+            if (t0.Hour != fph || !(fpWin || ifpWin)) return;
+            bool fpLong = ifpWin && fpfvgs[fpfvgs.Count - 1].islong;
+            double o1 = mb.GetOpen(p - 1), c1 = mb.GetClose(p - 1), h1 = mb.GetHigh(p - 1), l1 = mb.GetLow(p - 1);
+            double o2 = mb.GetOpen(p - 2), c2 = mb.GetClose(p - 2);
+            double o3 = mb.GetOpen(p - 3), c3 = mb.GetClose(p - 3), h3 = mb.GetHigh(p - 3), l3 = mb.GetLow(p - 3);
+            double bhi2 = Math.Max(o2, c2), blow2 = Math.Min(o2, c2);
+            Fvg f = null;
+            // long: low of [1] above the high of [3]; include suspension blocks
+            if (l1 - h3 > MinFvgSize && l1 - h3 < MaxFvgSize && !(ifpWin && fpLong))
+            {
+                double hi = l1, lo = h3;
+                if (Math.Max(o3, c3) < blow2 && !poorLiq) lo = Math.Max(o3, c3);
+                if (Math.Min(o1, c1) > bhi2 && !poorLiq) hi = Math.Min(o1, c1);
+                f = new Fvg { hi = hi, lo = lo, ce = (hi + lo) / 2.0, islong = true };
+            }
+            // short: high of [1] below the low of [3]
+            if (f == null && l3 - h1 > MinFvgSize && l3 - h1 < MaxFvgSize && !(ifpWin && !fpLong))
+            {
+                double hi = l3, lo = h1;
+                if (Math.Min(o3, c3) > bhi2 && !poorLiq) hi = Math.Min(o3, c3);
+                if (Math.Max(o1, c1) < blow2 && !poorLiq) lo = Math.Max(o1, c1);
+                f = new Fvg { hi = hi, lo = lo, ce = (hi + lo) / 2.0, islong = false };
+            }
+            if (f == null) return;
+            f.start = mb.GetTime(p - 3);
+            f.sbar = Math.Max(bi, 0);
+            if (ifpWin)
+            {
+                f.isifp = true;
+                hasifp = true;
+                fpfvgs.Add(f);
+                return;
+            }
+            f.isfp = true;
+            f.iswfp = ToZone(mb.GetTime(p).AddMinutes(-1), exchTz).DayOfWeek == DayOfWeek.Monday;
+            hasfp = true;
+            fpfvgs.Add(f);
+            ClearLastFp();
         }
 
         // a pivot of a completed HTF bar, registered on the next chart bar (Pine: request.security [1] + lookahead_on)
@@ -2242,6 +2431,13 @@ namespace NinjaTrader.NinjaScript.Indicators
             }
         }
 
+        // FVG shown as the box of a confirmed IFVG (close mode or swing mode), with its IFVG label
+        private static bool SameF(Fvg f, Fvg g) => g != null && (g.dup ?? g) == f;
+
+        private bool ConfIfvg(Fvg f) =>
+            (bullconfirm.HasValue && SameF(f, bullifvg)) || (bearconfirm.HasValue && SameF(f, bearifvg))
+            || (ifsconfirm.HasValue && SameF(f, swFvg));
+
         // breaker b drawn when FVG / IFVG f overlaps it on the pullback; ib: the IFVG box when f is the confirmed IFVG
         private void BrkTag(Fvg f, Blk b, GBox ib)
         {
@@ -2254,14 +2450,19 @@ namespace NinjaTrader.NinjaScript.Indicators
                     ib.Bold = true;
                     Touch(ib);
                 }
-                else if (!f.end.HasValue && !f.cand && !f.kept && !(f.aplus && LabelAPlus) && f.rect != null)
+                else
                 {
+                    // the label direction is kept for when the box shows the plain FVG label (also after it
+                    // was an IFVG candidate); an unconfirmed IFVG candidate box shows it too
                     f.lblD = b.dir;
-                    f.rect.Txt = FvgLbl(f);
-                    f.rect.Ts = ifvgTs;
-                    f.rect.Ha = ifvgHa;
-                    f.rect.Va = ifvgVa;
-                    Touch(f.rect);
+                    if (!f.end.HasValue && (!f.kept || (f.cand && !ConfIfvg(f))) && !(f.aplus && LabelAPlus) && f.rect != null)
+                    {
+                        f.rect.Txt = FvgLbl(f);
+                        f.rect.Ts = ifvgTs;
+                        f.rect.Ha = ifvgHa;
+                        f.rect.Va = ifvgVa;
+                        Touch(f.rect);
+                    }
                 }
                 BlkDraw(b, BreakerFlagCandles, BreakerRectangle, BreakerShadow, cBrk, BreakerLineStyle, BreakerLineWidth);
             }
@@ -2292,9 +2493,9 @@ namespace NinjaTrader.NinjaScript.Indicators
                 else
                 {
                     f.mbD = b.dir;
-                    if (!f.end.HasValue && !f.cand && !f.kept && !(f.aplus && LabelAPlus) && f.rect != null)
+                    f.lblD = b.dir;
+                    if (!f.end.HasValue && (!f.kept || (f.cand && !ConfIfvg(f))) && !(f.aplus && LabelAPlus) && f.rect != null)
                     {
-                        f.lblD = b.dir;
                         f.rect.Txt = FvgLbl(f);
                         f.rect.Ts = ifvgTs;
                         f.rect.Ha = ifvgHa;
@@ -2643,8 +2844,18 @@ namespace NinjaTrader.NinjaScript.Indicators
                     double hi = l1, lo = h3;
                     double fhi = hi, flo = lo;
                     double blow1 = Math.Min(o1, c1), bhi2 = Math.Max(o2, c2), blow2 = Math.Min(o2, c2), bhi3 = Math.Max(o3, c3);
-                    if (bhi3 < blow2) lo = bhi3;
-                    if (blow1 > bhi2) hi = blow1;
+                    if (bhi3 < blow2 && !poorLiq) lo = bhi3;
+                    if (blow1 > bhi2 && !poorLiq) hi = blow1;
+                    // [PL] poor liquidity: two up-close candles in a row with a gap make an FVG (as if one more was between)
+                    int fk = 3;
+                    if (poorLiq && !(fhi - flo > MinFvgSize) && c1 > o1 && c2 > o2 && l1 > Hp(2))
+                    {
+                        hi = l1;
+                        lo = Hp(2);
+                        fhi = hi;
+                        flo = lo;
+                        fk = 2;
+                    }
                     if (fhi - flo > MinFvgSize && fhi - flo < MaxFvgSize && (!DisplacementOnly || deDispOK || fpNow))
                     {
                         Fvg f = new Fvg();
@@ -2652,8 +2863,8 @@ namespace NinjaTrader.NinjaScript.Indicators
                         f.lo = lo;
                         f.ce = (hi + lo) / 2.0;
                         f.islong = true;
-                        f.start = Tm(3);
-                        f.sbar = bi - 3;
+                        f.start = Tm(fk);
+                        f.sbar = bi - fk;
                         OteInit(f); // [OTEF]
                         f.aplus = APlusSetups && deMssUpBar.HasValue && bi - deMssUpBar.Value <= 3;
                         f.disp = deDispOK;
@@ -2666,8 +2877,18 @@ namespace NinjaTrader.NinjaScript.Indicators
                     double hi = l3, lo = h1;
                     double fhi = hi, flo = lo;
                     double blow3 = Math.Min(o3, c3), bhi2 = Math.Max(o2, c2), blow2 = Math.Min(o2, c2), bhi1 = Math.Max(o1, c1);
-                    if (blow3 > bhi2) hi = blow3;
-                    if (bhi1 < blow2) lo = bhi1;
+                    if (blow3 > bhi2 && !poorLiq) hi = blow3;
+                    if (bhi1 < blow2 && !poorLiq) lo = bhi1;
+                    // [PL] poor liquidity: two down-close candles in a row with a gap make an FVG
+                    int fk = 3;
+                    if (poorLiq && !(fhi - flo > MinFvgSize) && c1 < o1 && c2 < o2 && h1 < Lp(2))
+                    {
+                        hi = Lp(2);
+                        lo = h1;
+                        fhi = hi;
+                        flo = lo;
+                        fk = 2;
+                    }
                     if (fhi - flo > MinFvgSize && fhi - flo < MaxFvgSize && (!DisplacementOnly || deDispOK || fpNow))
                     {
                         Fvg f = new Fvg();
@@ -2675,8 +2896,8 @@ namespace NinjaTrader.NinjaScript.Indicators
                         f.lo = lo;
                         f.ce = (hi + lo) / 2.0;
                         f.islong = false;
-                        f.start = Tm(3);
-                        f.sbar = bi - 3;
+                        f.start = Tm(fk);
+                        f.sbar = bi - fk;
                         OteInit(f); // [OTEF]
                         f.aplus = APlusSetups && deMssDnBar.HasValue && bi - deMssDnBar.Value <= 3;
                         f.disp = deDispOK;
@@ -2725,6 +2946,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             double opl = PivLo(b0, bi, SwingPivotLeft, SwingPivotRight);
             if (!double.IsNaN(oph)) AddHigh(pv0, bi - SwingPivotRight, oph);
             if (!double.IsNaN(opl)) AddLow(pv0, bi - SwingPivotRight, opl);
+            if (fltRel) RelStep();
             if (ShowIFVGs && DetectOte)
             {
                 if (hasH1) FeedHtf(pv1, pend1);
@@ -3170,7 +3392,7 @@ namespace NinjaTrader.NinjaScript.Indicators
         public FioDrawMode DrawSelection { get; set; }
 
         [NinjaScriptProperty]
-        [Display(Name = "FVG filter", GroupName = "Enable / Draw / Filter", Order = 105, Description = "Which FVGs are drawn (1PFVGs and the close-mode IFVG logic are not filtered). Sweeps: the last FVG before a sweep and the first one after it. SweepsAndMid: also the largest FVG near the middle of the arm.")]
+        [Display(Name = "FVG filter", GroupName = "Enable / Draw / Filter", Order = 105, Description = "Which FVGs are drawn (1PFVGs and the close-mode IFVG logic are not filtered). Sweeps: the last FVG before a sweep and the first one after it. SweepsAndMid: also the largest FVG near the middle of the arm. Relevant: the first FVG after a sweep; the last one before it only once it becomes an IFVG; FVGs flagged OTE; and the live FVGs within min swing (ATR) x ATR of the price. FVGs too small for a C.E. are drawn lighter and without border, and are hidden once filled unless they formed at a swing high / low or were extended by a merged FVG.")]
         public FioFilterMode FvgFilter { get; set; }
 
         [NinjaScriptProperty]
@@ -3337,6 +3559,10 @@ namespace NinjaTrader.NinjaScript.Indicators
             get { return Serialize.BrushToString(FpWeekBorder); }
             set { FpWeekBorder = Serialize.StringToBrush(value); }
         }
+
+        [NinjaScriptProperty]
+        [Display(Name = "From 1m candles", GroupName = "1st Presented FVGs", Order = 310, Description = "On charts above 1m and below 15m, the 1st presented FVG is found on the 1m candles instead of the chart candles. Off: only on 1m to 3m charts, from the chart candles.")]
+        public bool FpFrom1m { get; set; }
 
         [NinjaScriptProperty]
         [Display(Name = "1PFVG inverse", GroupName = "1st Presented FVGs", Order = 308, Description = "Also draw the first FVG of the opposite bias after the 1PFVG.")]
@@ -3652,7 +3878,7 @@ namespace NinjaTrader.NinjaScript.Indicators
         }
 
         [NinjaScriptProperty]
-        [Display(Name = "Breakers at FVG / IFVG pullbacks", GroupName = "Breakers", Order = 701, Description = "Bullish breaker: a low, a high and a lower low; bearish: a high, a low and a higher high. After the break, a swing beyond the zone and a pullback into it, overlapping FVGs / IFVGs are tagged (bold IFVG label, b+ / b-).")]
+        [Display(Name = "Breakers at FVG / IFVG pullbacks", GroupName = "Breakers", Order = 701, Description = "Bullish breaker: a low, a high and a lower low; bearish: a high, a low and a higher high. After the break, a swing beyond the zone and a pullback into it, overlapping FVGs / IFVGs are tagged (bold IFVG label, B↑ / B↓).")]
         public bool BreakersOn { get; set; }
 
         [NinjaScriptProperty]
@@ -3703,7 +3929,7 @@ namespace NinjaTrader.NinjaScript.Indicators
         public bool BreakerShadow { get; set; }
 
         [NinjaScriptProperty]
-        [Display(Name = "Mitigation blocks at FVG / IFVG pullbacks", GroupName = "Mitigation blocks", Order = 801, Description = "Bullish: a low, a high and a higher low; bearish: a high, a low and a lower high. Same life cycle as breakers; IFVG labels get bold + arrow, plain FVGs M+ / M- (Mb+ / Mb-).")]
+        [Display(Name = "Mitigation blocks at FVG / IFVG pullbacks", GroupName = "Mitigation blocks", Order = 801, Description = "Bullish: a low, a high and a higher low; bearish: a high, a low and a lower high. Same life cycle as breakers; IFVG labels get bold + arrow, plain FVGs M↑ / M↓ (BM↑ / BM↓).")]
         public bool MitigationOn { get; set; }
 
         [NinjaScriptProperty]
@@ -3836,6 +4062,10 @@ namespace NinjaTrader.NinjaScript.Indicators
         [NinjaScriptProperty]
         [Display(Name = "HTF structure timeframe", GroupName = "Delivery Engine (Nuno)", Order = 917, Description = "Limited to the loaded ladder series: 5m, 15m, 1h, 4h, D.")]
         public FioHtf APlusHtf { get; set; }
+
+        [NinjaScriptProperty]
+        [Display(Name = "Poor liquidity", GroupName = "Poor liquidity", Order = 1000, Description = "For thin markets, where price often jumps between two candles. Yes: volume imbalances are ignored (FVG boxes are not extended over body gaps), and two up-close (down-close) candles in a row with a gap between them make a bullish (bearish) FVG, as if an up (down) candle was in the middle. Auto: yes for nano futures only (instrument with Nano / NNQ).")]
+        public FioPoorLiq PoorLiquidity { get; set; }
         #endregion
     }
 }

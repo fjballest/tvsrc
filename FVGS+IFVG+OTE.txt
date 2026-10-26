@@ -14,13 +14,13 @@
 //   low). Once price closes beyond the zone, makes a swing high (bullish) / low (bearish) beyond it and pulls
 //   back to it while a live FVG / IFVG of the trade direction
 //   overlaps the zone, the breaker is drawn as a dashed rectangle (with its mid line) from its candle(s) to that
-//   pullback. The label of an overlapping IFVG turns bold; an overlapping unlabeled FVG gets b+ / b-.
+//   pullback. The label of an overlapping IFVG turns bold; an overlapping unlabeled FVG gets B↑ / B↓.
 //   The rectangle is removed if the pullback itself trades below the breaker low (bullish) / above its
 //   high (bearish) before price closes out of the zone again; otherwise it stays for reference.
 // [MB] Mitigation blocks: bullish = low, high, higher low (zone at the high, chosen as for breakers); bearish =
 //   high, low, lower high (zone at the low). Same rules as the breakers (close beyond the zone, swing beyond it,
 //   pullback); an overlapping IFVG label turns bold with an up / down arrow; an overlapping unlabeled FVG gets
-//   M+ / M- (Mb+ / Mb- when a breaker tagged it too). Own rectangle.
+//   M↑ / M↓ (BM↑ / BM↓ when a breaker tagged it too). Own rectangle.
 
 // draw fvgs of the current timeframe including volume gaps
 // when using m5,4,3,2,1, track last 1PFVGs
@@ -147,6 +147,9 @@ var tz = input.string("Auto", "TZ", group = GRP_F1, inline = "fp",
     tooltip = "Auto: 9:00 Madrid for DAX, 9:30 New York otherwise.")
 var nfp = input.int(6, "Keep", group = GRP_F1, inline = "fp",
     tooltip = "Number of 1st presented FVGs kept.")
+fp1m = input.bool(true, "From 1m candles", group = GRP_F1, inline = "fp",
+    tooltip = "On charts above 1m and below 15m, the 1st presented FVG is found on the 1m candles "+
+        "(request.security_lower_tf) instead of the chart candles. Off: only on 1m to 3m charts, from the chart candles.")
 
 var fpcol = input.color( color.new(#00fbff, 90), "Day 1PFVG", group = GRP_F1, inline = "fp1")
 var lnfpcol = input.color( color.new(#0097a7, 20), "border", group = GRP_F1, inline = "fp1")
@@ -277,17 +280,17 @@ brkOn = input.bool(true, "Breakers at FVG / IFVG pullbacks", group = G_BRK,
     + "swing low below it (bearish), with the swing length below. When, on the pullback, a live bullish FVG or confirmed IFVG+ (long) or bearish FVG "
     + "or IFVG- (short) overlaps the zone, the breaker is drawn as a dashed rectangle with its mid line, from "
     + "its candle(s) to that pullback. The label of an overlapping IFVG+ / IFVG- turns bold and an "
-    + "overlapping unlabeled, unmitigated bullish / bearish FVG gets b+ / b-. The rectangle is removed if the pullback itself trades below the breaker low "
+    + "overlapping unlabeled, unmitigated bullish / bearish FVG gets B↑ / B↓. The rectangle is removed if the pullback itself trades below the breaker low "
     + "(bullish) / above its high (bearish) before price closes out of the zone again; otherwise it stays.")
 brkMode = input.string("Last candle", "Zone", options = ["Last candle", "Whole sequence"], group = G_BRK,
     inline = "bm", tooltip = "Last candle: the last up-close candle making the high (bullish) / down-close "
     + "candle making the low (bearish). Whole sequence: that candle and the consecutive up-close / down-close "
     + "candles before it.")
-brkLen = input.int(3, "Swing length / keep", minval = 1, maxval = 20, group = G_BRK, inline = "bl",
+brkLen = input.int(5, "Swing length / keep", minval = 1, maxval = 20, group = G_BRK, inline = "bl",
     tooltip = "Pivot length (left and right) of the lows and highs, and breakers kept per direction.")
 brkKeep = input.int(3, "", minval = 1, maxval = 10, group = G_BRK, inline = "bl")
 brkBox = input.bool(false, "Rectangle", group = G_BRK, inline = "bc",
-    tooltip = "Draw the breaker rectangle and its mid line. The bold IFVG labels and the b+ / b- labels are "
+    tooltip = "Draw the breaker rectangle and its mid line. The bold IFVG labels and the B↑ / B↓ labels are "
     + "set either way.")
 brkCol = input.color(color.fuchsia, "", group = G_BRK, inline = "bc")
 brkSty = getstyle(input.string("dashed", "", options = ["solid", "dashed", "dotted"], group = G_BRK, inline = "bc"))
@@ -308,17 +311,17 @@ mbOn = input.bool(true, "Mitigation blocks at FVG / IFVG pullbacks", group = G_M
     + "zone before the pullback. When, on the pullback, a live bullish FVG or confirmed IFVG+ (long) or bearish "
     + "FVG or IFVG- (short) overlaps the zone, the block is drawn as a rectangle with its mid line, the label of "
     + "the IFVG turns bold with an up (IFVG+) / down (IFVG-) arrow, and an overlapping unlabeled, unmitigated "
-    + "FVG gets M+ / M- (Mb+ / Mb- when a breaker tagged it too). The rectangle is removed if the pullback itself trades beyond the far side of the zone "
+    + "FVG gets M↑ / M↓ (BM↑ / BM↓ when a breaker tagged it too). The rectangle is removed if the pullback itself trades beyond the far side of the zone "
     + "before price closes out of it again; otherwise it stays.")
 mbMode = input.string("Last candle", "Zone", options = ["Last candle", "Whole sequence"], group = G_MB,
     inline = "mm", tooltip = "Last candle: the last up-close candle making the high (bullish) / down-close "
     + "candle making the low (bearish). Whole sequence: that candle and the consecutive up-close / down-close "
     + "candles before it.")
-mbLen = input.int(3, "Swing length / keep", minval = 1, maxval = 20, group = G_MB, inline = "ml",
+mbLen = input.int(5, "Swing length / keep", minval = 1, maxval = 20, group = G_MB, inline = "ml",
     tooltip = "Pivot length (left and right) of the lows and highs, and mitigation blocks kept per direction.")
 mbKeep = input.int(3, "", minval = 1, maxval = 10, group = G_MB, inline = "ml")
 mbBox = input.bool(false, "Rectangle", group = G_MB, inline = "mc",
-    tooltip = "Draw the mitigation block rectangle and its mid line. The IFVG labels and the M+ / M- labels are "
+    tooltip = "Draw the mitigation block rectangle and its mid line. The IFVG labels and the M↑ / M↓ labels are "
     + "set either way.")
 mbCol = input.color(color.orange, "", group = G_MB, inline = "mc")
 mbSty = getstyle(input.string("dashed", "", options = ["solid", "dashed", "dotted"], group = G_MB, inline = "mc"))
@@ -374,6 +377,16 @@ deHtfOn = input.bool(false, "A+ only with the HTF structure", group = G_DE, inli
         "bullish after a close above its last swing high, bearish after a close below its last swing low. "+
         "Ignored when not higher than the chart timeframe.")
 deHtf = input.timeframe("60", "", group = G_DE, inline = "dh")
+
+// Poor liquidity ============================================
+G_PL = "Poor liquidity"
+plMode = input.string("auto", "Poor liquidity", options = ["auto", "yes", "no"], group = G_PL,
+    tooltip = "For thin markets, where price often jumps between two candles. On: volume imbalances are "+
+        "ignored (FVG boxes are not extended over body gaps), and two up-close (down-close) candles in a row "+
+        "with a gap between them make a bullish (bearish) FVG, as if an up (down) candle was in the middle. "+
+        "auto: on for nano futures only (symbol or description with Nano / NNQ).")
+bool poorLiq = plMode == "yes" or (plMode == "auto" and (str.contains(str.lower(syminfo.description), "nano")
+     or str.startswith(syminfo.root, "NNQ") or str.startswith(syminfo.ticker, "NNQ")))
 
 bounces(p) =>
     (math.abs(p-low) < 2 and close > low+10) or (math.abs(p-high)<2 and close < high-10)
@@ -463,7 +476,7 @@ type FVG
     bool brk = false // [BRK] tagged at a breaker pullback
     int brkD = 0 // [BRK] direction of that breaker
     int mbD = 0 // [MB] direction of the mitigation block it was tagged at (1 bullish, -1 bearish), 0 none
-    int lblD = 0 // direction of the b / M / Mb label
+    int lblD = 0 // direction of the B / M / BM label
     bool ote = false // [OTEF] OTE FVG
     float oLo = na // [OTEF] leg low / high: origin and extreme since the FVG
     float oHi = na
@@ -476,13 +489,13 @@ type FVG
 method bw(FVG f) =>
     deFlag and f.disp ? deFlagW : 1
 
-// label of a plain FVG box: A+, or the breaker / mitigation block tag (b+, M-, Mb+...), plus OTE
+// label of a plain FVG box: A+, or the breaker / mitigation block tag (B↑, M↓, BM↑...), plus OTE
 fvgLbl(FVG f) =>
     string t = ""
     if f.aplus and lblAp
         t := hideReg ? "" : "A+"
     else if f.brk or f.mbD != 0
-        t := (f.brk and f.mbD != 0 ? "Mb" : f.brk ? "b" : "M") + (f.lblD == 1 ? "+" : "-")
+        t := (f.brk and f.mbD != 0 ? "BM" : f.brk ? "B" : "M") + (f.lblD == 1 ? "↑" : "↓")
     if f.ote and not hideReg
         t += (t == "" ? "" : " ") + "OTE"
     t
@@ -615,9 +628,9 @@ longFVGHL(o1,c1,h1,l1,o2,c2,h2,l2,o3,c3,h3,l3) =>
     // include suspension blocks
     fhi = hi
     flo = lo
-    if bhi3 < blow2
+    if bhi3 < blow2 and not poorLiq
         lo := bhi3
-    if blow1 > bhi2
+    if blow1 > bhi2 and not poorLiq
         hi := blow1
     [hi,lo, fhi, flo]
 
@@ -633,11 +646,16 @@ shortFVGHL(o1,c1,h1,l1,o2,c2,h2,l2,o3,c3,h3,l3) =>
     // include suspension blocks
     fhi = hi
     flo = lo
-    if blow3 > bhi2
+    if blow3 > bhi2 and not poorLiq
         hi := blow3
-    if bhi1 < blow2
+    if bhi1 < blow2 and not poorLiq
         lo := bhi1
     [hi, lo, fhi, flo]
+
+// 1PFVG from the 1m candles (charts above 1m and below 15m)
+// (simple: also selects the timeframe of request.security_lower_tf)
+bool fpLowTf = fp1m and timeframe.isminutes and timeframe.in_seconds() > 60 and timeframe.in_seconds() < 900
+bool fpLow = dofp and fpLowTf
 
 isFPFVG() =>
     r = dofp
@@ -647,7 +665,7 @@ isFPFVG() =>
         nmin = 2
         if timeframe.isminutes
             nmin := tfsecs/60 * 2
-        r := h == fph and m > fpm+nmin and timeframe.isminutes and tfsecs/60 <=3
+        r := h == fph and m > fpm+nmin and timeframe.isminutes and tfsecs/60 <=3 and not fpLow
     r
 if bar_index == 0
     log.info("fpfvg h {0} fpfvgm {1}", fph, fpm)
@@ -734,7 +752,8 @@ method adopt(FVG fv, int dir) =>
         f.rect.set_border_width(2)
         f.rect.set_extend(extend.none)
     f.rect.set_right(time)
-    f.rect.set_text("")
+    // an unconfirmed candidate keeps its B / M / BM label (confirming it sets the IFVG label)
+    f.rect.set_text(f.brk or f.mbD != 0 ? fvgLbl(f) : "")
     f.rect.set_text_color(ifvgTxtCol)
     f.rect.set_text_size(ifvgtsz)
     f.rect.set_text_halign(ifvgha)
@@ -1082,14 +1101,22 @@ if true
     [hi, lo, fhi, flo] = longFVGHL(open[1],close[1],high[1],low[1],
          open[2],close[2],high[2],low[2],
          open[3],close[3],high[3],low[3])
+    // [PL] poor liquidity: two up-close candles in a row with a gap make an FVG (as if one more was between)
+    int fk = 3
+    if poorLiq and not (fhi - flo > minfvg) and close[1] > open[1] and close[2] > open[2] and low[1] > high[2]
+        hi := low[1]
+        lo := high[2]
+        fhi := hi
+        flo := lo
+        fk := 2
     if fhi - flo > minfvg and fhi-flo < maxfvg and (not deDisp or deDispOK or isFPFVG())
-        f = FVG.new(hi,lo,math.avg(hi,lo),true,timeat(-3))
-        f.sbar := bar_index - 3 // [OTE]
+        f = FVG.new(hi,lo,math.avg(hi,lo),true,timeat(-fk))
+        f.sbar := bar_index - fk // [OTE]
         f.oteInit() // [OTEF]
         f.aplus := deAplus and not na(deMssUpBar) and bar_index - deMssUpBar <= 3 // [DE]
         f.disp := deDispOK // [DE]
         lastlongfvg := f
-        if not hasifp and hasfp and doifp
+        if not hasifp and hasfp and doifp and not fpLow
             fp = fpfvgs.last()
             if fp.islong != f.islong
                 f.isifp := true
@@ -1109,14 +1136,22 @@ if true
     [hi, lo, fhi, flo] = shortFVGHL(open[1],close[1],high[1],low[1],
          open[2],close[2],high[2],low[2],
          open[3],close[3],high[3],low[3])
+    // [PL] poor liquidity: two down-close candles in a row with a gap make an FVG (as if one more was between)
+    int fk = 3
+    if poorLiq and not (fhi - flo > minfvg) and close[1] < open[1] and close[2] < open[2] and high[1] < low[2]
+        hi := low[2]
+        lo := high[1]
+        fhi := hi
+        flo := lo
+        fk := 2
     if fhi - flo > minfvg and fhi - flo < maxfvg and (not deDisp or deDispOK or isFPFVG())
-        f = FVG.new(hi,lo,math.avg(hi,lo),false,timeat(-3))
-        f.sbar := bar_index - 3 // [OTE]
+        f = FVG.new(hi,lo,math.avg(hi,lo),false,timeat(-fk))
+        f.sbar := bar_index - fk // [OTE]
         f.oteInit() // [OTEF]
         f.aplus := deAplus and not na(deMssDnBar) and bar_index - deMssDnBar <= 3 // [DE]
         f.disp := deDispOK // [DE]
         lastshortfvg := f
-        if not hasifp and hasfp and doifp
+        if not hasifp and hasfp and doifp and not fpLow
             fp = fpfvgs.last()
             if fp.islong != f.islong
                 f.isifp := true
@@ -1132,6 +1167,62 @@ if true
             fs.route(f)
         else 
             f.kill()
+
+// 1PFVG from the 1m candles: the 1m candles of this chart bar, in order, each one tested as candle [0] of
+// isFPFVG on the 1m chart (candles [1] to [3] are the three before it)
+[l1t, l1o, l1h, l1l, l1c] = request.security_lower_tf(syminfo.tickerid, fpLowTf ? "1" : timeframe.period,
+     [time, open, high, low, close])
+var array<float> fpO = array.new<float>()
+var array<float> fpH = array.new<float>()
+var array<float> fpL = array.new<float>()
+var array<float> fpC = array.new<float>()
+var array<int> fpT = array.new<int>()
+var int fpLastT = na
+if fpLow and barstate.isconfirmed and not na(l1t) and l1t.size() > 0
+    for j = 0 to l1t.size() - 1
+        int t0 = l1t.get(j)
+        if na(fpLastT) or t0 > fpLastT
+            fpLastT := t0
+            fpO.push(l1o.get(j))
+            fpH.push(l1h.get(j))
+            fpL.push(l1l.get(j))
+            fpC.push(l1c.get(j))
+            fpT.push(t0)
+            if fpT.size() > 4
+                fpO.shift()
+                fpH.shift()
+                fpL.shift()
+                fpC.shift()
+                fpT.shift()
+            bool fpWin = not hasfp and minute(t0, tz) > fpm + 2
+            bool ifpWin = hasfp and doifp and not hasifp and fpfvgs.size() > 0
+            if fpT.size() == 4 and hour(t0, tz) == fph and (fpWin or ifpWin)
+                // index 2: candle [1], 1: [2], 0: [3]
+                [lhi, llo, lfhi, lflo] = longFVGHL(fpO.get(2), fpC.get(2), fpH.get(2), fpL.get(2),
+                     fpO.get(1), fpC.get(1), fpH.get(1), fpL.get(1), fpO.get(0), fpC.get(0), fpH.get(0), fpL.get(0))
+                [shi, slo, sfhi, sflo] = shortFVGHL(fpO.get(2), fpC.get(2), fpH.get(2), fpL.get(2),
+                     fpO.get(1), fpC.get(1), fpH.get(1), fpL.get(1), fpO.get(0), fpC.get(0), fpH.get(0), fpL.get(0))
+                bool isL = lfhi - lflo > minfvg and lfhi - lflo < maxfvg
+                bool isS = sfhi - sflo > minfvg and sfhi - sflo < maxfvg
+                if ifpWin
+                    // inverse 1PFVG: the first 1m FVG of the opposite bias after the 1PFVG
+                    bool fpLong = fpfvgs.last().islong
+                    isL := isL and not fpLong
+                    isS := isS and fpLong
+                if isL or isS
+                    FVG f = isL ? FVG.new(lhi, llo, math.avg(lhi, llo), true, fpT.get(0))
+                         : FVG.new(shi, slo, math.avg(shi, slo), false, fpT.get(0))
+                    f.sbar := bar_index
+                    if ifpWin
+                        f.isifp := true
+                        hasifp := true
+                        fpfvgs.push(f)
+                    else
+                        f.isfp := true
+                        f.iswfp := dayofweek(t0, tz) == dayofweek.monday
+                        hasfp := true
+                        fpfvgs.push(f)
+                        clearlastfp(fpfvgs)
 
 updfvgs(array<FVG> fvgs) =>
     if fvgs.size() > 0
@@ -2027,20 +2118,32 @@ brkAdd(int dir, float zh, float zl, int zt, int zt1) =>
                 break
     true
 
+// FVG shown as the box of a confirmed IFVG (close mode or swing mode), with its IFVG label
+sameF(FVG f, FVG g) =>
+    FVG h = na(g) ? g : (na(g.dup) ? g : g.dup)
+    not na(h) and h.start == f.start and h.hi == f.hi and h.lo == f.lo and h.islong == f.islong
+
+confIfvg(FVG f) =>
+    (not na(bullconfirm) and sameF(f, bullifvg)) or (not na(bearconfirm) and sameF(f, bearifvg))
+     or (not na(ifsconfirm) and sameF(f, swFvg))
+
 // breaker b drawn up to this candle when FVG / IFVG f overlaps it on the pullback (once); ib: the IFVG box
-// when f is the confirmed IFVG (its label turns bold), else na (a plain unlabeled FVG gets b+ / b-)
+// when f is the confirmed IFVG (its label turns bold), else na (a plain unlabeled FVG gets B↑ / B↓)
 brkTag(FVG f, Breaker b, box ib) =>
     if not na(f) and f.hi >= b.lo and f.lo <= b.hi
         f.brk := true
         f.brkD := b.dir
         if not na(ib)
             ib.set_text_formatting(text.format_bold)
-        else if na(f.end) and not f.cand and not f.kept and not (f.aplus and lblAp) and not na(f.rect)
+        else
+            // the label direction is kept for when the box shows the plain FVG label (also after it was an
+            // IFVG candidate); an unconfirmed IFVG candidate box shows it too
             f.lblD := b.dir
-            f.rect.set_text(fvgLbl(f))
-            f.rect.set_text_size(ifvgtsz)
-            f.rect.set_text_halign(ifvgha)
-            f.rect.set_text_valign(ifvgva)
+            if na(f.end) and (not f.kept or (f.cand and not confIfvg(f))) and not (f.aplus and lblAp) and not na(f.rect)
+                f.rect.set_text(fvgLbl(f))
+                f.rect.set_text_size(ifvgtsz)
+                f.rect.set_text_halign(ifvgha)
+                f.rect.set_text_valign(ifvgva)
         float mid = (b.hi + b.lo) / 2
         if not b.tagged
             b.tagged := true
@@ -2204,7 +2307,7 @@ mbAdd(int dir, float zh, float zl, int zt, int zt1) =>
 
 // mitigation block b drawn up to this candle when FVG / IFVG f overlaps it on the pullback (once); ib: the IFVG
 // box when f is the confirmed IFVG (its label turns bold, with the arrow; which: 1 bull, -1 bear, 2 swing IFVG),
-// else na (a plain unlabeled FVG gets M+ / M-)
+// else na (a plain unlabeled FVG gets M↑ / M↓)
 // text of the IFVG label (which: 1 bull, -1 bear, 2 swing IFVG) with the mitigation block arrow mbd
 mbTxt(int which, int mbd) =>
     which == 1 ? ifvgTxt(1, deInv ? bullInv : 1, useOTE and gBull.flagged, gBull.tags, bullAp, mbd)
@@ -2220,8 +2323,8 @@ mbTag(FVG f, MBlock b, box ib, int which) =>
             ib.set_text_formatting(text.format_bold)
         else
             f.mbD := b.dir
-            if na(f.end) and not f.cand and not f.kept and not (f.aplus and lblAp) and not na(f.rect)
-                f.lblD := b.dir
+            f.lblD := b.dir
+            if na(f.end) and (not f.kept or (f.cand and not confIfvg(f))) and not (f.aplus and lblAp) and not na(f.rect)
                 f.rect.set_text(fvgLbl(f))
                 f.rect.set_text_size(ifvgtsz)
                 f.rect.set_text_halign(ifvgha)

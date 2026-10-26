@@ -9,11 +9,11 @@
  *   rejection and retrace checks, OTE bands drawn in the right margin with up / down arrows), the Delivery
  *   Engine features (displacement filter / flag / candle color, full-body confirmation, inversion rules,
  *   A+ setups with killzones and HTF structure), breakers and mitigation blocks (zone, break, swing,
- *   pullback, rectangle / shadow rectangle / flagged candles, bold IFVG labels, arrows, b+/b-, M+/M-,
- *   Mb+/Mb-, inheritance of the tags by IFVGs) and LONG / SHORT / OTE signal markers.
+ *   pullback, rectangle / shadow rectangle / flagged candles, bold IFVG labels, arrows, B↑/B↓, M↑/M↓,
+ *   BM↑/BM↓, inheritance of the tags by IFVGs) and LONG / SHORT / OTE signal markers.
  *
  *   Port of the TradingView Pine Script v6 indicator "FVGS+IFVG+OTE.txt"
- *   (md5 06f06f42dacc49e4a5da52bfb6f57903, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
+ *   (md5 816345d99ad0cae0fb95a11a2f83f53c, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
  *   input variable names (camelCase). See the design document (d.md) and user manual (m.md) for the logic.
  *
  * How to install
@@ -38,6 +38,9 @@
  *     Bar timestamps are taken as bar open times (as Pine "time").
  *     The chart timeframe is inferred from the bar timestamps (smallest step seen), so tick / range / renko
  *     / volume charts are not supported by the HTF ladder, the 1PFVG and the killzones.
+ *     Pine "From 1m candles" (1PFVG from the 1m candles on 2m to 14m charts, request.security_lower_tf) has
+ *     no equivalent: lower timeframe candles are not available here, so the 1PFVG is found on the chart
+ *     candles of 1m to 3m charts only, as with that option off.
  *   - Symbol: Pine "TZ = Auto" looks for DAX in the symbol. Tradovate does not reliably expose the symbol to
  *     a calculator, so the parameter "market" (Auto / US / EU) replaces "tz": Auto tries to read the
  *     contract name (FDAX / FDXM / DAX -> EU 09:00 Madrid) and falls back to US (New York). EU = Madrid
@@ -88,9 +91,9 @@ const PARAMS = [
     // Enable / Draw / Filter
     ["dofp", "b", true], ["doifvg", "b", true], ["dowick", "b", true],
     ["drawMode", "e", "all", { all: "all", PFVG: "1PFVGs", IFVG: "IFVGs", PFVG_IFVG: "1PFVGs+IFVGs" }],
-    ["fltMode", "e", "none", { none: "none", sweeps: "sweeps", sweepsMid: "sweeps&mid" }],
+    ["fltMode", "e", "none", { none: "none", sweeps: "sweeps", sweepsMid: "sweeps&mid", relevant: "relevant" }],
     // FVG Settings
-    ["visible", "b", false], ["dofvgalert", "b", false],
+    ["visible", "b", false], ["dofvgalert", "b", false], ["diag", "b", false],
     ["minfvg", "n", 3, [0.25, 1]], ["maxfvg", "n", 10000, [1, 100]], ["maxfvgs", "n", 200, [1, 2]],
     ["dupTol", "n", 10, [1, 0]], ["flL", "n", 3, [1, 1]], ["flR", "n", 3, [1, 1]],
     ["drawStyle", "e", "box", { box: "Box", boxNoFill: "Box, no fill", segments: "Segments (hi / lo / C.E.)" }],
@@ -129,11 +132,11 @@ const PARAMS = [
     ["oteBandCol", "c", TV.yellow], ["oteHighlight", "c", TV.yellow], ["oteTextCol", "c", TV.black],
     // Breakers
     ["brkOn", "b", true], ["brkMode", "e", "last", { last: "Last candle", sequence: "Whole sequence" }],
-    ["brkLen", "n", 3, [1, 1]], ["brkKeep", "n", 3, [1, 1]], ["brkBox", "b", false], ["brkCol", "c", TV.fuchsia],
+    ["brkLen", "n", 5, [1, 1]], ["brkKeep", "n", 3, [1, 1]], ["brkBox", "b", false], ["brkCol", "c", TV.fuchsia],
     ["brkSty", "e", "dashed", STYLE_OPTS], ["brkW", "n", 1, [1, 1]], ["brkFlag", "b", false], ["brkShd", "b", false],
     // Mitigation blocks
     ["mbOn", "b", true], ["mbMode", "e", "last", { last: "Last candle", sequence: "Whole sequence" }],
-    ["mbLen", "n", 3, [1, 1]], ["mbKeep", "n", 3, [1, 1]], ["mbBox", "b", false], ["mbCol", "c", TV.orange],
+    ["mbLen", "n", 5, [1, 1]], ["mbKeep", "n", 3, [1, 1]], ["mbBox", "b", false], ["mbCol", "c", TV.orange],
     ["mbSty", "e", "dashed", STYLE_OPTS], ["mbW", "n", 1, [1, 1]], ["mbFlag", "b", false], ["mbShd", "b", false],
     // Delivery Engine
     ["deDisp", "b", false], ["deDispType", "e", "oc", { oc: "Open to Close", hl: "High to Low" }],
@@ -142,7 +145,9 @@ const PARAMS = [
     ["deAplus", "b", false], ["deLiqLen", "n", 5, [1, 1]], ["deSeqWin", "n", 50, [1, 1]], ["deMssLen", "n", 3, [1, 1]],
     ["deMssX", "n", 2.0, [0.25, 0.5]], ["deMssWin", "n", 2, [1, 0]], ["deKz", "b", true],
     ["deHtfOn", "b", false],
-    ["deHtf", "e", "60", { "5": "5m", "15": "15m", "30": "30m", "60": "1h", "120": "2h", "240": "4h", "D": "D" }]
+    ["deHtf", "e", "60", { "5": "5m", "15": "15m", "30": "30m", "60": "1h", "120": "2h", "240": "4h", "D": "D" }],
+    // Poor liquidity
+    ["plMode", "e", "auto", { auto: "auto", yes: "yes", no: "no" }]
 ];
 
 // integer parameters (Pine input.int)
@@ -391,6 +396,7 @@ class FVGSIFVGOTE {
         this.hideReg = P.drawMode === "IFVG" || P.drawMode === "PFVG_IFVG";
         this.fltOff = P.fltMode === "none";
         this.fltMid = P.fltMode === "sweepsMid";
+        this.fltRel = P.fltMode === "relevant";
         this.flN = 1;
         this.flWin = 25;
         this.styNoFill = P.drawStyle === "boxNoFill";
@@ -402,6 +408,8 @@ class FVGSIFVGOTE {
         this.O = []; this.H = []; this.L = []; this.C = []; this.T = [];
         this.nextJ = 0;          // next bar index to commit
         this.curI = -1;          // last index map() was called with
+        this.plCache = undefined; // [PL] poor liquidity, resolved on first use
+        this.dg = { maps: 0, fvgs: 0, err: "", errJ: -1, d: "" };   // "diag": counters shown on the chart
         this.seen = [];          // bar values received by map(), by bar index
         this.gfxRes = null;      // last result that carried the graphics, and its index
         this.gfxI = -1;
@@ -416,6 +424,8 @@ class FVGSIFVGOTE {
         this.wicks = [];
         // FVGs
         this.lfvgs = []; this.sfvgs = []; this.fpfvgs = []; this.keptIf = []; this.pendF = [];
+        // [REL] live FVGs not shown (yet), small drawn FVGs just filled (swing check), boxes near the price
+        this.relF = []; this.relS = []; this.relB = [];
         this.otePL = null; this.otePLb = null; this.otePH = null; this.otePHb = null; // [OTEF] last chart swings
         this.fs = { post: 1000000, stH: null, stL: null, stHbar: null, stLbar: null };
         this.hasfp = false; this.hasifp = false;
@@ -466,6 +476,7 @@ class FVGSIFVGOTE {
             this.dropGfx(prev);
         }
         this.curI = i;
+        this.dg.maps++;
         // the bar's values as map() received them: the history object is read only for bars never seen,
         // since its numbering need not match the chart's after a reload (the bars came out of place)
         this.seen[i] = snapBar(d);
@@ -475,7 +486,13 @@ class FVGSIFVGOTE {
             const bar = this.seen[j] || this.histGet(history, j, i);
             const nxt = j + 1 === i ? d : this.seen[j + 1] || this.histGet(history, j + 1, i);
             if (!bar) break;
-            this.commit(j, bar, nxt);
+            try {
+                this.commit(j, bar, nxt);
+            } catch (e) {
+                // kept for "diag"; the bar is skipped so that the next ones are still processed
+                this.dg.err = String((e && e.message) || e);
+                this.dg.errJ = j;
+            }
             this.nextJ = j + 1;
         }
         if (!this.out[i]) this.out[i] = { signal: 0, oteSignal: 0, bounce: 0 };
@@ -760,10 +777,17 @@ class FVGSIFVGOTE {
             const isfpNow = this.isFPFVG();
             for (const islong of [true, false]) {
                 const z = islong ? this.longFVGHL() : this.shortFVGHL();
-                const [hi, lo, fhi, flo] = z;
+                let [hi, lo, fhi, flo] = z;
+                // [PL] poor liquidity: two candles of the same direction with a gap, as if one more was between
+                let fk = 3;
+                if (this.poorLiq() && !(fhi - flo > P.minfvg)) {
+                    const g = this.twoCandleFVG(islong);
+                    if (g) { [hi, lo] = g; fhi = hi; flo = lo; fk = 2; }
+                }
                 if (fhi - flo > P.minfvg && fhi - flo < P.maxfvg && (!P.deDisp || deDispOK || isfpNow)) {
-                    const f = this.newFVG(hi, lo, avg(hi, lo), islong, j - 3);
-                    f.sbar = j - 3;
+                    const f = this.newFVG(hi, lo, avg(hi, lo), islong, j - fk);
+                    this.dg.fvgs++;
+                    f.sbar = j - fk;
                     this.oteInit(f); // [OTEF]
                     const mssBar = islong ? this.deMssUpBar : this.deMssDnBar;
                     f.aplus = P.deAplus && mssBar !== null && j - mssBar <= 3;
@@ -850,6 +874,7 @@ class FVGSIFVGOTE {
 
         // ---- swing mode
         this.updAtr();
+        if (this.fltRel) this.relStep(j);
         let pivHi = null, pivLo = null;
         if (P.doifvg && P.ifvgswings) { pivHi = oph; pivLo = opl; }
         const hiBar = j - P.pivR, loBar = j - P.pivR;
@@ -1099,14 +1124,15 @@ class FVGSIFVGOTE {
             hi, lo, ce, islong, start, end: null, rect: null, celine: null, isfp: false, iswfp: false, isifp: false,
             sbar: null, hiln: null, loln: null, kept: false, kdir: 0, dup: null, cand: false, own: false,
             shown: false, aplus: false, disp: false, brk: false, brkD: 0, mbD: 0,
-            lblD: 0, ote: false, oLo: null, oHi: null
+            lblD: 0, ote: false, oLo: null, oHi: null,
+            swp: false, ext: false, dbar: null   // [REL] last FVG before a sweep, extended by a merge, bar filled
         };
     }
-    // label of a plain FVG box: A+, or the breaker / mitigation block tag (b+, M-, Mb+...), plus OTE
+    // label of a plain FVG box: A+, or the breaker / mitigation block tag (B↑, M↓, BM↑...), plus OTE
     fvgLbl(f) {
         let t = "";
         if (f.aplus && this.P.lblAp) t = this.hideReg ? "" : "A+";
-        else if (f.brk || f.mbD !== 0) t = (f.brk && f.mbD !== 0 ? "Mb" : f.brk ? "b" : "M") + (f.lblD === 1 ? "+" : "-");
+        else if (f.brk || f.mbD !== 0) t = (f.brk && f.mbD !== 0 ? "BM" : f.brk ? "B" : "M") + (f.lblD === 1 ? "\u2191" : "\u2193");
         if (f.ote && !this.hideReg) t += (t === "" ? "" : " ") + "OTE";
         return t;
     }
@@ -1155,8 +1181,8 @@ class FVGSIFVGOTE {
         let hi = l1, lo = h3;
         const blow1 = Math.min(o1, c1), bhi2 = Math.max(o2, c2), blow2 = Math.min(o2, c2), bhi3 = Math.max(o3, c3);
         const fhi = hi, flo = lo;
-        if (bhi3 < blow2) lo = bhi3;
-        if (blow1 > bhi2) hi = blow1;
+        if (bhi3 < blow2 && !this.poorLiq()) lo = bhi3;
+        if (blow1 > bhi2 && !this.poorLiq()) hi = blow1;
         return [hi, lo, fhi, flo];
     }
     shortFVGHL() {
@@ -1166,9 +1192,24 @@ class FVGSIFVGOTE {
         let hi = l3, lo = h1;
         const blow3 = Math.min(o3, c3), bhi2 = Math.max(o2, c2), blow2 = Math.min(o2, c2), bhi1 = Math.max(o1, c1);
         const fhi = hi, flo = lo;
-        if (blow3 > bhi2) hi = blow3;
-        if (bhi1 < blow2) lo = bhi1;
+        if (blow3 > bhi2 && !this.poorLiq()) hi = blow3;
+        if (bhi1 < blow2 && !this.poorLiq()) lo = bhi1;
         return [hi, lo, fhi, flo];
+    }
+    // [PL] poor liquidity: no volume imbalance extension, two-candle FVGs; auto: nano futures only
+    poorLiq() {
+        if (this.plCache === undefined) {
+            const m = this.P.plMode;
+            const s = m === "auto" ? this.symbolText() : "";
+            this.plCache = m === "yes" || (m === "auto" && (s.indexOf("NANO") >= 0 || s.indexOf("NNQ") >= 0));
+        }
+        return this.plCache;
+    }
+    // [PL] two up-close (islong) / down-close candles in a row with a gap: [hi, lo] of the gap, else null
+    twoCandleFVG(islong) {
+        const o1 = this.opB(1), c1 = this.clB(1), o2 = this.opB(2), c2 = this.clB(2);
+        if (islong) return c1 > o1 && c2 > o2 && this.loB(1) > this.hiB(2) ? [this.loB(1), this.hiB(2)] : null;
+        return c1 < o1 && c2 < o2 && this.hiB(1) < this.loB(2) ? [this.loB(2), this.hiB(1)] : null;
     }
     isFPFVG() {
         const P = this.P;
@@ -1189,11 +1230,15 @@ class FVGSIFVGOTE {
     }
     endsAt(f) { return f.end === null ? this.j : f.end; }
     isDone(f, o, c) { return f.islong ? (c < f.lo || o < f.lo) : (c > f.hi || o > f.hi); }
+    // [REL] "relevant" filter: a plain FVG too small to draw its C.E.
+    relSmall(f) { return this.fltRel && !f.isfp && !f.isifp && f.hi - f.lo <= this.P.mince; }
     bgColor(f) {
         const P = this.P;
         let c = f.islong ? P.lcol : P.scol, t = 90;
         if (f.isfp) { c = P.fpcol; if (f.iswfp) c = P.wfpcol; }
         if (f.isifp) { c = P.ifpcol; t = 80; }
+        // [REL] too small for a C.E.: a little more transparent
+        if (this.relSmall(f)) t = t + (100 - t) / 2;
         const hid = this.hideReg && (this.ifvgOnly || (!f.isfp && !f.isifp));
         return this.styNoFill ? null : (hid ? col(c, 100) : col(c, t));
     }
@@ -1203,7 +1248,8 @@ class FVGSIFVGOTE {
         if (f.isfp) { c = P.lnfpcol; if (f.iswfp) c = P.lnwfpcol; }
         if (f.isifp) c = P.ilnfpcol;
         const hid = this.hideReg && (this.ifvgOnly || (!f.isfp && !f.isifp));
-        return hid ? col(c, 100) : col(c, 20);
+        // [REL] too small for a C.E.: no border (boxes only; segments are the lines themselves)
+        return hid || (this.relSmall(f) && !this.stySeg) ? col(c, 100) : col(c, 20);
     }
     clearlastfp() {
         while (this.fpfvgs.length > this.P.nfp) {
@@ -1262,7 +1308,8 @@ class FVGSIFVGOTE {
             f.rect.extend = "none";
         }
         f.rect.right = this.j;
-        f.rect.text = "";
+        // an unconfirmed candidate keeps its B / M / BM label (confirming it sets the IFVG label)
+        f.rect.text = f.brk || f.mbD !== 0 ? this.fvgLbl(f) : "";
         f.rect.textCol = this.ifvgTxtCol;
         this.textFmt(f.rect);
         if (!f.kept) this.keptIf.push(f);
@@ -1312,6 +1359,7 @@ class FVGSIFVGOTE {
             if (g.hiln) { g.hiln.y1 = nh; g.hiln.y2 = nh; g.loln.y1 = nl; g.loln.y2 = nl; }
             if (g.celine) { g.celine.y1 = g.ce; g.celine.y2 = g.ce; }
             g.end = null;
+            g.ext = true;
         }
     }
     insertSorted(a, f) {
@@ -1354,6 +1402,10 @@ class FVGSIFVGOTE {
         else if (!d) {
             this.pendF.push(f);
             if (this.pendF.length > 60) this.pendF.shift();
+            if (this.fltRel) {
+                this.relF.push(f);
+                if (this.relF.length > 300) this.relF.shift();
+            }
         }
     }
     reveal(f) {
@@ -1374,7 +1426,9 @@ class FVGSIFVGOTE {
     onSweep(armStart) {
         const n = this.pendF.length, j = this.j;
         if (n > 0) {
-            const lastF = this.pendF[n - 1];
+            let lastF = this.pendF[n - 1];
+            // [REL] the last FVG before the sweep waits to become an IFVG
+            if (this.fltRel) { lastF.swp = true; lastF = null; }
             let midF = null;
             if (this.fltMid && n > 1 && armStart !== null && armStart < j) {
                 const mb = Math.round((armStart + j) / 2.0);
@@ -1386,9 +1440,63 @@ class FVGSIFVGOTE {
                     if (g.sbar >= mb - w && g.sbar <= mb + w && sz > best) { best = sz; midF = g; }
                 }
             }
-            this.reveal(lastF);
+            if (lastF) this.reveal(lastF);
             if (midF) this.reveal(midF);
             this.pendF = [];
+        }
+    }
+    // [REL] "relevant" filter, once per closed bar: reveal the live FVGs not shown yet that became IFVGs
+    // (the last one before a sweep) or OTE FVGs; hide the small filled FVGs not formed at a swing (once a
+    // pivot there would be confirmed); and box the live FVGs within minATR x ATR of the price
+    relStep(j) {
+        const P = this.P;
+        for (let k = this.relF.length - 1; k >= 0; k--) {
+            const f = this.relF[k];
+            if (f.shown || f.dup) this.relF.splice(k, 1);
+            else if (this.isDone(f, this.o, this.c)) {
+                if (f.swp) { f.end = j; this.reveal(f); }
+                this.relF.splice(k, 1);
+            } else if (this.oteFvgStep(f)) {
+                this.reveal(f);
+                this.relF.splice(k, 1);
+            }
+        }
+        const hasPiv = (bars, b0, b1) => {
+            for (let k = bars.length - 1; k >= 0; k--) {
+                if (bars[k] < b0) break;
+                if (bars[k] <= b1) return true;
+            }
+            return false;
+        };
+        for (let k = this.relS.length - 1; k >= 0; k--) {
+            const f = this.relS[k];
+            if (j >= Math.max(f.dbar, f.sbar + 3 + P.pivR)) {
+                this.relS.splice(k, 1);
+                const keep = f.ext || f.kept || f.cand || !this.relSmall(f)
+                    || hasPiv(this.pv0.hb, f.sbar - 1, f.sbar + 3) || hasPiv(this.pv0.lb, f.sbar - 1, f.sbar + 3);
+                if (!keep) {
+                    const arr = f.islong ? this.lfvgs : this.sfvgs;
+                    const i = arr.indexOf(f);
+                    if (i >= 0) arr.splice(i, 1);
+                    f.shown = false;
+                    this.kill(f);
+                }
+            }
+        }
+        for (const b of this.relB) this.g.del(b);
+        this.relB = [];
+        const rng = (this.atrArr[j] || 0) * P.minATR;
+        for (const f of this.relF) {
+            if (this.relB.length >= 40) break;
+            if (f.shown || f.dup || f.end !== null) continue;
+            const dist = this.c > f.hi ? this.c - f.hi : this.c < f.lo ? f.lo - this.c : 0;
+            if (dist <= rng) {
+                const b = this.g.box({ left: f.start, top: f.hi, right: j, bottom: f.lo, bg: this.bgColor(f),
+                    border: this.lnColor(f), bw: this.bw(f), extend: "none", bstyle: "solid" });
+                b.text = this.fvgLbl(f);
+                this.textFmt(b);
+                this.relB.push(b);
+            }
         }
     }
     updfvgs(fvgs) {
@@ -1396,7 +1504,14 @@ class FVGSIFVGOTE {
         if (fvgs.length > 0) {
             for (const f of fvgs) {
                 const isdone = f.end !== null;
-                if (!isdone && this.isDone(f, this.o, this.c)) f.end = this.endsAt(f);
+                if (!isdone && this.isDone(f, this.o, this.c)) {
+                    f.end = this.endsAt(f);
+                    // [REL] small FVG filled: hidden later unless it formed at a swing
+                    if (this.relSmall(f) && !f.swp && !f.ext && !f.kept && !f.cand) {
+                        f.dbar = this.j;
+                        this.relS.push(f);
+                    }
+                }
                 // [OTEF] retraced into while matching the OTE band of its leg (FVG shown as a plain FVG)
                 if (!isdone && f.end === null && f.dup === null && this.oteFvgStep(f) && f.rect && !f.cand && !f.kept) {
                     f.rect.text = this.fvgLbl(f);
@@ -1791,16 +1906,26 @@ class FVGSIFVGOTE {
             b.ml = this.g.line({ x1: b.t, y1: mid, x2: j, y2: mid, color: col(colr, 0), style: sty, width: w, fixed: true });
         }
     }
+    // FVG shown as the box of a confirmed IFVG (close mode or swing mode), with its IFVG label
+    confIfvg(f) {
+        const same = g => !!g && (g.dup ? g.dup : g) === f;
+        return (this.bullconfirm !== null && same(this.bullifvg)) || (this.bearconfirm !== null && same(this.bearifvg))
+            || (this.ifsconfirm !== null && same(this.swFvg));
+    }
     brkTag(f, b, ib) {
         const P = this.P;
         if (f && f.hi >= b.lo && f.lo <= b.hi) {
             f.brk = true;
             f.brkD = b.dir;
             if (ib) ib.bold = true;
-            else if (f.end === null && !f.cand && !f.kept && !(f.aplus && P.lblAp) && f.rect) {
+            else {
+                // the label direction is kept for when the box shows the plain FVG label (also after it was an
+                // IFVG candidate); an unconfirmed IFVG candidate box shows it too
                 f.lblD = b.dir;
-                f.rect.text = this.fvgLbl(f);
-                this.textFmt(f.rect);
+                if (f.end === null && (!f.kept || (f.cand && !this.confIfvg(f))) && !(f.aplus && P.lblAp) && f.rect) {
+                    f.rect.text = this.fvgLbl(f);
+                    this.textFmt(f.rect);
+                }
             }
             if (!b.tagged) this.zoneDraw(b, false);
         }
@@ -1822,8 +1947,8 @@ class FVGSIFVGOTE {
                 ib.bold = true;
             } else {
                 f.mbD = b.dir;
-                if (f.end === null && !f.cand && !f.kept && !(f.aplus && P.lblAp) && f.rect) {
-                    f.lblD = b.dir;
+                f.lblD = b.dir;
+                if (f.end === null && (!f.kept || (f.cand && !this.confIfvg(f))) && !(f.aplus && P.lblAp) && f.rect) {
                     f.rect.text = this.fvgLbl(f);
                     this.textFmt(f.rect);
                 }
@@ -1940,6 +2065,19 @@ class FVGSIFVGOTE {
                 // one line: Tradovate does not break text at "\n"
                 text: mk.ote ? "◆ OTE" : (long ? "▲ LONG" : "SHORT ▼"),
                 style: { fontSize: 11, fontWeight: "bold", fill: c }, textAlignment: "centerMiddle"
+            });
+        }
+        if (P.diag) {
+            // diagnostics, top left: bars seen, bars processed, FVGs created, inferred timeframe, last error
+            const dg = this.dg;
+            let bar = "";
+            try { bar = JSON.stringify(this.seen[now]); } catch (e) { bar = "?"; }
+            texts.push({
+                tag: "Text", key: "diag", global: true, point: { x: px(10), y: px(10) },
+                text: "FVGs diag: index " + now + ", map calls " + dg.maps + ", processed " + this.nextJ + ", FVGs " + dg.fvgs
+                    + ", tf " + this.tfsecs + "s, bar " + bar + (dg.err ? ", error at " + dg.errJ + ": " + dg.err : ""),
+                style: { fontSize: 12, fill: "#d50000" }, textAlignment: "rightBelow",
+                origin: { cs: "grid", h: "left", v: "top" }
             });
         }
         return fills.concat(lines, texts);
