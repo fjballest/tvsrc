@@ -62,6 +62,15 @@ var hotetf2 = input.timeframe("240", "for", group=GH, inline = "h2")
 var hotecolu = input.color(color.new(#ffb300, 80), "rect color bull", group=GH, inline="ocol")
 var hotecold = input.color(color.new(#ff00aa, 81), "bear", group=GH, inline="ocol")
 
+GD = "Data symbol"
+dAlt = input.bool(false, "Data from another symbol", group = GD, inline = "dsym",
+    tooltip = "Compute wicks, fibs and OTEs from the candles of this symbol, at the chart timeframe, and draw "+
+        "them on this chart. E.g. MNQ data on an NNQ chart.")
+dSym = input.symbol("CME_MINI:MNQ1!", "", group = GD, inline = "dsym")
+string dataSym = dAlt ? dSym : syminfo.tickerid
+[dO, dH, dL, dC] = request.security(dataSym, timeframe.period, [open, high, low, close],
+     gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_off)
+
 
 if autootetf
     autootetf := false
@@ -130,23 +139,23 @@ var line ln70 = na
 var tfsecs = timeframe.in_seconds()
 
 // Calcular el rango total de la vela (High - Low)
-rng = high - low
+rng = dH - dL
 
 // Show whole range in the status line
 plot(rng, title="range", display=display.status_line)
 
 if dowick and compute and barstate.isconfirmed
-    bodyh = math.max(open[1],close[1])
-    bodyl = math.min(open[1],close[1])
-    wh = high[1]-bodyh
-    wl = bodyl-low[1]
+    bodyh = math.max(dO[1],dC[1])
+    bodyl = math.min(dO[1],dC[1])
+    wh = dH[1]-bodyh
+    wl = bodyl-dL[1]
     
     if wh > minwick
-        ce = math.avg(high[1],bodyh)
+        ce = math.avg(dH[1],bodyh)
         ln = line.new(bar_index-1, ce, bar_index-1+wdx(), ce)
         wickces.push(ln)
     if wl > minwick
-        ce = math.avg(low[1],bodyl)
+        ce = math.avg(dL[1],bodyl)
         ln = line.new(bar_index-1, ce, bar_index-1+wdx(), ce)
         wickces.push(ln)
     if wickces.size() > 250
@@ -154,21 +163,21 @@ if dowick and compute and barstate.isconfirmed
         w.delete()
 
 if compute 
-    body_top = math.max(open, close)
-    body_bottom = math.min(open, close)
+    body_top = math.max(dO, dC)
+    body_bottom = math.min(dO, dC)
 
     if wicks.size() > 250
         w = wicks.shift()
         w.delete()
-    if high > body_top
-        ln = line.new(bar_index, high, bar_index, body_top, color=wick_color, width=wick_width)
+    if dH > body_top
+        ln = line.new(bar_index, dH, bar_index, body_top, color=wick_color, width=wick_width)
         wicks.push(ln)
 
     if wicks.size() > 250
         w = wicks.shift()
         w.delete()
-    if compute and low < body_bottom
-        ln = line.new(bar_index, low, bar_index, body_bottom, color=wick_color, width=wick_width)
+    if compute and dL < body_bottom
+        ln = line.new(bar_index, dL, bar_index, body_bottom, color=wick_color, width=wick_width)
         wicks.push(ln)
     
 
@@ -229,8 +238,8 @@ var debug = false
 var int swhit = na
 var int swlot = na
 if compute and dofib and fibswing
-    float xswlo  = ta.pivotlow(oteswingleft, oteswingright)
-    float xswhi = ta.pivothigh(oteswingleft, oteswingright)
+    float xswlo  = ta.pivotlow(dL, oteswingleft, oteswingright)
+    float xswhi = ta.pivothigh(dH, oteswingleft, oteswingright)
     chg = false
     if not  na(xswlo)
         swlo := xswlo
@@ -240,12 +249,12 @@ if compute and dofib and fibswing
         swhi := xswhi
         swhit := bar_index[oteswingright]
         chg := true
-    else if not na(swhi) and high > swhi
-        swhi := high
+    else if not na(swhi) and dH > swhi
+        swhi := dH
         swhit := bar_index
         chg := true
-    else if not na(swlo) and low < swlo
-        swlo := low
+    else if not na(swlo) and dL < swlo
+        swlo := dL
         swlot := bar_index
         chg := true
 
@@ -256,10 +265,10 @@ if compute and dofib and fibswing
         if debug
             line.new(swlot, swlo, swlot, swlo+1, extend = extend.both)
 else if compute and dofib and barstate.isnew and bar_index > lookival
-    hi = math.abs(ta.highestbars(high, lookival))
-    hh = high[hi]
-    li = math.abs(ta.lowestbars(low, lookival))
-    ll = low[li]
+    hi = math.abs(ta.highestbars(dH, lookival))
+    hh = dH[hi]
+    li = math.abs(ta.lowestbars(dL, lookival))
+    ll = dL[li]
     updatefibs(hh, ll, bar_index[hi], bar_index[li])
  
 type OTE
@@ -284,7 +293,7 @@ method started(OTE ote) =>
         ote.otes.push(ote.otebox)
         ote.otebox := na
     ote.start := time
-    [o, c, h, l] = request.security(syminfo.tickerid, ote.tf,
+    [o, c, h, l] = request.security(dataSym, ote.tf,
         [open[1], close[1], high[1], low[1]], lookahead = barmerge.lookahead_on)
     oteh = 0.0
     otel = 0.0
