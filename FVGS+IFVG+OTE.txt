@@ -29,7 +29,8 @@
 indicator("FVGs+IFVG+OTE5", 
     overlay=true, 
     max_lines_count    = 500,
-    max_boxes_count    = 500)
+    max_boxes_count    = 500,
+    max_bars_back      = 4050)
 
 
 getstyle(s) =>
@@ -389,17 +390,10 @@ plAlt = input.bool(false, "Data from another symbol", group = G_PL, inline = "pl
         "on this chart. E.g. MNQ data on an NNQ chart. auto poor liquidity is then off.")
 plSym = input.symbol("CME_MINI:MNQ1!", "", group = G_PL, inline = "plsym")
 string dataSym = plAlt ? plSym : syminfo.tickerid
-// one request per series (not a tuple) so that max_bars_back below applies to them
-float dO = request.security(dataSym, timeframe.period, open, gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_off)
-float dH = request.security(dataSym, timeframe.period, high, gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_off)
-float dL = request.security(dataSym, timeframe.period, low, gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_off)
-float dC = request.security(dataSym, timeframe.period, close, gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_off)
-// deep history only for the series looked up by bar index (pivots, breakers); a global
-// max_bars_back gives every series that buffer and goes over the total limit
-max_bars_back(dO, 5000)
-max_bars_back(dH, 5000)
-max_bars_back(dL, 5000)
-max_bars_back(dC, 5000)
+[dO, dH, dL, dC] = request.security(dataSym, timeframe.period, [open, high, low, close],
+     gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_off)
+// 4050 bars of history for all series (the leg scans go back 4000 bars), 5000 for time
+// (barOfTime); 5000 for all no longer fits the total limit with the data-symbol series
 max_bars_back(time, 5000)
 float dTR = na(dC[1]) ? dH - dL : math.max(dH - dL, math.abs(dH - dC[1]), math.abs(dL - dC[1]))
 bool poorLiq = plMode == "yes" or (plMode == "auto" and not plAlt and (str.contains(str.lower(syminfo.description), "nano")
