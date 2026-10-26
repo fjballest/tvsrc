@@ -518,6 +518,7 @@ Inputs on one line in the settings dialog are listed together; a field without i
 | Label | Default | What it does |
 | --- | --- | --- |
 | Poor liquidity | auto | For thin markets, where price often jumps from one candle to the next. **yes**: volume imbalances are ignored (FVG boxes are not extended over the body gaps of their candles), and two up-close candles in a row with a gap between them (the low of the second above the high of the first) make a bullish FVG, as if one more up candle had traded in the middle; two down-close candles with a gap make a bearish FVG. The regular three-candle FVG is used first. **auto**: yes only for nano futures (a symbol or description with "Nano" or NNQ). **no**: as before. On Tradovate, auto depends on the contract name being readable; set yes on NNQ if it is not detected. |
+| Data from another symbol | off, CME_MINI:MNQ1! | TradingView only. When on, every FVG, IFVG, OTE, pivot, breaker and signal is computed from the candles of the chosen symbol at the chart timeframe and drawn on this chart, e.g. MNQ data on an NNQ chart. Candles are matched by time; a chart candle with no candle of the other symbol repeats the last one. **auto** poor liquidity is off while it is on (yes / no still apply). |
 
 ## 13. Alerts
 
