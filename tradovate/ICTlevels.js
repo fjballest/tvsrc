@@ -579,10 +579,21 @@ class ICTlevels {
             }
             this.lastIdx = i;
         }
-        const local = this.step(d, i, last);
+        // an error on one bar must not stop the indicator: that bar's update is skipped (it stopped drawing on a
+        // thin contract, NNQ)
+        let local = [];
+        try {
+            local = this.step(d, i, last);
+        } catch (e) {
+            local = [];
+        }
         let items = local;
         if (last && this.ctx.tfok) {
-            items = local.concat(this.render(i));
+            try {
+                items = local.concat(this.render(i));
+            } catch (e) {
+                items = local;
+            }
         }
         const out = items.length > 0 ? { graphics: { items } } : {};
         this.lastOut = out;

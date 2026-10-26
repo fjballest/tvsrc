@@ -767,7 +767,12 @@ class ICTcotasClass {
         }
         if (b) {
             this.S.tfsecs = this.minDelta > 0 ? this.minDelta / 1000 : 0;
-            new Engine(this.cfg, this.S).applyBar(j, b);
+            try {
+                new Engine(this.cfg, this.S).applyBar(j, b);
+            } catch (e) {
+                // an error on one bar must not stop the indicator: the bar is skipped (it stopped drawing
+                // on a thin contract, NNQ)
+            }
         }
         this.committed = j;
     }
@@ -818,8 +823,14 @@ class ICTcotasClass {
         const S2 = cloneState(this.S);
         S2.tfsecs = this.minDelta > 0 ? this.minDelta / 1000 : 0;
         const eng = new Engine(this.cfg, S2);
-        eng.applyBar(i, b);
-        const out = { graphics: { items: drawAll(this.cfg, eng, i, b) } };
+        let items = [];
+        try {
+            eng.applyBar(i, b);
+            items = drawAll(this.cfg, eng, i, b);
+        } catch (e) {
+            // skip the forming bar's update rather than stop the indicator
+        }
+        const out = { graphics: { items } };
         this.lastOut = out;
         this.lastOutIdx = i;
         return out;
