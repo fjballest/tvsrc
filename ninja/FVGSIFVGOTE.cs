@@ -1352,7 +1352,8 @@ namespace NinjaTrader.NinjaScript.Indicators
                 SetExt(r, false);
             }
             r.T2 = curTime;
-            r.Txt = "";
+            // an unconfirmed candidate keeps its b / M / Mb label (confirming it sets the IFVG label)
+            r.Txt = f.brk || f.mbD != 0 ? FvgLbl(f) : "";
             r.Tc = cIfvgTxt;
             r.Ts = ifvgTs;
             r.Ha = ifvgHa;
@@ -2242,6 +2243,13 @@ namespace NinjaTrader.NinjaScript.Indicators
             }
         }
 
+        // FVG shown as the box of a confirmed IFVG (close mode or swing mode), with its IFVG label
+        private static bool SameF(Fvg f, Fvg g) => g != null && (g.dup ?? g) == f;
+
+        private bool ConfIfvg(Fvg f) =>
+            (bullconfirm.HasValue && SameF(f, bullifvg)) || (bearconfirm.HasValue && SameF(f, bearifvg))
+            || (ifsconfirm.HasValue && SameF(f, swFvg));
+
         // breaker b drawn when FVG / IFVG f overlaps it on the pullback; ib: the IFVG box when f is the confirmed IFVG
         private void BrkTag(Fvg f, Blk b, GBox ib)
         {
@@ -2254,14 +2262,19 @@ namespace NinjaTrader.NinjaScript.Indicators
                     ib.Bold = true;
                     Touch(ib);
                 }
-                else if (!f.end.HasValue && !f.cand && !f.kept && !(f.aplus && LabelAPlus) && f.rect != null)
+                else
                 {
+                    // the label direction is kept for when the box shows the plain FVG label (also after it
+                    // was an IFVG candidate); an unconfirmed IFVG candidate box shows it too
                     f.lblD = b.dir;
-                    f.rect.Txt = FvgLbl(f);
-                    f.rect.Ts = ifvgTs;
-                    f.rect.Ha = ifvgHa;
-                    f.rect.Va = ifvgVa;
-                    Touch(f.rect);
+                    if (!f.end.HasValue && (!f.kept || (f.cand && !ConfIfvg(f))) && !(f.aplus && LabelAPlus) && f.rect != null)
+                    {
+                        f.rect.Txt = FvgLbl(f);
+                        f.rect.Ts = ifvgTs;
+                        f.rect.Ha = ifvgHa;
+                        f.rect.Va = ifvgVa;
+                        Touch(f.rect);
+                    }
                 }
                 BlkDraw(b, BreakerFlagCandles, BreakerRectangle, BreakerShadow, cBrk, BreakerLineStyle, BreakerLineWidth);
             }
@@ -2292,9 +2305,9 @@ namespace NinjaTrader.NinjaScript.Indicators
                 else
                 {
                     f.mbD = b.dir;
-                    if (!f.end.HasValue && !f.cand && !f.kept && !(f.aplus && LabelAPlus) && f.rect != null)
+                    f.lblD = b.dir;
+                    if (!f.end.HasValue && (!f.kept || (f.cand && !ConfIfvg(f))) && !(f.aplus && LabelAPlus) && f.rect != null)
                     {
-                        f.lblD = b.dir;
                         f.rect.Txt = FvgLbl(f);
                         f.rect.Ts = ifvgTs;
                         f.rect.Ha = ifvgHa;

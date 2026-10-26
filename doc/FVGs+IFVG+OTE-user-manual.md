@@ -89,7 +89,7 @@ IFVG labels are written inside the box, black, small, right-aligned and vertical
 
 | Label | Meaning |
 | --- | --- |
-| (no text, IFVG colors) | IFVG candidate, not confirmed yet |
+| (no text, IFVG colors) | IFVG candidate, not confirmed yet; it shows `b±`, `M±` or `Mb±` when its FVG was tagged at a breaker or mitigation block |
 | `IFVG+` | Bullish IFVG confirmed: a bearish FVG was closed through to the upside |
 | `IFVG-` | Bearish IFVG confirmed: a bullish FVG was closed through to the downside |
 | `IFVG- ×2` | Inversion rules on: the zone was inverted a second time (the direction alternates) |

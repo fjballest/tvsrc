@@ -1262,7 +1262,8 @@ class FVGSIFVGOTE {
             f.rect.extend = "none";
         }
         f.rect.right = this.j;
-        f.rect.text = "";
+        // an unconfirmed candidate keeps its b / M / Mb label (confirming it sets the IFVG label)
+        f.rect.text = f.brk || f.mbD !== 0 ? this.fvgLbl(f) : "";
         f.rect.textCol = this.ifvgTxtCol;
         this.textFmt(f.rect);
         if (!f.kept) this.keptIf.push(f);
@@ -1791,16 +1792,26 @@ class FVGSIFVGOTE {
             b.ml = this.g.line({ x1: b.t, y1: mid, x2: j, y2: mid, color: col(colr, 0), style: sty, width: w, fixed: true });
         }
     }
+    // FVG shown as the box of a confirmed IFVG (close mode or swing mode), with its IFVG label
+    confIfvg(f) {
+        const same = g => !!g && (g.dup ? g.dup : g) === f;
+        return (this.bullconfirm !== null && same(this.bullifvg)) || (this.bearconfirm !== null && same(this.bearifvg))
+            || (this.ifsconfirm !== null && same(this.swFvg));
+    }
     brkTag(f, b, ib) {
         const P = this.P;
         if (f && f.hi >= b.lo && f.lo <= b.hi) {
             f.brk = true;
             f.brkD = b.dir;
             if (ib) ib.bold = true;
-            else if (f.end === null && !f.cand && !f.kept && !(f.aplus && P.lblAp) && f.rect) {
+            else {
+                // the label direction is kept for when the box shows the plain FVG label (also after it was an
+                // IFVG candidate); an unconfirmed IFVG candidate box shows it too
                 f.lblD = b.dir;
-                f.rect.text = this.fvgLbl(f);
-                this.textFmt(f.rect);
+                if (f.end === null && (!f.kept || (f.cand && !this.confIfvg(f))) && !(f.aplus && P.lblAp) && f.rect) {
+                    f.rect.text = this.fvgLbl(f);
+                    this.textFmt(f.rect);
+                }
             }
             if (!b.tagged) this.zoneDraw(b, false);
         }
@@ -1822,8 +1833,8 @@ class FVGSIFVGOTE {
                 ib.bold = true;
             } else {
                 f.mbD = b.dir;
-                if (f.end === null && !f.cand && !f.kept && !(f.aplus && P.lblAp) && f.rect) {
-                    f.lblD = b.dir;
+                f.lblD = b.dir;
+                if (f.end === null && (!f.kept || (f.cand && !this.confIfvg(f))) && !(f.aplus && P.lblAp) && f.rect) {
                     f.rect.text = this.fvgLbl(f);
                     this.textFmt(f.rect);
                 }

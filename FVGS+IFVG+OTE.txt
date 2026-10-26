@@ -734,7 +734,8 @@ method adopt(FVG fv, int dir) =>
         f.rect.set_border_width(2)
         f.rect.set_extend(extend.none)
     f.rect.set_right(time)
-    f.rect.set_text("")
+    // an unconfirmed candidate keeps its b / M / Mb label (confirming it sets the IFVG label)
+    f.rect.set_text(f.brk or f.mbD != 0 ? fvgLbl(f) : "")
     f.rect.set_text_color(ifvgTxtCol)
     f.rect.set_text_size(ifvgtsz)
     f.rect.set_text_halign(ifvgha)
@@ -2027,6 +2028,15 @@ brkAdd(int dir, float zh, float zl, int zt, int zt1) =>
                 break
     true
 
+// FVG shown as the box of a confirmed IFVG (close mode or swing mode), with its IFVG label
+sameF(FVG f, FVG g) =>
+    FVG h = na(g) ? g : (na(g.dup) ? g : g.dup)
+    not na(h) and h.start == f.start and h.hi == f.hi and h.lo == f.lo and h.islong == f.islong
+
+confIfvg(FVG f) =>
+    (not na(bullconfirm) and sameF(f, bullifvg)) or (not na(bearconfirm) and sameF(f, bearifvg))
+     or (not na(ifsconfirm) and sameF(f, swFvg))
+
 // breaker b drawn up to this candle when FVG / IFVG f overlaps it on the pullback (once); ib: the IFVG box
 // when f is the confirmed IFVG (its label turns bold), else na (a plain unlabeled FVG gets b+ / b-)
 brkTag(FVG f, Breaker b, box ib) =>
@@ -2035,12 +2045,15 @@ brkTag(FVG f, Breaker b, box ib) =>
         f.brkD := b.dir
         if not na(ib)
             ib.set_text_formatting(text.format_bold)
-        else if na(f.end) and not f.cand and not f.kept and not (f.aplus and lblAp) and not na(f.rect)
+        else
+            // the label direction is kept for when the box shows the plain FVG label (also after it was an
+            // IFVG candidate); an unconfirmed IFVG candidate box shows it too
             f.lblD := b.dir
-            f.rect.set_text(fvgLbl(f))
-            f.rect.set_text_size(ifvgtsz)
-            f.rect.set_text_halign(ifvgha)
-            f.rect.set_text_valign(ifvgva)
+            if na(f.end) and (not f.kept or (f.cand and not confIfvg(f))) and not (f.aplus and lblAp) and not na(f.rect)
+                f.rect.set_text(fvgLbl(f))
+                f.rect.set_text_size(ifvgtsz)
+                f.rect.set_text_halign(ifvgha)
+                f.rect.set_text_valign(ifvgva)
         float mid = (b.hi + b.lo) / 2
         if not b.tagged
             b.tagged := true
@@ -2220,8 +2233,8 @@ mbTag(FVG f, MBlock b, box ib, int which) =>
             ib.set_text_formatting(text.format_bold)
         else
             f.mbD := b.dir
-            if na(f.end) and not f.cand and not f.kept and not (f.aplus and lblAp) and not na(f.rect)
-                f.lblD := b.dir
+            f.lblD := b.dir
+            if na(f.end) and (not f.kept or (f.cand and not confIfvg(f))) and not (f.aplus and lblAp) and not na(f.rect)
                 f.rect.set_text(fvgLbl(f))
                 f.rect.set_text_size(ifvgtsz)
                 f.rect.set_text_halign(ifvgha)
