@@ -387,11 +387,24 @@ plMode = input.string("auto", "Poor liquidity", options = ["auto", "yes", "no"],
         "ignored (FVG boxes are not extended over body gaps), and two up-close (down-close) candles in a row "+
         "with a gap between them make a bullish (bearish) FVG, as if an up (down) candle was in the middle. "+
         "auto: on for nano futures only (symbol or description with Nano / NNQ).")
-plAlt = input.bool(false, "Data from another symbol", group = G_PL, inline = "plsym",
-    tooltip = "Compute everything from the candles of this symbol, at the chart timeframe, and draw it "+
-        "on this chart. E.g. MNQ data on an NNQ chart. auto poor liquidity is then off.")
+plSrc = input.string("auto", "Data from", options = ["auto", "symbol", "chart"], group = G_PL, inline = "plsym",
+    tooltip = "Compute everything from the candles of another symbol, at the chart timeframe, and draw it on "+
+        "this chart. auto: the micro future for a nano one (NNQ: MNQ, NES: MES, NYM: MYM, N2K: M2K, other nano N*: "+
+        "M*), else the chart. symbol: the symbol at the right. chart: the chart symbol. auto poor liquidity is "+
+        "off while another symbol is used.")
 plSym = input.symbol("CME_MINI:MNQ1!", "", group = G_PL, inline = "plsym")
-string dataSym = plAlt ? plSym : syminfo.tickerid
+// micro future for a nano one: N<root> -> M<root>, continuous contract
+plMicro() =>
+    string r = syminfo.root
+    string m = ""
+    bool known = r == "NNQ" or r == "NES" or r == "NYM" or r == "N2K"
+    if known or (str.length(r) >= 3 and str.startswith(r, "N") and str.contains(str.lower(syminfo.description), "nano"))
+        string rest = str.substring(r, 1)
+        m := (rest == "YM" ? "CBOT_MINI:M" : "CME_MINI:M") + rest + "1!"
+    m
+string plAuto = plMicro()
+string dataSym = plSrc == "symbol" ? plSym : plSrc == "auto" and plAuto != "" ? plAuto : syminfo.tickerid
+bool plAlt = dataSym != syminfo.tickerid
 [dO, dH, dL, dC] = request.security(dataSym, timeframe.period, [open, high, low, close],
      gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_off)
 // 4050 bars of history for all series (the leg scans go back 4000 bars), 5000 for time
