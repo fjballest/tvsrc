@@ -9,8 +9,8 @@
  *   rejection and retrace checks, OTE bands drawn in the right margin with up / down arrows), the Delivery
  *   Engine features (displacement filter / flag / candle color, full-body confirmation, inversion rules,
  *   A+ setups with killzones and HTF structure), breakers and mitigation blocks (zone, break, swing,
- *   pullback, rectangle / shadow rectangle / flagged candles, bold IFVG labels, arrows, b+/b-, M+/M-,
- *   Mb+/Mb-, inheritance of the tags by IFVGs) and LONG / SHORT / OTE signal markers.
+ *   pullback, rectangle / shadow rectangle / flagged candles, bold IFVG labels, arrows, B↑/B↓, M↑/M↓,
+ *   BM↑/BM↓, inheritance of the tags by IFVGs) and LONG / SHORT / OTE signal markers.
  *
  *   Port of the TradingView Pine Script v6 indicator "FVGS+IFVG+OTE.txt"
  *   (md5 06f06f42dacc49e4a5da52bfb6f57903, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
@@ -1102,11 +1102,11 @@ class FVGSIFVGOTE {
             lblD: 0, ote: false, oLo: null, oHi: null
         };
     }
-    // label of a plain FVG box: A+, or the breaker / mitigation block tag (b+, M-, Mb+...), plus OTE
+    // label of a plain FVG box: A+, or the breaker / mitigation block tag (B↑, M↓, BM↑...), plus OTE
     fvgLbl(f) {
         let t = "";
         if (f.aplus && this.P.lblAp) t = this.hideReg ? "" : "A+";
-        else if (f.brk || f.mbD !== 0) t = (f.brk && f.mbD !== 0 ? "Mb" : f.brk ? "b" : "M") + (f.lblD === 1 ? "+" : "-");
+        else if (f.brk || f.mbD !== 0) t = (f.brk && f.mbD !== 0 ? "BM" : f.brk ? "B" : "M") + (f.lblD === 1 ? "\u2191" : "\u2193");
         if (f.ote && !this.hideReg) t += (t === "" ? "" : " ") + "OTE";
         return t;
     }
@@ -1262,7 +1262,7 @@ class FVGSIFVGOTE {
             f.rect.extend = "none";
         }
         f.rect.right = this.j;
-        // an unconfirmed candidate keeps its b / M / Mb label (confirming it sets the IFVG label)
+        // an unconfirmed candidate keeps its B / M / BM label (confirming it sets the IFVG label)
         f.rect.text = f.brk || f.mbD !== 0 ? this.fvgLbl(f) : "";
         f.rect.textCol = this.ifvgTxtCol;
         this.textFmt(f.rect);

@@ -135,7 +135,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             public Fvg dup;
             public bool cand, own, shown, aplus, disp, brk;
             public int brkD, mbD;
-            public int lblD;                       // direction of the b / M / Mb label
+            public int lblD;                       // direction of the B / M / BM label
             public bool ote;                       // [OTEF] OTE FVG
             public double oLo = double.NaN, oHi = double.NaN; // [OTEF] leg low / high
         }
@@ -1146,14 +1146,14 @@ namespace NinjaTrader.NinjaScript.Indicators
 
         private int Bw(Fvg f) { return FlagDispFvgs && f.disp ? FlagDispWidth : 1; }
 
-        // label of a plain FVG box: A+, or the breaker / mitigation block tag (b+, M-, Mb+...), plus OTE
+        // label of a plain FVG box: A+, or the breaker / mitigation block tag (B↑, M↓, BM↑...), plus OTE
         private string FvgLbl(Fvg f)
         {
             string t = "";
             if (f.aplus && LabelAPlus)
                 t = hideReg ? "" : "A+";
             else if (f.brk || f.mbD != 0)
-                t = (f.brk && f.mbD != 0 ? "Mb" : f.brk ? "b" : "M") + (f.lblD == 1 ? "+" : "-");
+                t = (f.brk && f.mbD != 0 ? "BM" : f.brk ? "B" : "M") + (f.lblD == 1 ? "\u2191" : "\u2193");
             if (f.ote && !hideReg)
                 t += (t == "" ? "" : " ") + "OTE";
             return t;
@@ -1352,7 +1352,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                 SetExt(r, false);
             }
             r.T2 = curTime;
-            // an unconfirmed candidate keeps its b / M / Mb label (confirming it sets the IFVG label)
+            // an unconfirmed candidate keeps its B / M / BM label (confirming it sets the IFVG label)
             r.Txt = f.brk || f.mbD != 0 ? FvgLbl(f) : "";
             r.Tc = cIfvgTxt;
             r.Ts = ifvgTs;
@@ -3665,7 +3665,7 @@ namespace NinjaTrader.NinjaScript.Indicators
         }
 
         [NinjaScriptProperty]
-        [Display(Name = "Breakers at FVG / IFVG pullbacks", GroupName = "Breakers", Order = 701, Description = "Bullish breaker: a low, a high and a lower low; bearish: a high, a low and a higher high. After the break, a swing beyond the zone and a pullback into it, overlapping FVGs / IFVGs are tagged (bold IFVG label, b+ / b-).")]
+        [Display(Name = "Breakers at FVG / IFVG pullbacks", GroupName = "Breakers", Order = 701, Description = "Bullish breaker: a low, a high and a lower low; bearish: a high, a low and a higher high. After the break, a swing beyond the zone and a pullback into it, overlapping FVGs / IFVGs are tagged (bold IFVG label, B↑ / B↓).")]
         public bool BreakersOn { get; set; }
 
         [NinjaScriptProperty]
@@ -3716,7 +3716,7 @@ namespace NinjaTrader.NinjaScript.Indicators
         public bool BreakerShadow { get; set; }
 
         [NinjaScriptProperty]
-        [Display(Name = "Mitigation blocks at FVG / IFVG pullbacks", GroupName = "Mitigation blocks", Order = 801, Description = "Bullish: a low, a high and a higher low; bearish: a high, a low and a lower high. Same life cycle as breakers; IFVG labels get bold + arrow, plain FVGs M+ / M- (Mb+ / Mb-).")]
+        [Display(Name = "Mitigation blocks at FVG / IFVG pullbacks", GroupName = "Mitigation blocks", Order = 801, Description = "Bullish: a low, a high and a higher low; bearish: a high, a low and a lower high. Same life cycle as breakers; IFVG labels get bold + arrow, plain FVGs M↑ / M↓ (BM↑ / BM↓).")]
         public bool MitigationOn { get; set; }
 
         [NinjaScriptProperty]

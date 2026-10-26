@@ -14,13 +14,13 @@
 //   low). Once price closes beyond the zone, makes a swing high (bullish) / low (bearish) beyond it and pulls
 //   back to it while a live FVG / IFVG of the trade direction
 //   overlaps the zone, the breaker is drawn as a dashed rectangle (with its mid line) from its candle(s) to that
-//   pullback. The label of an overlapping IFVG turns bold; an overlapping unlabeled FVG gets b+ / b-.
+//   pullback. The label of an overlapping IFVG turns bold; an overlapping unlabeled FVG gets B↑ / B↓.
 //   The rectangle is removed if the pullback itself trades below the breaker low (bullish) / above its
 //   high (bearish) before price closes out of the zone again; otherwise it stays for reference.
 // [MB] Mitigation blocks: bullish = low, high, higher low (zone at the high, chosen as for breakers); bearish =
 //   high, low, lower high (zone at the low). Same rules as the breakers (close beyond the zone, swing beyond it,
 //   pullback); an overlapping IFVG label turns bold with an up / down arrow; an overlapping unlabeled FVG gets
-//   M+ / M- (Mb+ / Mb- when a breaker tagged it too). Own rectangle.
+//   M↑ / M↓ (BM↑ / BM↓ when a breaker tagged it too). Own rectangle.
 
 // draw fvgs of the current timeframe including volume gaps
 // when using m5,4,3,2,1, track last 1PFVGs
@@ -277,7 +277,7 @@ brkOn = input.bool(true, "Breakers at FVG / IFVG pullbacks", group = G_BRK,
     + "swing low below it (bearish), with the swing length below. When, on the pullback, a live bullish FVG or confirmed IFVG+ (long) or bearish FVG "
     + "or IFVG- (short) overlaps the zone, the breaker is drawn as a dashed rectangle with its mid line, from "
     + "its candle(s) to that pullback. The label of an overlapping IFVG+ / IFVG- turns bold and an "
-    + "overlapping unlabeled, unmitigated bullish / bearish FVG gets b+ / b-. The rectangle is removed if the pullback itself trades below the breaker low "
+    + "overlapping unlabeled, unmitigated bullish / bearish FVG gets B↑ / B↓. The rectangle is removed if the pullback itself trades below the breaker low "
     + "(bullish) / above its high (bearish) before price closes out of the zone again; otherwise it stays.")
 brkMode = input.string("Last candle", "Zone", options = ["Last candle", "Whole sequence"], group = G_BRK,
     inline = "bm", tooltip = "Last candle: the last up-close candle making the high (bullish) / down-close "
@@ -287,7 +287,7 @@ brkLen = input.int(3, "Swing length / keep", minval = 1, maxval = 20, group = G_
     tooltip = "Pivot length (left and right) of the lows and highs, and breakers kept per direction.")
 brkKeep = input.int(3, "", minval = 1, maxval = 10, group = G_BRK, inline = "bl")
 brkBox = input.bool(false, "Rectangle", group = G_BRK, inline = "bc",
-    tooltip = "Draw the breaker rectangle and its mid line. The bold IFVG labels and the b+ / b- labels are "
+    tooltip = "Draw the breaker rectangle and its mid line. The bold IFVG labels and the B↑ / B↓ labels are "
     + "set either way.")
 brkCol = input.color(color.fuchsia, "", group = G_BRK, inline = "bc")
 brkSty = getstyle(input.string("dashed", "", options = ["solid", "dashed", "dotted"], group = G_BRK, inline = "bc"))
@@ -308,7 +308,7 @@ mbOn = input.bool(true, "Mitigation blocks at FVG / IFVG pullbacks", group = G_M
     + "zone before the pullback. When, on the pullback, a live bullish FVG or confirmed IFVG+ (long) or bearish "
     + "FVG or IFVG- (short) overlaps the zone, the block is drawn as a rectangle with its mid line, the label of "
     + "the IFVG turns bold with an up (IFVG+) / down (IFVG-) arrow, and an overlapping unlabeled, unmitigated "
-    + "FVG gets M+ / M- (Mb+ / Mb- when a breaker tagged it too). The rectangle is removed if the pullback itself trades beyond the far side of the zone "
+    + "FVG gets M↑ / M↓ (BM↑ / BM↓ when a breaker tagged it too). The rectangle is removed if the pullback itself trades beyond the far side of the zone "
     + "before price closes out of it again; otherwise it stays.")
 mbMode = input.string("Last candle", "Zone", options = ["Last candle", "Whole sequence"], group = G_MB,
     inline = "mm", tooltip = "Last candle: the last up-close candle making the high (bullish) / down-close "
@@ -318,7 +318,7 @@ mbLen = input.int(3, "Swing length / keep", minval = 1, maxval = 20, group = G_M
     tooltip = "Pivot length (left and right) of the lows and highs, and mitigation blocks kept per direction.")
 mbKeep = input.int(3, "", minval = 1, maxval = 10, group = G_MB, inline = "ml")
 mbBox = input.bool(false, "Rectangle", group = G_MB, inline = "mc",
-    tooltip = "Draw the mitigation block rectangle and its mid line. The IFVG labels and the M+ / M- labels are "
+    tooltip = "Draw the mitigation block rectangle and its mid line. The IFVG labels and the M↑ / M↓ labels are "
     + "set either way.")
 mbCol = input.color(color.orange, "", group = G_MB, inline = "mc")
 mbSty = getstyle(input.string("dashed", "", options = ["solid", "dashed", "dotted"], group = G_MB, inline = "mc"))
@@ -463,7 +463,7 @@ type FVG
     bool brk = false // [BRK] tagged at a breaker pullback
     int brkD = 0 // [BRK] direction of that breaker
     int mbD = 0 // [MB] direction of the mitigation block it was tagged at (1 bullish, -1 bearish), 0 none
-    int lblD = 0 // direction of the b / M / Mb label
+    int lblD = 0 // direction of the B / M / BM label
     bool ote = false // [OTEF] OTE FVG
     float oLo = na // [OTEF] leg low / high: origin and extreme since the FVG
     float oHi = na
@@ -476,13 +476,13 @@ type FVG
 method bw(FVG f) =>
     deFlag and f.disp ? deFlagW : 1
 
-// label of a plain FVG box: A+, or the breaker / mitigation block tag (b+, M-, Mb+...), plus OTE
+// label of a plain FVG box: A+, or the breaker / mitigation block tag (B↑, M↓, BM↑...), plus OTE
 fvgLbl(FVG f) =>
     string t = ""
     if f.aplus and lblAp
         t := hideReg ? "" : "A+"
     else if f.brk or f.mbD != 0
-        t := (f.brk and f.mbD != 0 ? "Mb" : f.brk ? "b" : "M") + (f.lblD == 1 ? "+" : "-")
+        t := (f.brk and f.mbD != 0 ? "BM" : f.brk ? "B" : "M") + (f.lblD == 1 ? "↑" : "↓")
     if f.ote and not hideReg
         t += (t == "" ? "" : " ") + "OTE"
     t
@@ -734,7 +734,7 @@ method adopt(FVG fv, int dir) =>
         f.rect.set_border_width(2)
         f.rect.set_extend(extend.none)
     f.rect.set_right(time)
-    // an unconfirmed candidate keeps its b / M / Mb label (confirming it sets the IFVG label)
+    // an unconfirmed candidate keeps its B / M / BM label (confirming it sets the IFVG label)
     f.rect.set_text(f.brk or f.mbD != 0 ? fvgLbl(f) : "")
     f.rect.set_text_color(ifvgTxtCol)
     f.rect.set_text_size(ifvgtsz)
@@ -2038,7 +2038,7 @@ confIfvg(FVG f) =>
      or (not na(ifsconfirm) and sameF(f, swFvg))
 
 // breaker b drawn up to this candle when FVG / IFVG f overlaps it on the pullback (once); ib: the IFVG box
-// when f is the confirmed IFVG (its label turns bold), else na (a plain unlabeled FVG gets b+ / b-)
+// when f is the confirmed IFVG (its label turns bold), else na (a plain unlabeled FVG gets B↑ / B↓)
 brkTag(FVG f, Breaker b, box ib) =>
     if not na(f) and f.hi >= b.lo and f.lo <= b.hi
         f.brk := true
@@ -2217,7 +2217,7 @@ mbAdd(int dir, float zh, float zl, int zt, int zt1) =>
 
 // mitigation block b drawn up to this candle when FVG / IFVG f overlaps it on the pullback (once); ib: the IFVG
 // box when f is the confirmed IFVG (its label turns bold, with the arrow; which: 1 bull, -1 bear, 2 swing IFVG),
-// else na (a plain unlabeled FVG gets M+ / M-)
+// else na (a plain unlabeled FVG gets M↑ / M↓)
 // text of the IFVG label (which: 1 bull, -1 bear, 2 swing IFVG) with the mitigation block arrow mbd
 mbTxt(int which, int mbd) =>
     which == 1 ? ifvgTxt(1, deInv ? bullInv : 1, useOTE and gBull.flagged, gBull.tags, bullAp, mbd)

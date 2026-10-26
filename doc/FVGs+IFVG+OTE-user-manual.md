@@ -89,7 +89,7 @@ IFVG labels are written inside the box, black, small, right-aligned and vertical
 
 | Label | Meaning |
 | --- | --- |
-| (no text, IFVG colors) | IFVG candidate, not confirmed yet; it shows `b±`, `M±` or `Mb±` when its FVG was tagged at a breaker or mitigation block |
+| (no text, IFVG colors) | IFVG candidate, not confirmed yet; it shows `B↑`/`B↓`, `M↑`/`M↓` or `BM↑`/`BM↓` when its FVG was tagged at a breaker or mitigation block |
 | `IFVG+` | Bullish IFVG confirmed: a bearish FVG was closed through to the upside |
 | `IFVG-` | Bearish IFVG confirmed: a bullish FVG was closed through to the downside |
 | `IFVG- ×2` | Inversion rules on: the zone was inverted a second time (the direction alternates) |
@@ -97,7 +97,7 @@ IFVG labels are written inside the box, black, small, right-aligned and vertical
 | `IFVG- OTE 3m+15m` | OTE matched on more than one timeframe on the same bar |
 | `... A+` | Delivery Engine A+ setup |
 | `A+` on a plain FVG box | A+ FVG (born from an MSS with displacement after a sweep) |
-| `OTE` on a plain FVG box | OTE FVG (section 8, **Flag OTE FVGs**); added after `A+`, `b±`, `M±` or `Mb±`, for example `b+ OTE` |
+| `OTE` on a plain FVG box | OTE FVG (section 8, **Flag OTE FVGs**); added after `A+`, `B↑`/`B↓`, `M↑`/`M↓` or `BM↑`/`BM↓`, for example `B↑ OTE` |
 
 The parts can be switched off with **Label parts: OTE TF**, **+ / -** and **A+**. With all three off an OTE IFVG reads `IFVG OTE`. **Labels** off hides all IFVG text (it is drawn fully transparent).
 
@@ -342,7 +342,7 @@ This feature is on by default. It may be removed in a future version.
 - **Short:** price closes below a bearish breaker zone, makes a swing low below it, and then pulls back into the zone (a high at or above the zone low).
 - A small move beyond the zone and straight back is not a pullback: without that swing the breaker keeps waiting.
 - When, on a pullback candle, a live bullish FVG or the confirmed `IFVG+` (long), or a live bearish FVG or the confirmed `IFVG-` (short), overlaps the zone, the breaker is drawn: a dashed rectangle over the zone, with its mid line, from the breaker candle(s) to that pullback candle. It is drawn once and not extended.
-- On that pullback, the label of an overlapping confirmed `IFVG+` (bullish breaker) or `IFVG-` (bearish breaker) turns **bold**, and an overlapping unmitigated FVG of the same direction that has no label (not an IFVG, no `A+`) gets the label `b+` (bullish) or `b-` (bearish).
+- On that pullback, the label of an overlapping confirmed `IFVG+` (bullish breaker) or `IFVG-` (bearish breaker) turns **bold**, and an overlapping unmitigated FVG of the same direction that has no label (not an IFVG, no `A+`) gets the label `B↑` (bullish) or `B↓` (bearish).
 - A drawn breaker is removed (rectangle and mid line deleted) only if the pullback itself trades below its low (bullish) or above its high (bearish), before a candle closes out of the zone again in the breaker direction. Otherwise the rectangle stays on the chart for reference.
 - An IFVG confirmed later in the same place as an FVG of its direction that a breaker already tagged (the FVG overlaps the IFVG and is still live, or was mitigated after the IFVG's FVG started) gets the breaker too: its label turns bold.
 - A breaker not drawn yet is dropped when, after the break, a candle closes through the other side of its zone. Only the last **keep** (3) breakers of each direction are followed.
@@ -367,8 +367,8 @@ Mitigation blocks work like breakers (section 10), with the opposite third swing
 - **Short:** price closes below a bearish block's zone, makes a swing low below it, then pulls back into the zone. We expect it to continue down.
 - On that pullback, a live FVG or the confirmed IFVG of the trade direction that overlaps the zone gets tagged:
   - the label of an overlapping confirmed `IFVG+` turns **bold** and gets an up arrow (`IFVG+ ↑`); an `IFVG-` gets a down arrow (`IFVG- ↓`);
-  - an overlapping unmitigated FVG of the same direction with no label gets `M+` (bullish) or `M-` (bearish). If a breaker tagged the same FVG too (it had `b+` / `b-`, or gets it later), the label is `Mb+` / `Mb-`.
-- An IFVG confirmed later in the same place as an FVG of its direction that a mitigation block already tagged (`M+` / `M-` / `Mb+` / `Mb-`; the FVG overlaps the IFVG and is still live, or was mitigated after the IFVG's FVG started) gets the mitigation block too: bold label with the arrow.
+  - an overlapping unmitigated FVG of the same direction with no label gets `M↑` (bullish) or `M↓` (bearish). If a breaker tagged the same FVG too (it had `B↑` / `B↓`, or gets it later), the label is `BM↑` / `BM↓`.
+- An IFVG confirmed later in the same place as an FVG of its direction that a mitigation block already tagged (`M↑` / `M↓` / `BM↑` / `BM↓`; the FVG overlaps the IFVG and is still live, or was mitigated after the IFVG's FVG started) gets the mitigation block too: bold label with the arrow.
 - The block is drawn once as a dashed rectangle with its mid line, from its candle(s) to that pullback. The rectangle is removed only if the pullback itself trades beyond the far side of the zone, otherwise it stays for reference. A block not drawn yet is dropped when a candle closes through the other side of its zone. Only the last **keep** (3) of each direction are followed.
 
 ### How to use it
@@ -481,7 +481,7 @@ Inputs on one line in the settings dialog are listed together; a field without i
 | Breakers at FVG / IFVG pullbacks | on | Finds breakers and draws those that an FVG / IFVG overlaps on the pullback (section 10) |
 | Zone | Last candle | *Last candle*: the last up-close (bullish) / down-close (bearish) candle making the high / low. *Whole sequence*: that candle and the consecutive ones of the same color before it |
 | Swing length / keep | 3 / 3 | Pivot length (left and right) of the swings, and breakers followed per direction |
-| Rectangle, (color), (style), width | off / fuchsia / dashed / 1 | Draw the breaker rectangle and its mid line, with this color, line style and width. Off: nothing is drawn, but the bold IFVG labels and the b+ / b- labels are still set |
+| Rectangle, (color), (style), width | off / fuchsia / dashed / 1 | Draw the breaker rectangle and its mid line, with this color, line style and width. Off: nothing is drawn, but the bold IFVG labels and the B↑ / B↓ labels are still set |
 | Flag candles | off | Color the breaker candle(s) with the rectangle color when it is tagged at the pullback, with or without the rectangle; removed together with the rectangle |
 | Shadow rectangle (same line as Flag candles) | off | Draw the breaker as a grey transparent rectangle without border instead of the dashed one, also when Rectangle is off; the mid line stays |
 
@@ -492,7 +492,7 @@ Inputs on one line in the settings dialog are listed together; a field without i
 | Mitigation blocks at FVG / IFVG pullbacks | on | Finds mitigation blocks and draws those that an FVG / IFVG overlaps on the pullback (section 11) |
 | Zone | Last candle | *Last candle*: the last up-close (bullish) / down-close (bearish) candle making the high / low. *Whole sequence*: that candle and the consecutive ones of the same color before it |
 | Swing length / keep | 3 / 3 | Pivot length (left and right) of the swings, and blocks followed per direction |
-| Rectangle, (color), (style), width | off / orange / dashed / 1 | Draw the rectangle and its mid line. Off: nothing is drawn, but the bold IFVG labels with arrows and the M+ / M- labels are still set |
+| Rectangle, (color), (style), width | off / orange / dashed / 1 | Draw the rectangle and its mid line. Off: nothing is drawn, but the bold IFVG labels with arrows and the M↑ / M↓ labels are still set |
 | Flag candles | off | Color the mitigation block candle(s) with the rectangle color when it is tagged at the pullback, with or without the rectangle; removed together with the rectangle |
 | Shadow rectangle (same line as Flag candles) | off | Draw the mitigation block as a grey transparent rectangle without border instead of the dashed one, also when Rectangle is off; the mid line stays |
 
