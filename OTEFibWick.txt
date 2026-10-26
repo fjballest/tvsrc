@@ -68,8 +68,15 @@ dAlt = input.bool(false, "Data from another symbol", group = GD, inline = "dsym"
         "them on this chart. E.g. MNQ data on an NNQ chart.")
 dSym = input.symbol("CME_MINI:MNQ1!", "", group = GD, inline = "dsym")
 string dataSym = dAlt ? dSym : syminfo.tickerid
-[dO, dH, dL, dC] = request.security(dataSym, timeframe.period, [open, high, low, close],
-     gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_off)
+// one request per series (not a tuple) so that max_bars_back below applies to them
+float dO = request.security(dataSym, timeframe.period, open, gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_off)
+float dH = request.security(dataSym, timeframe.period, high, gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_off)
+float dL = request.security(dataSym, timeframe.period, low, gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_off)
+float dC = request.security(dataSym, timeframe.period, close, gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_off)
+max_bars_back(dO, 5000)
+max_bars_back(dH, 5000)
+max_bars_back(dL, 5000)
+max_bars_back(dC, 5000)
 
 
 if autootetf

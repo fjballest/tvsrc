@@ -389,8 +389,11 @@ plAlt = input.bool(false, "Data from another symbol", group = G_PL, inline = "pl
         "on this chart. E.g. MNQ data on an NNQ chart. auto poor liquidity is then off.")
 plSym = input.symbol("CME_MINI:MNQ1!", "", group = G_PL, inline = "plsym")
 string dataSym = plAlt ? plSym : syminfo.tickerid
-[dO, dH, dL, dC] = request.security(dataSym, timeframe.period, [open, high, low, close],
-     gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_off)
+// one request per series (not a tuple) so that max_bars_back below applies to them
+float dO = request.security(dataSym, timeframe.period, open, gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_off)
+float dH = request.security(dataSym, timeframe.period, high, gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_off)
+float dL = request.security(dataSym, timeframe.period, low, gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_off)
+float dC = request.security(dataSym, timeframe.period, close, gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_off)
 // deep history only for the series looked up by bar index (pivots, breakers); a global
 // max_bars_back gives every series that buffer and goes over the total limit
 max_bars_back(dO, 5000)
