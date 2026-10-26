@@ -29,8 +29,7 @@
 indicator("FVGs+IFVG+OTE5", 
     overlay=true, 
     max_lines_count    = 500,
-    max_boxes_count    = 500,
-    max_bars_back      = 5000)
+    max_boxes_count    = 500)
 
 
 getstyle(s) =>
@@ -392,6 +391,13 @@ plSym = input.symbol("CME_MINI:MNQ1!", "", group = G_PL, inline = "plsym")
 string dataSym = plAlt ? plSym : syminfo.tickerid
 [dO, dH, dL, dC] = request.security(dataSym, timeframe.period, [open, high, low, close],
      gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_off)
+// deep history only for the series looked up by bar index (pivots, breakers); a global
+// max_bars_back gives every series that buffer and goes over the total limit
+max_bars_back(dO, 5000)
+max_bars_back(dH, 5000)
+max_bars_back(dL, 5000)
+max_bars_back(dC, 5000)
+max_bars_back(time, 5000)
 float dTR = na(dC[1]) ? dH - dL : math.max(dH - dL, math.abs(dH - dC[1]), math.abs(dL - dC[1]))
 bool poorLiq = plMode == "yes" or (plMode == "auto" and not plAlt and (str.contains(str.lower(syminfo.description), "nano")
      or str.startswith(syminfo.root, "NNQ") or str.startswith(syminfo.ticker, "NNQ")))
