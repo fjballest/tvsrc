@@ -1576,7 +1576,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 
         private void Classify(Fvg f, bool fpNow)
         {
-            if (!hasifp && hasfp && FpInverse && fpfvgs.Count > 0)
+            if (!hasifp && hasfp && FpInverse && fpfvgs.Count > 0 && fp1mIdx < 0)
             {
                 Fvg fp = fpfvgs[fpfvgs.Count - 1];
                 if (fp.islong != f.islong)
@@ -1752,17 +1752,21 @@ namespace NinjaTrader.NinjaScript.Indicators
                 ho = 1; // completed 1m bars only
             }
             int p = CurrentBars[fp1mIdx] - ho;
-            if (p < 3 || hasfp || fpfvgs == null) return;
+            if (p < 3 || fpfvgs == null) return;
             NinjaTrader.Data.Bars mb = BarsArray[fp1mIdx];
             DateTime t0 = ToZone(mb.GetTime(p).AddMinutes(-1), tzInfo); // open time of candle [0]
-            if (t0.Hour != fph || t0.Minute <= fpm + 2) return;
+            bool fpWin = !hasfp && t0.Minute > fpm + 2;
+            // inverse 1PFVG: the first 1m FVG of the opposite bias after the 1PFVG
+            bool ifpWin = hasfp && FpInverse && !hasifp && fpfvgs.Count > 0;
+            if (t0.Hour != fph || !(fpWin || ifpWin)) return;
+            bool fpLong = ifpWin && fpfvgs[fpfvgs.Count - 1].islong;
             double o1 = mb.GetOpen(p - 1), c1 = mb.GetClose(p - 1), h1 = mb.GetHigh(p - 1), l1 = mb.GetLow(p - 1);
             double o2 = mb.GetOpen(p - 2), c2 = mb.GetClose(p - 2);
             double o3 = mb.GetOpen(p - 3), c3 = mb.GetClose(p - 3), h3 = mb.GetHigh(p - 3), l3 = mb.GetLow(p - 3);
             double bhi2 = Math.Max(o2, c2), blow2 = Math.Min(o2, c2);
             Fvg f = null;
             // long: low of [1] above the high of [3]; include suspension blocks
-            if (l1 - h3 > MinFvgSize && l1 - h3 < MaxFvgSize)
+            if (l1 - h3 > MinFvgSize && l1 - h3 < MaxFvgSize && !(ifpWin && fpLong))
             {
                 double hi = l1, lo = h3;
                 if (Math.Max(o3, c3) < blow2) lo = Math.Max(o3, c3);
@@ -1770,7 +1774,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                 f = new Fvg { hi = hi, lo = lo, ce = (hi + lo) / 2.0, islong = true };
             }
             // short: high of [1] below the low of [3]
-            else if (l3 - h1 > MinFvgSize && l3 - h1 < MaxFvgSize)
+            if (f == null && l3 - h1 > MinFvgSize && l3 - h1 < MaxFvgSize && !(ifpWin && !fpLong))
             {
                 double hi = l3, lo = h1;
                 if (Math.Min(o3, c3) > bhi2) hi = Math.Min(o3, c3);
@@ -1780,6 +1784,13 @@ namespace NinjaTrader.NinjaScript.Indicators
             if (f == null) return;
             f.start = mb.GetTime(p - 3);
             f.sbar = Math.Max(bi, 0);
+            if (ifpWin)
+            {
+                f.isifp = true;
+                hasifp = true;
+                fpfvgs.Add(f);
+                return;
+            }
             f.isfp = true;
             f.iswfp = ToZone(mb.GetTime(p).AddMinutes(-1), exchTz).DayOfWeek == DayOfWeek.Monday;
             hasfp = true;

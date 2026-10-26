@@ -1098,7 +1098,7 @@ if true
         f.aplus := deAplus and not na(deMssUpBar) and bar_index - deMssUpBar <= 3 // [DE]
         f.disp := deDispOK // [DE]
         lastlongfvg := f
-        if not hasifp and hasfp and doifp
+        if not hasifp and hasfp and doifp and not fpLow
             fp = fpfvgs.last()
             if fp.islong != f.islong
                 f.isifp := true
@@ -1125,7 +1125,7 @@ if true
         f.aplus := deAplus and not na(deMssDnBar) and bar_index - deMssDnBar <= 3 // [DE]
         f.disp := deDispOK // [DE]
         lastshortfvg := f
-        if not hasifp and hasfp and doifp
+        if not hasifp and hasfp and doifp and not fpLow
             fp = fpfvgs.last()
             if fp.islong != f.islong
                 f.isifp := true
@@ -1168,7 +1168,9 @@ if fpLow and barstate.isconfirmed and not na(l1t) and l1t.size() > 0
                 fpL.shift()
                 fpC.shift()
                 fpT.shift()
-            if fpT.size() == 4 and not hasfp and hour(t0, tz) == fph and minute(t0, tz) > fpm + 2
+            bool fpWin = not hasfp and minute(t0, tz) > fpm + 2
+            bool ifpWin = hasfp and doifp and not hasifp and fpfvgs.size() > 0
+            if fpT.size() == 4 and hour(t0, tz) == fph and (fpWin or ifpWin)
                 // index 2: candle [1], 1: [2], 0: [3]
                 [lhi, llo, lfhi, lflo] = longFVGHL(fpO.get(2), fpC.get(2), fpH.get(2), fpL.get(2),
                      fpO.get(1), fpC.get(1), fpH.get(1), fpL.get(1), fpO.get(0), fpC.get(0), fpH.get(0), fpL.get(0))
@@ -1176,15 +1178,25 @@ if fpLow and barstate.isconfirmed and not na(l1t) and l1t.size() > 0
                      fpO.get(1), fpC.get(1), fpH.get(1), fpL.get(1), fpO.get(0), fpC.get(0), fpH.get(0), fpL.get(0))
                 bool isL = lfhi - lflo > minfvg and lfhi - lflo < maxfvg
                 bool isS = sfhi - sflo > minfvg and sfhi - sflo < maxfvg
+                if ifpWin
+                    // inverse 1PFVG: the first 1m FVG of the opposite bias after the 1PFVG
+                    bool fpLong = fpfvgs.last().islong
+                    isL := isL and not fpLong
+                    isS := isS and fpLong
                 if isL or isS
                     FVG f = isL ? FVG.new(lhi, llo, math.avg(lhi, llo), true, fpT.get(0))
                          : FVG.new(shi, slo, math.avg(shi, slo), false, fpT.get(0))
                     f.sbar := bar_index
-                    f.isfp := true
-                    f.iswfp := dayofweek(t0, tz) == dayofweek.monday
-                    hasfp := true
-                    fpfvgs.push(f)
-                    clearlastfp(fpfvgs)
+                    if ifpWin
+                        f.isifp := true
+                        hasifp := true
+                        fpfvgs.push(f)
+                    else
+                        f.isfp := true
+                        f.iswfp := dayofweek(t0, tz) == dayofweek.monday
+                        hasfp := true
+                        fpfvgs.push(f)
+                        clearlastfp(fpfvgs)
 
 updfvgs(array<FVG> fvgs) =>
     if fvgs.size() > 0
