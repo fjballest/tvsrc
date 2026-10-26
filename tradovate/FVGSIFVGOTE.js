@@ -93,7 +93,7 @@ const PARAMS = [
     ["drawMode", "e", "all", { all: "all", PFVG: "1PFVGs", IFVG: "IFVGs", PFVG_IFVG: "1PFVGs+IFVGs" }],
     ["fltMode", "e", "none", { none: "none", sweeps: "sweeps", sweepsMid: "sweeps&mid" }],
     // FVG Settings
-    ["visible", "b", false], ["dofvgalert", "b", false],
+    ["visible", "b", false], ["dofvgalert", "b", false], ["diag", "b", false],
     ["minfvg", "n", 3, [0.25, 1]], ["maxfvg", "n", 10000, [1, 100]], ["maxfvgs", "n", 200, [1, 2]],
     ["dupTol", "n", 10, [1, 0]], ["flL", "n", 3, [1, 1]], ["flR", "n", 3, [1, 1]],
     ["drawStyle", "e", "box", { box: "Box", boxNoFill: "Box, no fill", segments: "Segments (hi / lo / C.E.)" }],
@@ -405,6 +405,7 @@ class FVGSIFVGOTE {
         this.O = []; this.H = []; this.L = []; this.C = []; this.T = [];
         this.nextJ = 0;          // next bar index to commit
         this.curI = -1;          // last index map() was called with
+        this.dg = { maps: 0, fvgs: 0, err: "", errJ: -1, d: "" };   // "diag": counters shown on the chart
         this.seen = [];          // bar values received by map(), by bar index
         this.gfxRes = null;      // last result that carried the graphics, and its index
         this.gfxI = -1;
@@ -469,6 +470,7 @@ class FVGSIFVGOTE {
             this.dropGfx(prev);
         }
         this.curI = i;
+        this.dg.maps++;
         // the bar's values as map() received them: the history object is read only for bars never seen,
         // since its numbering need not match the chart's after a reload (the bars came out of place)
         this.seen[i] = snapBar(d);
@@ -478,7 +480,13 @@ class FVGSIFVGOTE {
             const bar = this.seen[j] || this.histGet(history, j, i);
             const nxt = j + 1 === i ? d : this.seen[j + 1] || this.histGet(history, j + 1, i);
             if (!bar) break;
-            this.commit(j, bar, nxt);
+            try {
+                this.commit(j, bar, nxt);
+            } catch (e) {
+                // kept for "diag"; the bar is skipped so that the next ones are still processed
+                this.dg.err = String((e && e.message) || e);
+                this.dg.errJ = j;
+            }
             this.nextJ = j + 1;
         }
         if (!this.out[i]) this.out[i] = { signal: 0, oteSignal: 0, bounce: 0 };
@@ -766,6 +774,7 @@ class FVGSIFVGOTE {
                 const [hi, lo, fhi, flo] = z;
                 if (fhi - flo > P.minfvg && fhi - flo < P.maxfvg && (!P.deDisp || deDispOK || isfpNow)) {
                     const f = this.newFVG(hi, lo, avg(hi, lo), islong, j - 3);
+                    this.dg.fvgs++;
                     f.sbar = j - 3;
                     this.oteInit(f); // [OTEF]
                     const mssBar = islong ? this.deMssUpBar : this.deMssDnBar;
@@ -1954,6 +1963,19 @@ class FVGSIFVGOTE {
                 // one line: Tradovate does not break text at "\n"
                 text: mk.ote ? "◆ OTE" : (long ? "▲ LONG" : "SHORT ▼"),
                 style: { fontSize: 11, fontWeight: "bold", fill: c }, textAlignment: "centerMiddle"
+            });
+        }
+        if (P.diag) {
+            // diagnostics, top left: bars seen, bars processed, FVGs created, inferred timeframe, last error
+            const dg = this.dg;
+            let bar = "";
+            try { bar = JSON.stringify(this.seen[now]); } catch (e) { bar = "?"; }
+            texts.push({
+                tag: "Text", key: "diag", global: true, point: { x: px(10), y: px(10) },
+                text: "FVGs diag: index " + now + ", map calls " + dg.maps + ", processed " + this.nextJ + ", FVGs " + dg.fvgs
+                    + ", tf " + this.tfsecs + "s, bar " + bar + (dg.err ? ", error at " + dg.errJ + ": " + dg.err : ""),
+                style: { fontSize: 12, fill: "#d50000" }, textAlignment: "rightBelow",
+                origin: { cs: "grid", h: "left", v: "top" }
             });
         }
         return fills.concat(lines, texts);
