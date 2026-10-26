@@ -2,7 +2,7 @@
 // FVGSIFVGOTE - Fair value gaps, 1st presented FVGs, inverse FVGs (IFVG) and ICT OTE, for NinjaTrader 8
 // ---------------------------------------------------------------------------------------------------------------------
 // Port of the TradingView Pine Script v6 indicator "FVGs+IFVG+OTE5" by franjballest
-// (source file FVGS+IFVG+OTE.txt, md5 06f06f42dacc49e4a5da52bfb6f57903). Mozilla Public License 2.0, as the original.
+// (source file FVGS+IFVG+OTE.txt, md5 816345d99ad0cae0fb95a11a2f83f53c). Mozilla Public License 2.0, as the original.
 //
 // What it draws: FVG boxes (or no-fill boxes, or hi / lo / C.E. segments) with C.E. lines, the 1st presented FVG of the
 // session open (New York 09:30, or Madrid 09:00 for DAX) and its optional inverse, wick C.E. segments, IFVG candidates
@@ -56,7 +56,7 @@ using NinjaTrader.NinjaScript.DrawingTools;
 
 // option lists of the Pine string inputs (global, uniquely prefixed, so the generated factory code can see them)
 public enum FioDrawMode { All, OnlyPFVGs, IFVGs, PFVGsAndIFVGs }
-public enum FioFilterMode { None, Sweeps, SweepsAndMid }
+public enum FioFilterMode { None, Sweeps, SweepsAndMid, Relevant }
 public enum FioFvgStyle { Box, BoxNoFill, Segments }
 public enum FioConfirm { Close, FullBody }
 public enum FioDeadMode { Fade, BackToFVG }
@@ -139,6 +139,9 @@ namespace NinjaTrader.NinjaScript.Indicators
             public int lblD;                       // direction of the B / M / BM label
             public bool ote;                       // [OTEF] OTE FVG
             public double oLo = double.NaN, oHi = double.NaN; // [OTEF] leg low / high
+            public bool swp;                       // [REL] last FVG before a sweep: shown once it becomes an IFVG
+            public bool ext;                       // [REL] extended by a merged duplicate
+            public int dbar = -1;                  // [REL] bar index where it was filled
         }
 
         private sealed class PivSet
@@ -221,7 +224,7 @@ namespace NinjaTrader.NinjaScript.Indicators
         private bool loggedErr;
 
         // derived inputs
-        private bool fponly, ifvgOnly, hideReg, fltOff, fltMid, styNoFill, stySeg;
+        private bool fponly, ifvgOnly, hideReg, fltOff, fltMid, fltRel, styNoFill, stySeg;
         private Color cL, cLn, cS, cSn, cFp, cFpn, cWfp, cWfpn, cIfp, cIfpn, cWick, cDead, cBullIf, cBearIf;
         private Color cOteBand, cOteHi, cOteTxt, cBrk, cMb, cIfvgTxt;
         private Brush dispBrush;
@@ -241,6 +244,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 
         // FVGs
         private List<Fvg> lfvgs, sfvgs, fpfvgs, keptIf, pendF;
+        private List<Fvg> relF, relS;   // [REL] live FVGs not shown (yet); small drawn FVGs just filled (swing check)
+        private List<GBox> relB;        // [REL] boxes of the live FVGs near the price
         private bool hasfp, hasifp;
 
         // FVG filter state (FltState)
@@ -544,6 +549,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             hideReg = DrawSelection == FioDrawMode.IFVGs || DrawSelection == FioDrawMode.PFVGsAndIFVGs;
             fltOff = FvgFilter == FioFilterMode.None;
             fltMid = FvgFilter == FioFilterMode.SweepsAndMid;
+            fltRel = FvgFilter == FioFilterMode.Relevant;
             styNoFill = FvgStyle == FioFvgStyle.BoxNoFill;
             stySeg = FvgStyle == FioFvgStyle.Segments;
 
@@ -646,6 +652,9 @@ namespace NinjaTrader.NinjaScript.Indicators
             fpfvgs = new List<Fvg>();
             keptIf = new List<Fvg>();
             pendF = new List<Fvg>();
+            relF = new List<Fvg>();
+            relS = new List<Fvg>();
+            relB = new List<GBox>();
             hasfp = false;
             hasifp = false;
 
@@ -1305,6 +1314,8 @@ namespace NinjaTrader.NinjaScript.Indicators
                 if (f.iswfp) c = cWfp;
             }
             if (f.isifp) c = cIfp;
+            // [REL] too small for a C.E.: a little more transparent
+            if (RelSmall(f)) c = Color.FromArgb((byte)(c.A / 2), c.R, c.G, c.B);
             bool hid = hideReg && (ifvgOnly || (!f.isfp && !f.isifp));
             return styNoFill ? CTransp : (hid ? Tr(c, 100) : c);
         }
@@ -1319,8 +1330,12 @@ namespace NinjaTrader.NinjaScript.Indicators
             }
             if (f.isifp) c = cIfpn;
             bool hid = hideReg && (ifvgOnly || (!f.isfp && !f.isifp));
-            return hid ? Tr(c, 100) : c;
+            // [REL] too small for a C.E.: no border (boxes only; segments are the lines themselves)
+            return hid || (RelSmall(f) && !stySeg) ? Tr(c, 100) : c;
         }
+
+        // [REL] "relevant" filter: a plain FVG too small to draw its C.E.
+        private bool RelSmall(Fvg f) { return fltRel && !f.isfp && !f.isifp && f.hi - f.lo <= CeMinHeight; }
 
         // back to the plain FVG, as it was before becoming an IFVG
         private void Restore(Fvg f)
@@ -1473,6 +1488,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                 Touch(g.celine);
             }
             g.end = null;
+            g.ext = true;
         }
 
         private static void InsertSorted(List<Fvg> a, Fvg f)
@@ -1530,6 +1546,11 @@ namespace NinjaTrader.NinjaScript.Indicators
             {
                 pendF.Add(f);
                 if (pendF.Count > 60) pendF.RemoveAt(0);
+                if (fltRel)
+                {
+                    relF.Add(f);
+                    if (relF.Count > 300) relF.RemoveAt(0);
+                }
             }
         }
 
@@ -1561,6 +1582,12 @@ namespace NinjaTrader.NinjaScript.Indicators
             if (n > 0)
             {
                 Fvg lastF = pendF[n - 1];
+                // [REL] the last FVG before the sweep waits to become an IFVG
+                if (fltRel)
+                {
+                    lastF.swp = true;
+                    lastF = null;
+                }
                 Fvg midF = null;
                 if (fltMid && n > 1 && armStart.HasValue && armStart.Value < bi)
                 {
@@ -1578,7 +1605,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                         }
                     }
                 }
-                Reveal(lastF);
+                if (lastF != null) Reveal(lastF);
                 if (midF != null) Reveal(midF);
                 pendF.Clear();
             }
@@ -1610,6 +1637,76 @@ namespace NinjaTrader.NinjaScript.Indicators
                 Kill(f);
         }
 
+        private static bool HasPiv(List<int> bars, int b0, int b1)
+        {
+            for (int k = bars.Count - 1; k >= 0; k--)
+            {
+                if (bars[k] < b0) break;
+                if (bars[k] <= b1) return true;
+            }
+            return false;
+        }
+
+        // [REL] "relevant" filter, once per closed bar: reveal the live FVGs not shown yet that became IFVGs (the last
+        // one before a sweep) or OTE FVGs; hide the small filled FVGs not formed at a swing (once a pivot there would
+        // be confirmed); and box the live FVGs within MinSwingAtr x ATR of the price
+        private void RelStep()
+        {
+            for (int k = relF.Count - 1; k >= 0; k--)
+            {
+                Fvg f = relF[k];
+                if (f.shown || f.dup != null) relF.RemoveAt(k);
+                else if (IsDone(f, bo, bc))
+                {
+                    if (f.swp)
+                    {
+                        f.end = curTime;
+                        Reveal(f);
+                    }
+                    relF.RemoveAt(k);
+                }
+                else if (OteFvgStep(f))
+                {
+                    Reveal(f);
+                    relF.RemoveAt(k);
+                }
+            }
+            for (int k = relS.Count - 1; k >= 0; k--)
+            {
+                Fvg f = relS[k];
+                if (bi < Math.Max(f.dbar, f.sbar + 3 + SwingPivotRight)) continue;
+                relS.RemoveAt(k);
+                bool keep = f.ext || f.kept || f.cand || !RelSmall(f)
+                    || HasPiv(pv0.hb, f.sbar - 1, f.sbar + 3) || HasPiv(pv0.lb, f.sbar - 1, f.sbar + 3);
+                if (!keep)
+                {
+                    (f.islong ? lfvgs : sfvgs).Remove(f);
+                    f.shown = false;
+                    Kill(f);
+                }
+            }
+            foreach (GBox b in relB) Del(b);
+            relB.Clear();
+            double atr = bi < atrL.Count ? atrL[bi] : double.NaN;
+            double rng = (double.IsNaN(atr) ? 0.0 : atr) * MinSwingAtr;
+            foreach (Fvg f in relF)
+            {
+                if (relB.Count >= 40) break;
+                if (f.shown || f.dup != null || f.end.HasValue) continue;
+                double dist = bc > f.hi ? bc - f.hi : bc < f.lo ? f.lo - bc : 0.0;
+                if (dist > rng) continue;
+                GBox b = NewBox(f.start, f.hi, curTime, f.lo);
+                b.Bg = BgColor(f);
+                b.Bd = LnColor(f);
+                b.Bw = Bw(f);
+                b.Txt = FvgLbl(f);
+                b.Ts = ifvgTs;
+                b.Ha = ifvgHa;
+                b.Va = ifvgVa;
+                relB.Add(b);
+            }
+        }
+
         private void UpdFvgs(List<Fvg> fvgs)
         {
             for (int i = 0; i < fvgs.Count; i++)
@@ -1617,7 +1714,16 @@ namespace NinjaTrader.NinjaScript.Indicators
                 Fvg f = fvgs[i];
                 // check if filled
                 bool isdone = f.end.HasValue;
-                if (!f.end.HasValue && IsDone(f, bo, bc)) f.end = EndsAt(f);
+                if (!f.end.HasValue && IsDone(f, bo, bc))
+                {
+                    f.end = EndsAt(f);
+                    // [REL] small FVG filled: hidden later unless it formed at a swing
+                    if (RelSmall(f) && !f.swp && !f.ext && !f.kept && !f.cand)
+                    {
+                        f.dbar = bi;
+                        relS.Add(f);
+                    }
+                }
                 // [OTEF] retraced into while matching the OTE band of its leg (FVG shown as a plain FVG)
                 if (!isdone && !f.end.HasValue && f.dup == null && OteFvgStep(f) && f.rect != null && !f.cand && !f.kept)
                 {
@@ -2840,6 +2946,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             double opl = PivLo(b0, bi, SwingPivotLeft, SwingPivotRight);
             if (!double.IsNaN(oph)) AddHigh(pv0, bi - SwingPivotRight, oph);
             if (!double.IsNaN(opl)) AddLow(pv0, bi - SwingPivotRight, opl);
+            if (fltRel) RelStep();
             if (ShowIFVGs && DetectOte)
             {
                 if (hasH1) FeedHtf(pv1, pend1);
@@ -3285,7 +3392,7 @@ namespace NinjaTrader.NinjaScript.Indicators
         public FioDrawMode DrawSelection { get; set; }
 
         [NinjaScriptProperty]
-        [Display(Name = "FVG filter", GroupName = "Enable / Draw / Filter", Order = 105, Description = "Which FVGs are drawn (1PFVGs and the close-mode IFVG logic are not filtered). Sweeps: the last FVG before a sweep and the first one after it. SweepsAndMid: also the largest FVG near the middle of the arm.")]
+        [Display(Name = "FVG filter", GroupName = "Enable / Draw / Filter", Order = 105, Description = "Which FVGs are drawn (1PFVGs and the close-mode IFVG logic are not filtered). Sweeps: the last FVG before a sweep and the first one after it. SweepsAndMid: also the largest FVG near the middle of the arm. Relevant: the first FVG after a sweep; the last one before it only once it becomes an IFVG; FVGs flagged OTE; and the live FVGs within min swing (ATR) x ATR of the price. FVGs too small for a C.E. are drawn lighter and without border, and are hidden once filled unless they formed at a swing high / low or were extended by a merged FVG.")]
         public FioFilterMode FvgFilter { get; set; }
 
         [NinjaScriptProperty]

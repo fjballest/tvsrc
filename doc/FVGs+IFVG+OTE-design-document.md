@@ -47,7 +47,7 @@ The settings dialog has seven sections, ordered so that what to draw and which F
 
 | Section | Inputs | Effect |
 | --- | --- | --- |
-| Enable / Draw / Filter | `dofp` 1PFVGs \[on\], `doifvg` IFVGs \[on\], `dowick` Wick C.E. \[on\]; `drawMode` \[all\]; `fltMode` \[none\] | `drawMode` is all, 1PFVGs, IFVGs or 1PFVGs+IFVGs. The IFVG modes hide regular FVGs, wicks, swing labels and signals; alerts keep working. `fltMode` is none, sweeps or sweeps&mid. |
+| Enable / Draw / Filter | `dofp` 1PFVGs \[on\], `doifvg` IFVGs \[on\], `dowick` Wick C.E. \[on\]; `drawMode` \[all\]; `fltMode` \[none\] | `drawMode` is all, 1PFVGs, IFVGs or 1PFVGs+IFVGs. The IFVG modes hide regular FVGs, wicks, swing labels and signals; alerts keep working. `fltMode` is none, sweeps, sweeps&mid or relevant. |
 | FVG Settings | `visible` Historic compute \[off\], `dofvgalert`; `minfvg` \[3\], `maxfvg` \[10000\], `maxfvgs` keep \[200\]; `dupTol` merge tolerance \[10%\], `flL` / `flR` sweep pivots \[3 / 3\]; `drawStyle` \[Box\]; C.E. height / width / style; FVG colors | Size limits are in points. `dupTol = 0` turns merging off. `drawStyle` is Box, Box no fill, or Segments (hi / lo / C.E.). |
 | 1st Presented FVGs | `fpfvgtime` \[0930\], `tz` \[Auto\], `nfp` keep \[6\], `fp1m` from 1m candles \[on\]; day / week / inverse colors; `doifp` \[off\] | Session open for the 1PFVG; the week variant (Monday) has its own color. |
 | Wick Settings | `nwicks` \[30\], `minwick` \[20\], `wickdx` \[0 = auto\], style, color, `dowickalert` | Wick C.E. segments and their bounce alerts. |
@@ -199,6 +199,7 @@ With `fltMode = none`, every regular FVG is drawn. With `sweeps` or `sweeps&mid`
 - FVGs that are not shown wait in `pendF`. On a sweep, `onSweep()` shows the last one (the FVG created just before the sweep) and resets `fs.post` to 0, so the next `flN = 1` FVG is shown at creation.
 - With `sweeps&mid`, `onSweep()` also shows the largest pending FVG whose start lies within `flWin = 25`% of the arm length around the arm's middle. The arm runs from the last opposite short-term pivot to the sweep bar.
 - Before the first sweep nothing is shown. 1PFVGs and the close-mode IFVG logic are not filtered.
+- With `relevant` (`fltRel`), routed FVGs also go to `relF` (fields `swp`, `ext`, `dbar`). `onSweep()` shows the first FVG after the sweep as usual, but marks the last one before it `swp` instead of showing it; it is shown when a close goes through it. Any FVG flagged OTE is shown. `relSmall()` (height ≤ `mince`) makes `bgColor` move the transparency halfway to 100 and `lnColor` drop the border. Filled FVGs go to `relS`; once the pv0 pivots are known, a small one is hidden (`relHide`) unless `hasPiv` finds a pv0 pivot in \[sbar-1, sbar+3\], it is `ext` (widened by `mergeZone`) or kept / a candidate. On the last bar, `relB` boxes are drawn for live FVGs within `minATR` × ATR of the close. NinjaTrader: `FvgFilter = Relevant`, `RelStep()` after `AddLow(pv0, ...)`. Tradovate: `fltMode` relevant, `relStep(j)` after `updAtr()`. In both ports the near-price boxes are refreshed on each closed bar, not on every tick.
 
 ### Merging near-identical FVGs
 
