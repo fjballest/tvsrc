@@ -9,7 +9,7 @@ Oct 18, 2026 · @Francisco
 | Term | Meaning in this script |
 | --- | --- |
 | FVG | Three-candle gap, built from the candles at \[1\], \[2\], \[3\]. "Long" (bullish) when the low of \[1\] is above the high of \[3\]; "short" (bearish) when the high of \[1\] is below the low of \[3\]. The drawn zone is widened to candle bodies when a body gap exists (suspension blocks). |
-| 1PFVG | First presented FVG after the session open (09:30 New York, 09:00 Madrid for DAX), tracked only on minute charts up to 3m. Drawn in its own colors and extended to the right. |
+| 1PFVG | First presented FVG after the session open (09:30 New York, 09:00 Madrid for DAX), tracked on minute charts below 15m (above 1m from the 1m candles, `fp1m`). Drawn in its own colors and extended to the right. |
 | 1PFVG inverse | The first FVG after the 1PFVG with the opposite bias (optional). |
 | IFVG | An FVG that price closes through. A long FVG closed below its low becomes a bearish IFVG ("IFVG-"); a short FVG closed above its high becomes a bullish IFVG ("IFVG+"). |
 | OTE | Retracement band between oteMin and oteMax (0.62 / 0.79 by default) of a leg. An IFVG is an "OTE IFVG" when price rejected the OTE of the leg before the FVG, or when it retraces into an IFVG that sits in the OTE of the leg since the inversion. |
@@ -49,7 +49,7 @@ The settings dialog has seven sections, ordered so that what to draw and which F
 | --- | --- | --- |
 | Enable / Draw / Filter | `dofp` 1PFVGs \[on\], `doifvg` IFVGs \[on\], `dowick` Wick C.E. \[on\]; `drawMode` \[all\]; `fltMode` \[none\] | `drawMode` is all, 1PFVGs, IFVGs or 1PFVGs+IFVGs. The IFVG modes hide regular FVGs, wicks, swing labels and signals; alerts keep working. `fltMode` is none, sweeps or sweeps&mid. |
 | FVG Settings | `visible` Historic compute \[off\], `dofvgalert`; `minfvg` \[3\], `maxfvg` \[10000\], `maxfvgs` keep \[200\]; `dupTol` merge tolerance \[10%\], `flL` / `flR` sweep pivots \[3 / 3\]; `drawStyle` \[Box\]; C.E. height / width / style; FVG colors | Size limits are in points. `dupTol = 0` turns merging off. `drawStyle` is Box, Box no fill, or Segments (hi / lo / C.E.). |
-| 1st Presented FVGs | `fpfvgtime` \[0930\], `tz` \[Auto\], `nfp` keep \[6\]; day / week / inverse colors; `doifp` \[off\] | Session open for the 1PFVG; the week variant (Monday) has its own color. |
+| 1st Presented FVGs | `fpfvgtime` \[0930\], `tz` \[Auto\], `nfp` keep \[6\], `fp1m` from 1m candles \[on\]; day / week / inverse colors; `doifp` \[off\] | Session open for the 1PFVG; the week variant (Monday) has its own color. |
 | Wick Settings | `nwicks` \[30\], `minwick` \[20\], `wickdx` \[0 = auto\], style, color, `dowickalert` | Wick C.E. segments and their bounce alerts. |
 | IFVG Settings | Alerts, signals, labels; label parts `lblTf` OTE TF, `lblSign` + / -, `lblAp` A+ \[all on\]; `keepIFVG` + `keepMax` \[on / 20\]; `deConf` IFVG confirmation \[Close\]; `deInv` inversion rules \[off\], `deMaxInv` \[1\], `deDead` invalidated IFVG \[Fade\] + color; `ifvgswings` \[off\], significant swing, swing labels; `pivL` / `pivR` \[10 / 3\]; `atrLen` \[14\], `minATR` \[4\]; IFVG colors, transparency, text size and alignment | `ifvgswings` switches from the close-mode logic to the swing logic. `pivL` / `pivR` also set the pivots that find the leg before the FVG for OTE. |
 | IFVG + OTE | `oteFvg` \[on\], `useOTE`, `oteOnly`, `showOTEsig`; `oteMin` / `oteMax` \[0.62 / 0.79\], `oteMode` \[Overlap\]; prior-leg rejection (`oteRej`, `oteRejAny`, `oteRejCap`); `oteHtf1`, `oteHtf2`, `oteHtfL` / `oteHtfR` \[5 / 2\]; band draw, offset \[5\], width \[8\]; band, border and text colors | `oteMode` is Overlap, Fully inside or C.E. inside. The band is drawn `oteOffset` candles right of the last candle, plus `col * (oteWidth + 1)` for its timeframe column, and is `oteWidth` candles wide. |
@@ -130,7 +130,7 @@ Pine requires every function to return a value, so functions that only mutate st
 | --- | --- |
 | `isLongFVG`, `isShortFVG` | Gap tests: `l1 > h3` and `h1 < l3`. |
 | `longFVGHL`, `shortFVGHL` | Return the drawn zone extended to bodies, plus the wick-based zone used for the size filter. |
-| `isFPFVG` | True inside the 1PFVG window: hour = `fph`, minute beyond `fpm` plus two candles, minute chart up to 3m. |
+| `isFPFVG` | True inside the 1PFVG window: hour = `fph`, minute beyond `fpm` plus two candles, minute chart up to 3m, and the 1m path (`fpLow`) off. |
 | `clearlastfp` | Keeps at most `nfp` 1PFVGs; the oldest stops extending and is killed. |
 | `updfvgs(array)` | Per FVG: closes it when mitigated, creates its box or segments and C.E. line, follows the right edge, fires bounce alerts, and trims the array beyond `maxfvgs`. |
 | `bgColor`, `lnColor`, `endsAt`, `isDone`, `kill`, `alerts` | Methods on `FVG`: colors (with the hidden-by-draw-mode rule), end time, mitigation test, delete drawings, bounce alerts. |
@@ -188,6 +188,8 @@ Classification of a new FVG, in order:
 ### Life cycle
 
 An FVG is mitigated when a candle closes or opens beyond its far side (below `lo` for long, above `hi` for short). Its `end` is then fixed and the box stops growing. Each array is trimmed to `maxfvgs` by deleting the oldest. 1PFVGs and inverse 1PFVGs extend to the right until `clearlastfp` retires them.
+
+**1PFVG from the 1m candles.** `fpLowTf` (simple: `fp1m` and a minute chart above 1m and below 15m) selects "1" for `request.security_lower_tf` (else the chart timeframe, unused), returning the time / open / high / low / close arrays of the 1m candles of the chart bar; `fpLow` adds `dofp`. With `fpLow`, `isFPFVG` is false and, on each confirmed chart bar, every 1m candle newer than `fpLastT` is pushed to a 4-candle buffer (`fpO` / `fpH` / `fpL` / `fpC` / `fpT`) and tested as candle \[0\] of the 1m rule: no 1PFVG yet (`hasfp`), its hour = `fph` and minute beyond `fpm` + 2; `longFVGHL` / `shortFVGHL` on the three candles before it with the `minfvg` / `maxfvg` size test (bullish first). The FVG starts at the time of candle \[3\] of the buffer, `sbar` is the chart bar, it gets `isfp` / `iswfp` (Monday in `tz`) and goes to `fpfvgs` (`clearlastfp`). `hasfp` is reset by the chart bars as before, and the inverse 1PFVG still comes from the chart FVGs. NinjaTrader: a 1m series (`AddDataSeries`, BarsInProgress 6) is added in Configure only when needed (`FpFrom1m`, 2m to 14m chart), and `OnFp1mBar` applies the same test to each completed 1m bar. Tradovate: not available (no lower timeframe data).
 
 ### Sweep filter
 

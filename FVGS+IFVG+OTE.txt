@@ -147,6 +147,9 @@ var tz = input.string("Auto", "TZ", group = GRP_F1, inline = "fp",
     tooltip = "Auto: 9:00 Madrid for DAX, 9:30 New York otherwise.")
 var nfp = input.int(6, "Keep", group = GRP_F1, inline = "fp",
     tooltip = "Number of 1st presented FVGs kept.")
+fp1m = input.bool(true, "From 1m candles", group = GRP_F1, inline = "fp",
+    tooltip = "On charts above 1m and below 15m, the 1st presented FVG is found on the 1m candles "+
+        "(request.security_lower_tf) instead of the chart candles. Off: only on 1m to 3m charts, from the chart candles.")
 
 var fpcol = input.color( color.new(#00fbff, 90), "Day 1PFVG", group = GRP_F1, inline = "fp1")
 var lnfpcol = input.color( color.new(#0097a7, 20), "border", group = GRP_F1, inline = "fp1")
@@ -283,7 +286,7 @@ brkMode = input.string("Last candle", "Zone", options = ["Last candle", "Whole s
     inline = "bm", tooltip = "Last candle: the last up-close candle making the high (bullish) / down-close "
     + "candle making the low (bearish). Whole sequence: that candle and the consecutive up-close / down-close "
     + "candles before it.")
-brkLen = input.int(3, "Swing length / keep", minval = 1, maxval = 20, group = G_BRK, inline = "bl",
+brkLen = input.int(5, "Swing length / keep", minval = 1, maxval = 20, group = G_BRK, inline = "bl",
     tooltip = "Pivot length (left and right) of the lows and highs, and breakers kept per direction.")
 brkKeep = input.int(3, "", minval = 1, maxval = 10, group = G_BRK, inline = "bl")
 brkBox = input.bool(false, "Rectangle", group = G_BRK, inline = "bc",
@@ -314,7 +317,7 @@ mbMode = input.string("Last candle", "Zone", options = ["Last candle", "Whole se
     inline = "mm", tooltip = "Last candle: the last up-close candle making the high (bullish) / down-close "
     + "candle making the low (bearish). Whole sequence: that candle and the consecutive up-close / down-close "
     + "candles before it.")
-mbLen = input.int(3, "Swing length / keep", minval = 1, maxval = 20, group = G_MB, inline = "ml",
+mbLen = input.int(5, "Swing length / keep", minval = 1, maxval = 20, group = G_MB, inline = "ml",
     tooltip = "Pivot length (left and right) of the lows and highs, and mitigation blocks kept per direction.")
 mbKeep = input.int(3, "", minval = 1, maxval = 10, group = G_MB, inline = "ml")
 mbBox = input.bool(false, "Rectangle", group = G_MB, inline = "mc",
@@ -639,6 +642,11 @@ shortFVGHL(o1,c1,h1,l1,o2,c2,h2,l2,o3,c3,h3,l3) =>
         lo := bhi1
     [hi, lo, fhi, flo]
 
+// 1PFVG from the 1m candles (charts above 1m and below 15m)
+// (simple: also selects the timeframe of request.security_lower_tf)
+bool fpLowTf = fp1m and timeframe.isminutes and timeframe.in_seconds() > 60 and timeframe.in_seconds() < 900
+bool fpLow = dofp and fpLowTf
+
 isFPFVG() =>
     r = dofp
     if r
@@ -647,7 +655,7 @@ isFPFVG() =>
         nmin = 2
         if timeframe.isminutes
             nmin := tfsecs/60 * 2
-        r := h == fph and m > fpm+nmin and timeframe.isminutes and tfsecs/60 <=3
+        r := h == fph and m > fpm+nmin and timeframe.isminutes and tfsecs/60 <=3 and not fpLow
     r
 if bar_index == 0
     log.info("fpfvg h {0} fpfvgm {1}", fph, fpm)
@@ -1133,6 +1141,50 @@ if true
             fs.route(f)
         else 
             f.kill()
+
+// 1PFVG from the 1m candles: the 1m candles of this chart bar, in order, each one tested as candle [0] of
+// isFPFVG on the 1m chart (candles [1] to [3] are the three before it)
+[l1t, l1o, l1h, l1l, l1c] = request.security_lower_tf(syminfo.tickerid, fpLowTf ? "1" : timeframe.period,
+     [time, open, high, low, close])
+var array<float> fpO = array.new<float>()
+var array<float> fpH = array.new<float>()
+var array<float> fpL = array.new<float>()
+var array<float> fpC = array.new<float>()
+var array<int> fpT = array.new<int>()
+var int fpLastT = na
+if fpLow and barstate.isconfirmed and not na(l1t) and l1t.size() > 0
+    for j = 0 to l1t.size() - 1
+        int t0 = l1t.get(j)
+        if na(fpLastT) or t0 > fpLastT
+            fpLastT := t0
+            fpO.push(l1o.get(j))
+            fpH.push(l1h.get(j))
+            fpL.push(l1l.get(j))
+            fpC.push(l1c.get(j))
+            fpT.push(t0)
+            if fpT.size() > 4
+                fpO.shift()
+                fpH.shift()
+                fpL.shift()
+                fpC.shift()
+                fpT.shift()
+            if fpT.size() == 4 and not hasfp and hour(t0, tz) == fph and minute(t0, tz) > fpm + 2
+                // index 2: candle [1], 1: [2], 0: [3]
+                [lhi, llo, lfhi, lflo] = longFVGHL(fpO.get(2), fpC.get(2), fpH.get(2), fpL.get(2),
+                     fpO.get(1), fpC.get(1), fpH.get(1), fpL.get(1), fpO.get(0), fpC.get(0), fpH.get(0), fpL.get(0))
+                [shi, slo, sfhi, sflo] = shortFVGHL(fpO.get(2), fpC.get(2), fpH.get(2), fpL.get(2),
+                     fpO.get(1), fpC.get(1), fpH.get(1), fpL.get(1), fpO.get(0), fpC.get(0), fpH.get(0), fpL.get(0))
+                bool isL = lfhi - lflo > minfvg and lfhi - lflo < maxfvg
+                bool isS = sfhi - sflo > minfvg and sfhi - sflo < maxfvg
+                if isL or isS
+                    FVG f = isL ? FVG.new(lhi, llo, math.avg(lhi, llo), true, fpT.get(0))
+                         : FVG.new(shi, slo, math.avg(shi, slo), false, fpT.get(0))
+                    f.sbar := bar_index
+                    f.isfp := true
+                    f.iswfp := dayofweek(t0, tz) == dayofweek.monday
+                    hasfp := true
+                    fpfvgs.push(f)
+                    clearlastfp(fpfvgs)
 
 updfvgs(array<FVG> fvgs) =>
     if fvgs.size() > 0

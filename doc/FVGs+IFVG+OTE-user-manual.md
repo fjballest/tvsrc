@@ -9,7 +9,7 @@ The indicator works on the chart timeframe. It finds fair value gaps (FVGs) on y
 | Element | What it is | Drawn as |
 | --- | --- | --- |
 | FVG | Three-candle gap on the chart timeframe, bullish or bearish | Box (or box without fill, or high / low / C.E. lines), with a dotted C.E. line when it is large enough |
-| 1st presented FVG (1PFVG) | First FVG after the session open (09:30 New York, 09:00 Madrid for DAX), on 1m to 3m charts | Cyan box (blue on Mondays, see section 5) extended to the right, with C.E. |
+| 1st presented FVG (1PFVG) | First FVG after the session open (09:30 New York, 09:00 Madrid for DAX), on minute charts below 15m | Cyan box (blue on Mondays, see section 5) extended to the right, with C.E. |
 | Inverse 1PFVG | Optional: the first FVG of the opposite bias after the 1PFVG | Dark magenta box extended to the right |
 | Wick C.E. | Midpoint of a large upper or lower candle wick | Short black horizontal segment |
 | IFVG candidate | The latest bullish and bearish FVG, under watch for inversion | The FVG's own box restyled in IFVG colors, thicker border, no label |
@@ -24,7 +24,7 @@ The indicator raises alerts for IFVG signals, OTE IFVG signals and, optionally, 
 ## 2. Quick start
 
 1. Add "FVGs+IFVG+OTE5" to the chart.
-2. Use an intraday execution chart. For the full feature set on NQ or DAX use **1m or 3m** (1PFVGs are only tracked up to 3m) or **5m** (higher timeframe OTE on 15m and 1h).
+2. Use an intraday execution chart. For the full feature set on NQ or DAX use **1m or 3m** (1PFVGs are tracked on minute charts below 15m) or **5m** (higher timeframe OTE on 15m and 1h).
 3. Start with the defaults: all FVGs drawn, 1PFVGs, wick C.E. and IFVGs on, close-mode IFVGs, OTE detection on the chart and the next two higher timeframes, IFVG alerts on, all Delivery Engine features off.
 4. Create one TradingView alert with the condition **"Any alert() function call"** on this indicator (see section 13). That alert delivers the IFVG and OTE IFVG messages.
 5. If the chart is too busy, change **Draw** to `IFVGs` (only IFVG boxes and OTE bands) or `1PFVGs+IFVGs`, or set **FVG filter** to `sweeps`.
@@ -44,8 +44,8 @@ The indicator raises alerts for IFVG signals, OTE IFVG signals and, optionally, 
 
 | Chart | 1PFVG | HTF OTE trackers | Killzone filter (A+) |
 | --- | --- | --- | --- |
-| Seconds, 1m, 2m, 3m, 4m | Yes (minute charts up to 3m only) | 5m and 15m | Applied |
-| 5m | No | 15m and 1h | Applied |
+| Seconds, 1m, 2m, 3m, 4m | Yes (minute charts; from the 1m candles above 1m) | 5m and 15m | Applied |
+| 5m | Yes (from the 1m candles) | 15m and 1h | Applied |
 | 15m | No | 1h and 4h | Applied |
 | 1h | No | 4h and D | Ignored |
 | 4h | No | D only | Ignored |
@@ -160,7 +160,7 @@ A cyan box (default) for the first FVG after the session open, extended to the r
 
 - **Session time**: **Time** (default `0930`) in the **TZ** time zone. With TZ = `Auto` the script uses 09:30 America/New_York, except for symbols whose ticker or description contains `DAX`, `FDX` or `Germany`, where it uses 09:00 Europe/Madrid (the **Time** input is then ignored). With any other TZ value the **Time** input is used as typed.
 - **Which FVG**: the first FVG whose three candles all opened at or after the session time, detected within the same clock hour as the session time (for 09:30, until 09:59). If no FVG forms in that hour there is no 1PFVG that day.
-- **Charts**: only minute charts of 3m or lower (1m, 2m, 3m).
+- **Charts**: minute charts below 15m. **From 1m candles** (on): on charts above 1m (2m to 14m) the 1PFVG is found on the 1m candles of the chart bars (the same rule, applied to the 1m candles), so it is the same box as on a 1m chart; its left edge can fall inside a chart candle. The 1m candles are read when a chart bar closes. Off: only 1m to 3m charts, from the chart candles. The NinjaTrader port does the same with an added 1m series; the Tradovate port cannot read 1m candles and always uses the chart candles (1m to 3m).
 - **Week 1PFVG**: on Mondays the 1PFVG, bullish or bearish, is drawn in the week colors (blue).
 - **Inverse 1PFVG** (**1PFVG inverse**, off by default): the first FVG of the opposite bias after the 1PFVG, in the same hour.
 - **Keep** (6): number of 1PFVGs kept; when a new one appears the oldest is removed. Inverse 1PFVGs share this list.
@@ -334,7 +334,7 @@ This feature is on by default. It may be removed in a future version.
 
 - **Bullish breaker:** a swing low, a swing high, then a lower swing low. The breaker zone is the last up-close candle making the high (searched from the swing high back towards the first low). With **Zone** set to *Whole sequence*, it also includes the consecutive up-close candles before that one.
 - **Bearish breaker:** a swing high, a swing low, then a higher swing high. The zone is the last down-close candle making the low, or the whole sequence of down-close candles there.
-- Swings are pivots with **Swing length** (3) candles on each side, so a breaker is known 3 candles after its second low / high.
+- Swings are pivots with **Swing length** (5) candles on each side, so a breaker is known 5 candles after its second low / high.
 
 ### Entries and the breaker rectangle
 
@@ -359,7 +359,7 @@ Mitigation blocks work like breakers (section 10), with the opposite third swing
 
 - **Bullish mitigation block:** a swing low, a swing high, then a **higher** swing low. The zone is at the high: the last up-close candle making it, or with **Zone** *Whole sequence* also the consecutive up-close candles before it.
 - **Bearish mitigation block:** a swing high, a swing low, then a **lower** swing high. The zone is at the low: the last down-close candle making it, or the whole down-close sequence there.
-- Swings are pivots with **Swing length** (3) candles on each side.
+- Swings are pivots with **Swing length** (5) candles on each side.
 
 ### Entries and labels
 
@@ -480,7 +480,7 @@ Inputs on one line in the settings dialog are listed together; a field without i
 | --- | --- | --- |
 | Breakers at FVG / IFVG pullbacks | on | Finds breakers and draws those that an FVG / IFVG overlaps on the pullback (section 10) |
 | Zone | Last candle | *Last candle*: the last up-close (bullish) / down-close (bearish) candle making the high / low. *Whole sequence*: that candle and the consecutive ones of the same color before it |
-| Swing length / keep | 3 / 3 | Pivot length (left and right) of the swings, and breakers followed per direction |
+| Swing length / keep | 5 / 3 | Pivot length (left and right) of the swings, and breakers followed per direction |
 | Rectangle, (color), (style), width | off / fuchsia / dashed / 1 | Draw the breaker rectangle and its mid line, with this color, line style and width. Off: nothing is drawn, but the bold IFVG labels and the B↑ / B↓ labels are still set |
 | Flag candles | off | Color the breaker candle(s) with the rectangle color when it is tagged at the pullback, with or without the rectangle; removed together with the rectangle |
 | Shadow rectangle (same line as Flag candles) | off | Draw the breaker as a grey transparent rectangle without border instead of the dashed one, also when Rectangle is off; the mid line stays |
@@ -491,7 +491,7 @@ Inputs on one line in the settings dialog are listed together; a field without i
 | --- | --- | --- |
 | Mitigation blocks at FVG / IFVG pullbacks | on | Finds mitigation blocks and draws those that an FVG / IFVG overlaps on the pullback (section 11) |
 | Zone | Last candle | *Last candle*: the last up-close (bullish) / down-close (bearish) candle making the high / low. *Whole sequence*: that candle and the consecutive ones of the same color before it |
-| Swing length / keep | 3 / 3 | Pivot length (left and right) of the swings, and blocks followed per direction |
+| Swing length / keep | 5 / 3 | Pivot length (left and right) of the swings, and blocks followed per direction |
 | Rectangle, (color), (style), width | off / orange / dashed / 1 | Draw the rectangle and its mid line. Off: nothing is drawn, but the bold IFVG labels with arrows and the M↑ / M↓ labels are still set |
 | Flag candles | off | Color the mitigation block candle(s) with the rectangle color when it is tagged at the pullback, with or without the rectangle; removed together with the rectangle |
 | Shadow rectangle (same line as Flag candles) | off | Draw the mitigation block as a grey transparent rectangle without border instead of the dashed one, also when Rectangle is off; the mid line stays |

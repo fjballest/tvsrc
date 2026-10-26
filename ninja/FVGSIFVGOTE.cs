@@ -267,6 +267,7 @@ namespace NinjaTrader.NinjaScript.Indicators
         private PivSet pv0, pv1, pv2;
         private List<HtfPiv> pend1, pend2;
         private int htfIdx1, htfIdx2;
+        private int fp1mIdx = -1;   // BarsInProgress of the 1m series of the 1PFVG, -1 when not used
         private bool hasH1, hasH2;
         private OteGroup gBear, gBull, gSw;
 
@@ -318,6 +319,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                 BarsRequiredToPlot = 0;
 
                 Show1PFVGs = true;
+                FpFrom1m = true;
                 ShowIFVGs = true;
                 ShowWickCE = true;
                 DrawSelection = FioDrawMode.All;
@@ -403,7 +405,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                 OteTextColor = MkBrush(0x363A45, 0);
                 BreakersOn = true;
                 BreakerZone = FioZoneMode.LastCandle;
-                BreakerSwingLength = 3;
+                BreakerSwingLength = 5;
                 BreakersKept = 3;
                 BreakerRectangle = false;
                 BreakerColor = MkBrush(0xE040FB, 0);
@@ -413,7 +415,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                 BreakerShadow = false;
                 MitigationOn = true;
                 MitigationZone = FioZoneMode.LastCandle;
-                MitigationSwingLength = 3;
+                MitigationSwingLength = 5;
                 MitigationKept = 3;
                 MitigationRectangle = false;
                 MitigationColor = MkBrush(0xFF9800, 0);
@@ -447,6 +449,14 @@ namespace NinjaTrader.NinjaScript.Indicators
                 AddDataSeries(BarsPeriodType.Minute, 60);   // 3
                 AddDataSeries(BarsPeriodType.Minute, 240);  // 4
                 AddDataSeries(BarsPeriodType.Day, 1);       // 5
+                // 1PFVG from the 1m candles on charts above 1m and below 15m
+                fp1mIdx = -1;
+                if (Show1PFVGs && FpFrom1m && BarsPeriod.BarsPeriodType == BarsPeriodType.Minute
+                    && BarsPeriod.Value > 1 && BarsPeriod.Value < 15)
+                {
+                    AddDataSeries(BarsPeriodType.Minute, 1); // 6
+                    fp1mIdx = 6;
+                }
             }
             else if (State == State.DataLoaded)
             {
@@ -735,6 +745,11 @@ namespace NinjaTrader.NinjaScript.Indicators
         protected override void OnBarUpdate()
         {
             if (b0 == null) return;
+            if (BarsInProgress != 0 && BarsInProgress == fp1mIdx)
+            {
+                OnFp1mBar();
+                return;
+            }
             if (BarsInProgress != 0)
             {
                 OnHtfBar(BarsInProgress);
@@ -1262,7 +1277,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                 DateTime t = ToZone(BarOpen(0), tzInfo);
                 int nmin = 2;
                 if (isMinutes) nmin = (int)(tfmin * 2);
-                r = t.Hour == fph && t.Minute > fpm + nmin && isMinutes && tfmin <= 3;
+                r = t.Hour == fph && t.Minute > fpm + nmin && isMinutes && tfmin <= 3 && fp1mIdx < 0;
             }
             return r;
         }
@@ -1724,6 +1739,52 @@ namespace NinjaTrader.NinjaScript.Indicators
             if (hasH1 && k == htfIdx1) HtfPivots(hb, p, pend1);
             if (hasH2 && k == htfIdx2) HtfPivots(hb, p, pend2);
             if (deHtfUse && k == deHtfIdx) HtfStruct(hb, p);
+        }
+
+        // 1PFVG from the 1m candles: each completed 1m candle is candle [0] of IsFPFVG on the 1m chart
+        // (candles [1] to [3] are the three before it); Pine: request.security_lower_tf
+        private void OnFp1mBar()
+        {
+            int ho = 0;
+            if (Calculate != Calculate.OnBarClose)
+            {
+                if (!IsFirstTickOfBar) return;
+                ho = 1; // completed 1m bars only
+            }
+            int p = CurrentBars[fp1mIdx] - ho;
+            if (p < 3 || hasfp || fpfvgs == null) return;
+            NinjaTrader.Data.Bars mb = BarsArray[fp1mIdx];
+            DateTime t0 = ToZone(mb.GetTime(p).AddMinutes(-1), tzInfo); // open time of candle [0]
+            if (t0.Hour != fph || t0.Minute <= fpm + 2) return;
+            double o1 = mb.GetOpen(p - 1), c1 = mb.GetClose(p - 1), h1 = mb.GetHigh(p - 1), l1 = mb.GetLow(p - 1);
+            double o2 = mb.GetOpen(p - 2), c2 = mb.GetClose(p - 2);
+            double o3 = mb.GetOpen(p - 3), c3 = mb.GetClose(p - 3), h3 = mb.GetHigh(p - 3), l3 = mb.GetLow(p - 3);
+            double bhi2 = Math.Max(o2, c2), blow2 = Math.Min(o2, c2);
+            Fvg f = null;
+            // long: low of [1] above the high of [3]; include suspension blocks
+            if (l1 - h3 > MinFvgSize && l1 - h3 < MaxFvgSize)
+            {
+                double hi = l1, lo = h3;
+                if (Math.Max(o3, c3) < blow2) lo = Math.Max(o3, c3);
+                if (Math.Min(o1, c1) > bhi2) hi = Math.Min(o1, c1);
+                f = new Fvg { hi = hi, lo = lo, ce = (hi + lo) / 2.0, islong = true };
+            }
+            // short: high of [1] below the low of [3]
+            else if (l3 - h1 > MinFvgSize && l3 - h1 < MaxFvgSize)
+            {
+                double hi = l3, lo = h1;
+                if (Math.Min(o3, c3) > bhi2) hi = Math.Min(o3, c3);
+                if (Math.Max(o1, c1) < blow2) lo = Math.Max(o1, c1);
+                f = new Fvg { hi = hi, lo = lo, ce = (hi + lo) / 2.0, islong = false };
+            }
+            if (f == null) return;
+            f.start = mb.GetTime(p - 3);
+            f.sbar = Math.Max(bi, 0);
+            f.isfp = true;
+            f.iswfp = ToZone(mb.GetTime(p).AddMinutes(-1), exchTz).DayOfWeek == DayOfWeek.Monday;
+            hasfp = true;
+            fpfvgs.Add(f);
+            ClearLastFp();
         }
 
         // a pivot of a completed HTF bar, registered on the next chart bar (Pine: request.security [1] + lookahead_on)
@@ -3350,6 +3411,10 @@ namespace NinjaTrader.NinjaScript.Indicators
             get { return Serialize.BrushToString(FpWeekBorder); }
             set { FpWeekBorder = Serialize.StringToBrush(value); }
         }
+
+        [NinjaScriptProperty]
+        [Display(Name = "From 1m candles", GroupName = "1st Presented FVGs", Order = 310, Description = "On charts above 1m and below 15m, the 1st presented FVG is found on the 1m candles instead of the chart candles. Off: only on 1m to 3m charts, from the chart candles.")]
+        public bool FpFrom1m { get; set; }
 
         [NinjaScriptProperty]
         [Display(Name = "1PFVG inverse", GroupName = "1st Presented FVGs", Order = 308, Description = "Also draw the first FVG of the opposite bias after the 1PFVG.")]

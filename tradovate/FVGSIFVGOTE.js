@@ -38,6 +38,9 @@
  *     Bar timestamps are taken as bar open times (as Pine "time").
  *     The chart timeframe is inferred from the bar timestamps (smallest step seen), so tick / range / renko
  *     / volume charts are not supported by the HTF ladder, the 1PFVG and the killzones.
+ *     Pine "From 1m candles" (1PFVG from the 1m candles on 2m to 14m charts, request.security_lower_tf) has
+ *     no equivalent: lower timeframe candles are not available here, so the 1PFVG is found on the chart
+ *     candles of 1m to 3m charts only, as with that option off.
  *   - Symbol: Pine "TZ = Auto" looks for DAX in the symbol. Tradovate does not reliably expose the symbol to
  *     a calculator, so the parameter "market" (Auto / US / EU) replaces "tz": Auto tries to read the
  *     contract name (FDAX / FDXM / DAX -> EU 09:00 Madrid) and falls back to US (New York). EU = Madrid
@@ -129,11 +132,11 @@ const PARAMS = [
     ["oteBandCol", "c", TV.yellow], ["oteHighlight", "c", TV.yellow], ["oteTextCol", "c", TV.black],
     // Breakers
     ["brkOn", "b", true], ["brkMode", "e", "last", { last: "Last candle", sequence: "Whole sequence" }],
-    ["brkLen", "n", 3, [1, 1]], ["brkKeep", "n", 3, [1, 1]], ["brkBox", "b", false], ["brkCol", "c", TV.fuchsia],
+    ["brkLen", "n", 5, [1, 1]], ["brkKeep", "n", 3, [1, 1]], ["brkBox", "b", false], ["brkCol", "c", TV.fuchsia],
     ["brkSty", "e", "dashed", STYLE_OPTS], ["brkW", "n", 1, [1, 1]], ["brkFlag", "b", false], ["brkShd", "b", false],
     // Mitigation blocks
     ["mbOn", "b", true], ["mbMode", "e", "last", { last: "Last candle", sequence: "Whole sequence" }],
-    ["mbLen", "n", 3, [1, 1]], ["mbKeep", "n", 3, [1, 1]], ["mbBox", "b", false], ["mbCol", "c", TV.orange],
+    ["mbLen", "n", 5, [1, 1]], ["mbKeep", "n", 3, [1, 1]], ["mbBox", "b", false], ["mbCol", "c", TV.orange],
     ["mbSty", "e", "dashed", STYLE_OPTS], ["mbW", "n", 1, [1, 1]], ["mbFlag", "b", false], ["mbShd", "b", false],
     // Delivery Engine
     ["deDisp", "b", false], ["deDispType", "e", "oc", { oc: "Open to Close", hl: "High to Low" }],
