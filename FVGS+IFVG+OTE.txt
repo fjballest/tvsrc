@@ -30,7 +30,7 @@ indicator("FVGs+IFVG+OTE5",
     overlay=true, 
     max_lines_count    = 500,
     max_boxes_count    = 500,
-    max_bars_back      = 4050)
+    max_bars_back      = 5000)
 
 
 getstyle(s) =>
@@ -385,22 +385,11 @@ plMode = input.string("auto", "Poor liquidity", options = ["auto", "yes", "no"],
         "ignored (FVG boxes are not extended over body gaps), and two up-close (down-close) candles in a row "+
         "with a gap between them make a bullish (bearish) FVG, as if an up (down) candle was in the middle. "+
         "auto: on for nano futures only (symbol or description with Nano / NNQ).")
-plAlt = input.bool(false, "Data from another symbol", group = G_PL, inline = "plsym",
-    tooltip = "Compute everything from the candles of this symbol, at the chart timeframe, and draw it "+
-        "on this chart. E.g. MNQ data on an NNQ chart. auto poor liquidity is then off.")
-plSym = input.symbol("CME_MINI:MNQ1!", "", group = G_PL, inline = "plsym")
-string dataSym = plAlt ? plSym : syminfo.tickerid
-[dO, dH, dL, dC] = request.security(dataSym, timeframe.period, [open, high, low, close],
-     gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_off)
-// 4050 bars of history for all series (the leg scans go back 4000 bars), 5000 for time
-// (barOfTime); 5000 for all no longer fits the total limit with the data-symbol series
-max_bars_back(time, 5000)
-float dTR = na(dC[1]) ? dH - dL : math.max(dH - dL, math.abs(dH - dC[1]), math.abs(dL - dC[1]))
-bool poorLiq = plMode == "yes" or (plMode == "auto" and not plAlt and (str.contains(str.lower(syminfo.description), "nano")
+bool poorLiq = plMode == "yes" or (plMode == "auto" and (str.contains(str.lower(syminfo.description), "nano")
      or str.startswith(syminfo.root, "NNQ") or str.startswith(syminfo.ticker, "NNQ")))
 
 bounces(p) =>
-    (math.abs(p-dL) < 2 and dC > dL+10) or (math.abs(p-dH)<2 and dC < dH-10)
+    (math.abs(p-low) < 2 and close > low+10) or (math.abs(p-high)<2 and close < high-10)
 
 var debug=false
 var tfsecs = timeframe.in_seconds()
@@ -414,17 +403,17 @@ wdx() =>
     r
 var wicks = array.new<line>()
 if dowick
-    bodyh = math.max(dO[1],dC[1])
-    bodyl = math.min(dO[1],dC[1])
-    wh = dH[1]-bodyh
-    wl = bodyl-dL[1]
+    bodyh = math.max(open[1],close[1])
+    bodyl = math.min(open[1],close[1])
+    wh = high[1]-bodyh
+    wl = bodyl-low[1]
     
     if wh > minwick
-        ce = math.avg(dH[1],bodyh)
+        ce = math.avg(high[1],bodyh)
         ln = line.new(bar_index-1, ce, bar_index-1+wdx(), ce, style = wicksty, color = hideReg ? color.new(wickcol, 100) : wickcol)
         wicks.push(ln)
     if wl > minwick
-        ce = math.avg(dL[1],bodyl)
+        ce = math.avg(low[1],bodyl)
         ln = line.new(bar_index-1, ce, bar_index-1+wdx(), ce, style = wicksty, color = hideReg ? color.new(wickcol, 100) : wickcol)
         wicks.push(ln)
     if wicks.size() > nwicks
@@ -435,7 +424,7 @@ if dowick
             p = w.get_y1()
             if bounces(p)
                 if debug
-                    line.new(bar_index,dL,bar_index,dH,extend = extend.both)
+                    line.new(bar_index,low,bar_index,high,extend = extend.both)
                 alert("bounce on wick C.E.", alert.freq_once_per_bar)
 
 // FVGs ======================================================
@@ -516,8 +505,8 @@ var float otePL = na
 var int otePLb = na
 var float otePH = na
 var int otePHb = na
-float otePivL = ta.pivotlow(dL, pivL, pivR)
-float otePivH = ta.pivothigh(dH, pivL, pivR)
+float otePivL = ta.pivotlow(low, pivL, pivR)
+float otePivH = ta.pivothigh(high, pivL, pivR)
 if not na(otePivL)
     otePL := otePivL
     otePLb := bar_index - pivR
@@ -534,19 +523,19 @@ method oteInit(FVG f) =>
             n := math.min(bar_index - otePLb, 4000)
         else if not f.islong and not na(otePHb) and otePHb <= bar_index - 3
             n := math.min(bar_index - otePHb, 4000)
-        float lo = dL[1]
-        float hi = dH[1]
+        float lo = low[1]
+        float hi = high[1]
         for k = 1 to n
             if f.islong
-                lo := math.min(lo, dL[k])
+                lo := math.min(lo, low[k])
             else
-                hi := math.max(hi, dH[k])
+                hi := math.max(hi, high[k])
         if f.islong
             f.oLo := lo
-            f.oHi := math.max(dH[1], dH[2], dH[3])
+            f.oHi := math.max(high[1], high[2], high[3])
         else
             f.oHi := hi
-            f.oLo := math.min(dL[1], dL[2], dL[3])
+            f.oLo := math.min(low[1], low[2], low[3])
 
 // [OTEF] once per bar for a live FVG: true on the bar it retraces into the FVG while it matches the OTE band
 method oteFvgStep(FVG f) =>
@@ -559,15 +548,15 @@ method oteFvgStep(FVG f) =>
             bool m = oteMode == "Overlap" ? f.hi >= bLo and f.lo <= bHi
                  : oteMode == "Fully inside" ? f.lo >= bLo and f.hi <= bHi
                  : f.ce >= bLo and f.ce <= bHi
-            bool tap = f.islong ? dL <= f.hi : dH >= f.lo
+            bool tap = f.islong ? low <= f.hi : high >= f.lo
             if m and tap
                 f.ote := true
                 hit := true
         // keep extending the leg AFTER evaluating this bar
         if f.islong
-            f.oHi := math.max(f.oHi, dH)
+            f.oHi := math.max(f.oHi, high)
         else
-            f.oLo := math.min(f.oLo, dL)
+            f.oLo := math.min(f.oLo, low)
     hit
 
 method kill(FVG f) =>
@@ -596,7 +585,7 @@ method alerts(FVG f) =>
         alert("bounce on CE", alert.freq_once_per_bar)
         a := true
     if a and debug
-        line.new(bar_index,dL,bar_index,dH,extend = extend.both)
+        line.new(bar_index,low,bar_index,high,extend = extend.both)
     a
 
 
@@ -804,7 +793,7 @@ updKept() =>
                 f.kept := false
                 f.cand := false
                 keptIf.remove(i)
-            else if not f.cand and barstate.isconfirmed and (f.kdir < 0 ? dC > f.hi : dC < f.lo)
+            else if not f.cand and barstate.isconfirmed and (f.kdir < 0 ? close > f.hi : close < f.lo)
                 f.restore()
                 keptIf.remove(i)
             else
@@ -949,15 +938,15 @@ onSweep(int armStart) =>
 
 // [DE] Delivery Engine =========================================================
 // displacement: candle range vs. its standard deviation (TFO criterion of the Delivery Engine)
-float deRange = deDispType == "Open to Close" ? math.abs(dO - dC) : dH - dL
+float deRange = deDispType == "Open to Close" ? math.abs(open - close) : high - low
 float deStd = ta.stdev(deRange, deStdLen) * deStdX
 bool deDispOK = deRange[2] > deStd[2]   // middle candle of the FVG detected on this bar
 // the middle candle of a displacement FVG (detected one candle later, hence the offset)
-bool deDispFvg = deRange[1] > deStd[1] and (dC[1] > dO[1] ? dH[2] < dL : dL[2] > dH)
+bool deDispFvg = deRange[1] > deStd[1] and (close[1] > open[1] ? high[2] < low : low[2] > high)
 barcolor(deDispBar and deDispFvg ? deDispCol : na, offset = -1)
 float deStdMss = ta.stdev(deRange, deStdLen) * deMssX
-bool deDispUp = nz(ta.barssince(deRange > deStdMss and dC > dO), 999) <= deMssWin
-bool deDispDn = nz(ta.barssince(deRange > deStdMss and dC < dO), 999) <= deMssWin
+bool deDispUp = nz(ta.barssince(deRange > deStdMss and close > open), 999) <= deMssWin
+bool deDispDn = nz(ta.barssince(deRange > deStdMss and close < open), 999) <= deMssWin
 
 // killzones (ICTlevels sessions) in the 1PFVG time zone; ignored above 15m
 bool deUS = tz != "Europe/Madrid"
@@ -986,26 +975,26 @@ deStruct(int len) =>
         sl := pl
     d
 bool deHtfUse = deHtfOn and timeframe.in_seconds(deHtf) > tfsecs
-int deHtfDir = request.security(dataSym, deHtfUse ? deHtf : timeframe.period, deStruct(deLiqLen)[1],
+int deHtfDir = request.security(syminfo.tickerid, deHtfUse ? deHtf : timeframe.period, deStruct(deLiqLen)[1],
      lookahead = barmerge.lookahead_on)
 bool deHtfUp = not deHtfUse or nz(deHtfDir) == 1
 bool deHtfDn = not deHtfUse or nz(deHtfDir) == -1
 
 // swing liquidity (BSL / SSL) not taken yet, and its sweeps
-float dePH = ta.pivothigh(dH, deLiqLen, deLiqLen)
-float dePL = ta.pivotlow(dL, deLiqLen, deLiqLen)
+float dePH = ta.pivothigh(high, deLiqLen, deLiqLen)
+float dePL = ta.pivotlow(low, deLiqLen, deLiqLen)
 var array<float> deBsl = array.new<float>()
 var array<float> deSsl = array.new<float>()
 var int deLastBsl = na   // bar of the last sweep of a swing high
 var int deLastSsl = na
 if deBsl.size() > 0
     for i = deBsl.size() - 1 to 0
-        if dH > deBsl.get(i)
+        if high > deBsl.get(i)
             deBsl.remove(i)
             deLastBsl := bar_index
 if deSsl.size() > 0
     for i = deSsl.size() - 1 to 0
-        if dL < deSsl.get(i)
+        if low < deSsl.get(i)
             deSsl.remove(i)
             deLastSsl := bar_index
 bool deSslRecent = not na(deLastSsl) and bar_index - deLastSsl <= deSeqWin
@@ -1017,8 +1006,8 @@ deAp(int d) =>
 
 // structure of the chart (swings of deMssLen): MSS = break of the last swing against the structure with
 // displacement, or a break with displacement in the direction of a recent CHoCH (break without displacement)
-float deMPH = ta.pivothigh(dH, deMssLen, deMssLen)
-float deMPL = ta.pivotlow(dL, deMssLen, deMssLen)
+float deMPH = ta.pivothigh(high, deMssLen, deMssLen)
+float deMPL = ta.pivotlow(low, deMssLen, deMssLen)
 var float deShP = na
 var float deSlP = na
 var int deDir = 0
@@ -1026,7 +1015,7 @@ var int deMssUpBar = na    // bar of the last A+ MSS up
 var int deMssDnBar = na
 var int deChochUp = na     // bar of the last CHoCH up, while it can still be upgraded to an MSS
 var int deChochDn = na
-if not na(deShP) and dC > deShP
+if not na(deShP) and close > deShP
     bool isRev = deDir != 1
     bool upg = not isRev and not na(deChochUp) and bar_index - deChochUp <= deSeqWin and deDispUp
     bool isMss = (isRev or upg) and deDispUp
@@ -1045,7 +1034,7 @@ if not na(deShP) and dC > deShP
                     f.rect.set_text(fvgLbl(f))
     deDir := 1
     deShP := na
-if not na(deSlP) and dC < deSlP
+if not na(deSlP) and close < deSlP
     bool isRev = deDir != -1
     bool upg = not isRev and not na(deChochDn) and bar_index - deChochDn <= deSeqWin and deDispDn
     bool isMss = (isRev or upg) and deDispDn
@@ -1095,9 +1084,9 @@ mbOf(FVG f) =>
 
 // confirmation of a close (or full body) through an FVG
 upBreak(float hi) =>
-    deConf == "Full body" ? math.min(dO, dC) > hi : dC > hi
+    deConf == "Full body" ? math.min(open, close) > hi : close > hi
 dnBreak(float lo) =>
-    deConf == "Full body" ? math.max(dO, dC) < lo : dC < lo
+    deConf == "Full body" ? math.max(open, close) < lo : close < lo
 
 var hasfp = false
 var hasifp = false
@@ -1109,14 +1098,14 @@ timeat(int n) =>
 FVG lastlongfvg = na
 FVG lastshortfvg = na
 if true
-    [hi, lo, fhi, flo] = longFVGHL(dO[1],dC[1],dH[1],dL[1],
-         dO[2],dC[2],dH[2],dL[2],
-         dO[3],dC[3],dH[3],dL[3])
+    [hi, lo, fhi, flo] = longFVGHL(open[1],close[1],high[1],low[1],
+         open[2],close[2],high[2],low[2],
+         open[3],close[3],high[3],low[3])
     // [PL] poor liquidity: two up-close candles in a row with a gap make an FVG (as if one more was between)
     int fk = 3
-    if poorLiq and not (fhi - flo > minfvg) and dC[1] > dO[1] and dC[2] > dO[2] and dL[1] > dH[2]
-        hi := dL[1]
-        lo := dH[2]
+    if poorLiq and not (fhi - flo > minfvg) and close[1] > open[1] and close[2] > open[2] and low[1] > high[2]
+        hi := low[1]
+        lo := high[2]
         fhi := hi
         flo := lo
         fk := 2
@@ -1144,14 +1133,14 @@ if true
         else
             f.kill()
 if true
-    [hi, lo, fhi, flo] = shortFVGHL(dO[1],dC[1],dH[1],dL[1],
-         dO[2],dC[2],dH[2],dL[2],
-         dO[3],dC[3],dH[3],dL[3])
+    [hi, lo, fhi, flo] = shortFVGHL(open[1],close[1],high[1],low[1],
+         open[2],close[2],high[2],low[2],
+         open[3],close[3],high[3],low[3])
     // [PL] poor liquidity: two down-close candles in a row with a gap make an FVG (as if one more was between)
     int fk = 3
-    if poorLiq and not (fhi - flo > minfvg) and dC[1] < dO[1] and dC[2] < dO[2] and dH[1] < dL[2]
-        hi := dL[2]
-        lo := dH[1]
+    if poorLiq and not (fhi - flo > minfvg) and close[1] < open[1] and close[2] < open[2] and high[1] < low[2]
+        hi := low[2]
+        lo := high[1]
         fhi := hi
         flo := lo
         fk := 2
@@ -1181,7 +1170,7 @@ if true
 
 // 1PFVG from the 1m candles: the 1m candles of this chart bar, in order, each one tested as candle [0] of
 // isFPFVG on the 1m chart (candles [1] to [3] are the three before it)
-[l1t, l1o, l1h, l1l, l1c] = request.security_lower_tf(dataSym, fpLowTf ? "1" : timeframe.period,
+[l1t, l1o, l1h, l1l, l1c] = request.security_lower_tf(syminfo.tickerid, fpLowTf ? "1" : timeframe.period,
      [time, open, high, low, close])
 var array<float> fpO = array.new<float>()
 var array<float> fpH = array.new<float>()
@@ -1241,7 +1230,7 @@ updfvgs(array<FVG> fvgs) =>
             f = fvgs.get(i)
             isdone = not na(f.end)
             // check if filled
-            if not isdone and f.isDone(dO,dC)
+            if not isdone and f.isDone(open,close)
                 f.end := f.endsAt()
                 // [REL] small FVG filled: hidden later unless it formed at a swing
                 if f.relSmall() and not f.swp and not f.ext and not f.kept and not f.cand
@@ -1302,15 +1291,15 @@ updfvgs(array<FVG> fvgs) =>
             df.kill()
 
 // FVG filter: liquidity sweeps ===================================
-float fPH = ta.pivothigh(dH, flL, flR)
-float fPL = ta.pivotlow(dL, flL, flR)
+float fPH = ta.pivothigh(high, flL, flR)
+float fPL = ta.pivotlow(low, flL, flR)
 if not fltOff
     // sweeps are tested against the levels known BEFORE this bar
-    if not na(fs.stH) and dH > fs.stH
+    if not na(fs.stH) and high > fs.stH
         onSweep(fs.stLbar)  // arm = from the last short-term low to the sweep
         fs.post := 0
         fs.stH := na
-    if not na(fs.stL) and dL < fs.stL
+    if not na(fs.stL) and low < fs.stL
         onSweep(fs.stHbar)  // arm = from the last short-term high to the sweep
         fs.post := 0
         fs.stL := na
@@ -1322,13 +1311,13 @@ if not fltOff
         fs.stLbar := bar_index - flR
 
 // [REL] "relevant" filter: live FVGs not shown yet ===============
-float relAtr = ta.rma(dTR, atrLen)
+float relAtr = ta.atr(atrLen)
 if fltRel and barstate.isconfirmed and relF.size() > 0
     for i = relF.size() - 1 to 0
         FVG f = relF.get(i)
         if f.shown or not na(f.dup)
             relF.remove(i)
-        else if f.isDone(dO, dC)
+        else if f.isDone(open, close)
             // the last FVG before a sweep, closed through after it: an IFVG, shown up to the close
             if f.swp
                 f.end := time
@@ -1345,7 +1334,7 @@ if fltRel and barstate.islast
     float rng = nz(relAtr) * minATR
     for f in relF
         if not f.shown and na(f.dup) and na(f.end) and relB.size() < 40
-            float dist = dC > f.hi ? dC - f.hi : dC < f.lo ? f.lo - dC : 0.0
+            float dist = close > f.hi ? close - f.hi : close < f.lo ? f.lo - close : 0.0
             if dist <= rng
                 relB.push(box.new(f.start, f.hi, time, f.lo, xloc = xloc.bar_time,
                      bgcolor = f.bgColor(), border_color = f.lnColor(), border_width = f.bw(),
@@ -1409,8 +1398,8 @@ var PivSet pv1 = PivSet.new(array.new<int>(), array.new<float>(), array.new<int>
 var PivSet pv2 = PivSet.new(array.new<int>(), array.new<float>(), array.new<int>(), array.new<float>(), "", true)
 
 // --- chart timeframe pivots
-float oph = ta.pivothigh(dH, pivL, pivR)
-float opl = ta.pivotlow(dL, pivL, pivR)
+float oph = ta.pivothigh(high, pivL, pivR)
+float opl = ta.pivotlow(low, pivL, pivR)
 pv0.tag := tfName(timeframe.period)
 if not na(oph)
     pv0.addHigh(bar_index - pivR, oph)
@@ -1472,10 +1461,10 @@ pv2.tag := hasH2 ? tfName(htf2) : ""
 
 string rq1 = hasH1 ? htf1 : timeframe.period
 string rq2 = hasH2 ? htf2 : timeframe.period
-[h1ph, h1pl, h1pt] = request.security(dataSym, rq1,
+[h1ph, h1pl, h1pt] = request.security(syminfo.tickerid, rq1,
     [ta.pivothigh(high, oteHtfL, oteHtfR)[1], ta.pivotlow(low, oteHtfL, oteHtfR)[1], time[oteHtfR + 1]],
     lookahead = barmerge.lookahead_on)
-[h2ph, h2pl, h2pt] = request.security(dataSym, rq2,
+[h2ph, h2pl, h2pt] = request.security(syminfo.tickerid, rq2,
     [ta.pivothigh(high, oteHtfL, oteHtfR)[1], ta.pivotlow(low, oteHtfL, oteHtfR)[1], time[oteHtfR + 1]],
     lookahead = barmerge.lookahead_on)
 h1chg = ta.change(h1pt)
@@ -1517,9 +1506,9 @@ priorLeg(int dir, int sbar, PivSet ps) =>
             for i = n - 1 to 0
                 int hb = ps.hb.get(i)
                 if hb < sbar and bar_index - hb < 4000
-                    float lo = dL[bar_index - hb]
+                    float lo = low[bar_index - hb]
                     for k = hb to sbar
-                        lo := math.min(lo, dL[bar_index - k])
+                        lo := math.min(lo, low[bar_index - k])
                     h := ps.hp.get(i)
                     l := lo
                     break
@@ -1529,9 +1518,9 @@ priorLeg(int dir, int sbar, PivSet ps) =>
             for i = n - 1 to 0
                 int lb = ps.lb.get(i)
                 if lb < sbar and bar_index - lb < 4000
-                    float hi = dH[bar_index - lb]
+                    float hi = high[bar_index - lb]
                     for k = lb to sbar
-                        hi := math.max(hi, dH[bar_index - k])
+                        hi := math.max(hi, high[bar_index - k])
                     l := ps.lp.get(i)
                     h := hi
                     break
@@ -1610,16 +1599,16 @@ method oteConfirm(OteTrack t) =>
             bool hit = false
             if t.dir == -1
                 // prior down leg: OTE band is above the leg low; wick must reach up into it
-                ext := oteRejAny ? math.max(t.rext, dH) : dH
+                ext := oteRejAny ? math.max(t.rext, high) : high
                 rLo := t.pLo + oteMin * pr
                 rHi := t.pLo + oteMax * pr
-                hit := ext >= rLo and ext <= (oteRejCap ? rHi : t.pHi) and dC <= rHi
+                hit := ext >= rLo and ext <= (oteRejCap ? rHi : t.pHi) and close <= rHi
             else
                 // prior up leg: OTE band is below the leg high; wick must reach down into it
-                ext := oteRejAny ? math.min(t.rext, dL) : dL
+                ext := oteRejAny ? math.min(t.rext, low) : low
                 rLo := t.pHi - oteMax * pr
                 rHi := t.pHi - oteMin * pr
-                hit := ext <= rHi and ext >= (oteRejCap ? rLo : t.pLo) and dC >= rLo
+                hit := ext <= rHi and ext >= (oteRejCap ? rLo : t.pLo) and close >= rLo
             if hit
                 t.rejHit := true
                 if showOTEband
@@ -1638,11 +1627,11 @@ method oteConfirm(OteTrack t) =>
         t.ctime := time
         t.cbar := bar_index
         if t.dir == -1
-            t.legHi := math.max(t.legHi, dH)
-            t.legLo := dL
+            t.legHi := math.max(t.legHi, high)
+            t.legLo := low
         else
-            t.legLo := math.min(t.legLo, dL)
-            t.legHi := dH
+            t.legLo := math.min(t.legLo, low)
+            t.legHi := high
 
 // IFVG invalidated (closed back through it)
 method oteCancel(OteTrack t) =>
@@ -1664,11 +1653,11 @@ method oteStep(OteTrack t) =>
         if not t.armed
             // before confirmation keep extending the origin of the leg
             if t.dir == -1
-                t.legHi := math.max(t.legHi, dH)
-                t.rext := math.max(t.rext, dH)
+                t.legHi := math.max(t.legHi, high)
+                t.rext := math.max(t.rext, high)
             else
-                t.legLo := math.min(t.legLo, dL)
-                t.rext := math.min(t.rext, dL)
+                t.legLo := math.min(t.legLo, low)
+                t.rext := math.min(t.rext, low)
         else
             if not na(t.rej)
                 t.rej.set_left(oteX0(t))
@@ -1718,15 +1707,15 @@ method oteStep(OteTrack t) =>
                         t.band.set_border_color(bd)
                         t.band.set_text(t.tag + (t.dir == 1 ? " ↑" : " ↓"))
                 // price retraces back into the IFVG while it matches the OTE band
-                bool tap = t.dir == -1 ? dH >= t.zlo : dL <= t.zhi
+                bool tap = t.dir == -1 ? high >= t.zlo : low <= t.zhi
                 if m and tap and not t.fired and time != t.ctime and barstate.isconfirmed
                     t.fired := true
                     s := t.dir
             // keep extending the leg AFTER evaluating this bar
             if t.dir == -1
-                t.legLo := math.min(t.legLo, dL)
+                t.legLo := math.min(t.legLo, low)
             else
-                t.legHi := math.max(t.legHi, dH)
+                t.legHi := math.max(t.legHi, high)
     s
 
 // A group runs the three trackers (chart, next TF, second TF) on the same IFVG.
@@ -1785,8 +1774,8 @@ var OteGroup gBull = OteGroup.new(OteTrack.new(), OteTrack.new(), OteTrack.new()
 var OteGroup gSw   = OteGroup.new(OteTrack.new(), OteTrack.new(), OteTrack.new())  // swing mode, single IFVG under watch
 
 // highest/lowest of the 4 bars spanning the FVG (3 candles + current bar)
-h4 = ta.highest(dH, 4)
-l4 = ta.lowest(dL, 4)
+h4 = ta.highest(high, 4)
+l4 = ta.lowest(low, 4)
 
 // Close above/below IFVG setups =================================
 
@@ -1842,9 +1831,9 @@ atr = 0.0
 float pivHi = na
 float pivLo = na
 if doifvg and ifvgswings
-    atr := ta.rma(dTR, atrLen)
-    pivHi := ta.pivothigh(dH, pivL, pivR)
-    pivLo := ta.pivotlow(dL, pivL, pivR)
+    atr := ta.atr(atrLen)
+    pivHi := ta.pivothigh(high, pivL, pivR)
+    pivLo := ta.pivotlow(low, pivL, pivR)
 
 hiBar = bar_index - pivR
 loBar = bar_index - pivR
@@ -1952,11 +1941,11 @@ if not na(ifstime) and barstate.isconfirmed
         gSw.gConfirm() // [OTE]
         swAp := deAp(1)
         ifvgBox.set_text(ifvgTxt(1, 1, false, "", swAp, mbOf(swFvg)))
-    if ifsdir == -1 and not na(ifsconfirm) and dC > ifshi
+    if ifsdir == -1 and not na(ifsconfirm) and close > ifshi
         ifsconfirm := na
         gSw.gCancel() // [OTE]
         ifvgBox.set_text(na)
-    else if ifsdir == 1 and not na(ifsconfirm) and dC < ifslo
+    else if ifsdir == 1 and not na(ifsconfirm) and close < ifslo
         ifsconfirm := na
         gSw.gCancel() // [OTE]
         ifvgBox.set_text(na)
@@ -1965,9 +1954,9 @@ if not na(ifstime) and barstate.isconfirmed
 sig = 0
 if doifvg and ifvgswings
     if not na(ifsconfirm) and time != ifsconfirm and sig[1] == 0 and barstate.isconfirmed
-        if ifsdir == -1 and dH >= ifslo and dH < ifshi
+        if ifsdir == -1 and high >= ifslo and high < ifshi
             sig := -1
-        else if ifsdir == 1 and dL <= ifshi and dL >= ifslo
+        else if ifsdir == 1 and low <= ifshi and low >= ifslo
             sig := 1
 // [DE] invalidated IFVG: faded (stays as it is, no longer extended) or back to the plain FVG
 deKill(FVG fv) =>
@@ -1994,7 +1983,7 @@ deRecolor(box b, int d) =>
     true
 
 if doifvg and not ifvgswings and not deInv
-    if not na(bullifvg) and not na(bullconfirm) and barstate.isconfirmed and dC < bullifvg.lo
+    if not na(bullifvg) and not na(bullconfirm) and barstate.isconfirmed and close < bullifvg.lo
         bullconfirm := na
         gBull.gCancel() // [OTE]
         ifvgBox.set_text(na)
@@ -2004,7 +1993,7 @@ if doifvg and not ifvgswings and not deInv
         bullAp := deAp(1)
         ifvgBox.set_text(ifvgTxt(1, 1, false, "", bullAp, mbOf(bullifvg)))
         sig := 1
-    if not na(bearifvg) and not na(bearconfirm) and barstate.isconfirmed and dC > bearifvg.hi
+    if not na(bearifvg) and not na(bearconfirm) and barstate.isconfirmed and close > bearifvg.hi
         bearconfirm := na
         gBear.gCancel() // [OTE]
         ifvgBoxb.set_text(na)
@@ -2081,8 +2070,8 @@ type Breaker
     array<line> fl = na // flagged candles (wick and body lines)
 
 var array<Breaker> brks = array.new<Breaker>()
-float bPH = ta.pivothigh(dH, brkLen, brkLen)
-float bPL = ta.pivotlow(dL, brkLen, brkLen)
+float bPH = ta.pivothigh(high, brkLen, brkLen)
+float bPL = ta.pivotlow(low, brkLen, brkLen)
 var float bLastH = na   // last two pivot highs / lows (price, bar)
 var int bLastHb = na
 var float bPrevH = na
@@ -2102,16 +2091,16 @@ brkZone(int dir, int k0, int from) =>
     int kmax = math.min(bar_index - from, 300)
     int k = k0
     while k <= kmax and na(zt)
-        if (dC[k] - dO[k]) * dir > 0
-            zh := dH[k]
-            zl := dL[k]
+        if (close[k] - open[k]) * dir > 0
+            zh := high[k]
+            zl := low[k]
             zt := time[k]
             zt1 := time[k]
         k += 1
     if not na(zt) and brkMode == "Whole sequence"
-        while k <= kmax and (dC[k] - dO[k]) * dir > 0
-            zh := math.max(zh, dH[k])
-            zl := math.min(zl, dL[k])
+        while k <= kmax and (close[k] - open[k]) * dir > 0
+            zh := math.max(zh, high[k])
+            zl := math.min(zl, low[k])
             zt := time[k]
             k += 1
     [zh, zl, zt, zt1]
@@ -2163,9 +2152,9 @@ brkTag(FVG f, Breaker b, box ib) =>
                 int kk = 0
                 while kk <= 300 and time[kk] >= b.t
                     if time[kk] <= b.t1
-                        b.fl.push(line.new(time[kk], dH[kk], time[kk], dL[kk], xloc = xloc.bar_time,
+                        b.fl.push(line.new(time[kk], high[kk], time[kk], low[kk], xloc = xloc.bar_time,
                              color = brkCol, width = 1))
-                        b.fl.push(line.new(time[kk], dO[kk], time[kk], dC[kk], xloc = xloc.bar_time,
+                        b.fl.push(line.new(time[kk], open[kk], time[kk], close[kk], xloc = xloc.bar_time,
                              color = brkCol, width = 5))
                     kk += 1
             if brkBox or brkShd
@@ -2203,7 +2192,7 @@ if brkOn and barstate.isconfirmed
             if b.tagged
                 // drawn, pullback still going on: removed when it trades beyond the far side; once price closes
                 // out of the zone in the breaker direction the rectangle stays for reference
-                if (b.dir == 1 and dL < b.lo) or (b.dir == -1 and dH > b.hi)
+                if (b.dir == 1 and low < b.lo) or (b.dir == -1 and high > b.hi)
                     if not na(b.bx)
                         b.bx.delete()
                         b.ml.delete()
@@ -2211,10 +2200,10 @@ if brkOn and barstate.isconfirmed
                         for ln in b.fl
                             ln.delete()
                     brks.remove(i)
-                else if (b.dir == 1 and dC > b.hi) or (b.dir == -1 and dC < b.lo)
+                else if (b.dir == 1 and close > b.hi) or (b.dir == -1 and close < b.lo)
                     brks.remove(i)
             else if not b.broken
-                if (b.dir == 1 and dC > b.hi) or (b.dir == -1 and dC < b.lo)
+                if (b.dir == 1 and close > b.hi) or (b.dir == -1 and close < b.lo)
                     b.broken := true
                     b.bkBar := bar_index
             else if not b.swung
@@ -2223,11 +2212,11 @@ if brkOn and barstate.isconfirmed
                     b.swung := true
                 else if b.dir == -1 and not na(bPL) and bar_index - brkLen >= b.bkBar and bPL < b.lo
                     b.swung := true
-                else if (b.dir == 1 and dC < b.lo) or (b.dir == -1 and dC > b.hi)
+                else if (b.dir == 1 and close < b.lo) or (b.dir == -1 and close > b.hi)
                     brks.remove(i)  // closed through the other side before the swing: invalidated
-            else if (b.dir == 1 and dC < b.lo) or (b.dir == -1 and dC > b.hi)
+            else if (b.dir == 1 and close < b.lo) or (b.dir == -1 and close > b.hi)
                 brks.remove(i)  // closed through the other side: invalidated
-            else if (b.dir == 1 and dL <= b.hi) or (b.dir == -1 and dH >= b.lo)
+            else if (b.dir == 1 and low <= b.hi) or (b.dir == -1 and high >= b.lo)
                 // pullback into the zone: tag the FVGs / IFVGs of the trade direction that overlap it
                 array<FVG> fs0 = b.dir == 1 ? lfvgs : sfvgs
                 for f in fs0
@@ -2243,7 +2232,7 @@ if brkOn and barstate.isconfirmed
                         brkTag(bearifvg, b, ifvgBoxb)
                     if ifvgswings and ifsdir == -1 and not na(ifsconfirm)
                         brkTag(swFvg, b, ifvgBox)
-                if b.tagged and ((b.dir == 1 and dL < b.lo) or (b.dir == -1 and dH > b.hi))
+                if b.tagged and ((b.dir == 1 and low < b.lo) or (b.dir == -1 and high > b.hi))
                     if not na(b.bx)
                         b.bx.delete()
                         b.ml.delete()
@@ -2268,8 +2257,8 @@ type MBlock
     array<line> fl = na // flagged candles (wick and body lines)
 
 var array<MBlock> mbs = array.new<MBlock>()
-float mPH = ta.pivothigh(dH, mbLen, mbLen)
-float mPL = ta.pivotlow(dL, mbLen, mbLen)
+float mPH = ta.pivothigh(high, mbLen, mbLen)
+float mPL = ta.pivotlow(low, mbLen, mbLen)
 var float mLastH = na   // last two pivot highs / lows (price, bar)
 var int mLastHb = na
 var float mPrevH = na
@@ -2289,16 +2278,16 @@ mbZone(int dir, int k0, int from) =>
     int kmax = math.min(bar_index - from, 300)
     int k = k0
     while k <= kmax and na(zt)
-        if (dC[k] - dO[k]) * dir > 0
-            zh := dH[k]
-            zl := dL[k]
+        if (close[k] - open[k]) * dir > 0
+            zh := high[k]
+            zl := low[k]
             zt := time[k]
             zt1 := time[k]
         k += 1
     if not na(zt) and mbMode == "Whole sequence"
-        while k <= kmax and (dC[k] - dO[k]) * dir > 0
-            zh := math.max(zh, dH[k])
-            zl := math.min(zl, dL[k])
+        while k <= kmax and (close[k] - open[k]) * dir > 0
+            zh := math.max(zh, high[k])
+            zl := math.min(zl, low[k])
             zt := time[k]
             k += 1
     [zh, zl, zt, zt1]
@@ -2348,9 +2337,9 @@ mbTag(FVG f, MBlock b, box ib, int which) =>
                 int kk = 0
                 while kk <= 300 and time[kk] >= b.t
                     if time[kk] <= b.t1
-                        b.fl.push(line.new(time[kk], dH[kk], time[kk], dL[kk], xloc = xloc.bar_time,
+                        b.fl.push(line.new(time[kk], high[kk], time[kk], low[kk], xloc = xloc.bar_time,
                              color = mbCol, width = 1))
-                        b.fl.push(line.new(time[kk], dO[kk], time[kk], dC[kk], xloc = xloc.bar_time,
+                        b.fl.push(line.new(time[kk], open[kk], time[kk], close[kk], xloc = xloc.bar_time,
                              color = mbCol, width = 5))
                     kk += 1
             if mbBox or mbShd
@@ -2388,7 +2377,7 @@ if mbOn and barstate.isconfirmed
             if b.tagged
                 // drawn, pullback still going on: removed when it trades beyond the far side; once price closes
                 // out of the zone in the mitigation block direction the rectangle stays for reference
-                if (b.dir == 1 and dL < b.lo) or (b.dir == -1 and dH > b.hi)
+                if (b.dir == 1 and low < b.lo) or (b.dir == -1 and high > b.hi)
                     if not na(b.bx)
                         b.bx.delete()
                         b.ml.delete()
@@ -2396,10 +2385,10 @@ if mbOn and barstate.isconfirmed
                         for ln in b.fl
                             ln.delete()
                     mbs.remove(i)
-                else if (b.dir == 1 and dC > b.hi) or (b.dir == -1 and dC < b.lo)
+                else if (b.dir == 1 and close > b.hi) or (b.dir == -1 and close < b.lo)
                     mbs.remove(i)
             else if not b.broken
-                if (b.dir == 1 and dC > b.hi) or (b.dir == -1 and dC < b.lo)
+                if (b.dir == 1 and close > b.hi) or (b.dir == -1 and close < b.lo)
                     b.broken := true
                     b.bkBar := bar_index
             else if not b.swung
@@ -2408,11 +2397,11 @@ if mbOn and barstate.isconfirmed
                     b.swung := true
                 else if b.dir == -1 and not na(mPL) and bar_index - mbLen >= b.bkBar and mPL < b.lo
                     b.swung := true
-                else if (b.dir == 1 and dC < b.lo) or (b.dir == -1 and dC > b.hi)
+                else if (b.dir == 1 and close < b.lo) or (b.dir == -1 and close > b.hi)
                     mbs.remove(i)  // closed through the other side before the swing: invalidated
-            else if (b.dir == 1 and dC < b.lo) or (b.dir == -1 and dC > b.hi)
+            else if (b.dir == 1 and close < b.lo) or (b.dir == -1 and close > b.hi)
                 mbs.remove(i)  // closed through the other side: invalidated
-            else if (b.dir == 1 and dL <= b.hi) or (b.dir == -1 and dH >= b.lo)
+            else if (b.dir == 1 and low <= b.hi) or (b.dir == -1 and high >= b.lo)
                 // pullback into the zone: tag the FVGs / IFVGs of the trade direction that overlap it
                 array<FVG> fs0 = b.dir == 1 ? lfvgs : sfvgs
                 for f in fs0
@@ -2428,7 +2417,7 @@ if mbOn and barstate.isconfirmed
                         mbTag(bearifvg, b, ifvgBoxb, -1)
                     if ifvgswings and ifsdir == -1 and not na(ifsconfirm)
                         mbTag(swFvg, b, ifvgBox, 2)
-                if b.tagged and ((b.dir == 1 and dL < b.lo) or (b.dir == -1 and dH > b.hi))
+                if b.tagged and ((b.dir == 1 and low < b.lo) or (b.dir == -1 and high > b.hi))
                     if not na(b.bx)
                         b.bx.delete()
                         b.ml.delete()
