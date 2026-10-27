@@ -4,7 +4,7 @@
 // quadrants and standard deviations, premarket range, EQH/EQL, PO3 lines, TGIF levels, macros,
 // silver bullet and a session/macro status text. Draws levels only: no plots, no signals, no alerts.
 //
-// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 0d076ecfcaddbeb73756f31e4e1eaaa6),
+// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 539d117057b21ca3312a0943138d8bef),
 // © franjballest, Mozilla Public License 2.0 (https://mozilla.org/MPL/2.0/).
 //
 // Install:
@@ -306,6 +306,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 				NSessions = 20;
 				DoRect = true;
 				RectTransparency = 75;
+				RectBorderOnly = false;
 				NoLowRects = true;
 				RectMinTf = 5;
 				DoSesMaxMin = true;
@@ -1160,7 +1161,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 				DText(tg + "opL", "M.O.", xe, z.op, OpenColor, fNormal, 0);
 			}
 			if (z.drawrect && z.lnsty != null)
-				DRect(tg + "r", z.tstart, z.hi, xe, z.lo, z.lnsty.col, 100 - RectTransparency);
+				DRect(tg + "r", z.tstart, z.hi, xe, z.lo, z.lnsty.col, 100 - RectTransparency, RectBorderOnly);
 		}
 
 		private void TinyLbl(string tag, bool show, DateTime x, double y, string txt, Brush c, SimpleFont f)
@@ -2154,9 +2155,20 @@ namespace NinjaTrader.NinjaScript.Indicators
 			drawn.Add(tag);
 		}
 
-		private void DRect(string tag, DateTime t1, double y1, DateTime t2, double y2, Brush area, int opacity)
+		private void DRect(string tag, DateTime t1, double y1, DateTime t2, double y2, Brush area, int opacity,
+			bool borderOnly = false)
 		{
-			Draw.Rectangle(this, tag, false, t1, y1, t2, y2, Brushes.Transparent, area, Math.Max(0, Math.Min(100, opacity)));
+			int op = Math.Max(0, Math.Min(100, opacity));
+			if (borderOnly)
+			{
+				// outline only: the area color, with the rectangle opacity, as the border; no fill
+				Brush b = area.Clone();
+				b.Opacity = op / 100.0;
+				b.Freeze();
+				Draw.Rectangle(this, tag, false, t1, y1, t2, y2, b, Brushes.Transparent, 0);
+			}
+			else
+				Draw.Rectangle(this, tag, false, t1, y1, t2, y2, Brushes.Transparent, area, op);
 			drawn.Add(tag);
 		}
 
@@ -2519,6 +2531,10 @@ namespace NinjaTrader.NinjaScript.Indicators
 		[Range(0, 100)]
 		[Display(Name = "rectangle transparency", GroupName = "Session Settings", Order = 504)]
 		public int RectTransparency { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Session rectangles: border only", Description = "Draw only the outline of the session rectangles (session color, with the transparency above), no fill", GroupName = "Session Settings", Order = 504)]
+		public bool RectBorderOnly { get; set; }
 
 		[NinjaScriptProperty]
 		[Display(Name = "No session rectangles at or under", GroupName = "Session Settings", Order = 505)]
