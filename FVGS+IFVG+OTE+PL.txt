@@ -483,6 +483,7 @@ type FVG
     bool islong // bullish?
     int start  // time for start
     int end = na// time when mitigated
+    int updEnd = na // [PERF] end already applied to the drawings (finished FVGs are then skipped)
     box rect = na // box drawn
     line celine = na // CE line
     bool isfp = false // is first presented FVG
@@ -1254,6 +1255,10 @@ updfvgs(array<FVG> fvgs) =>
     if fvgs.size() > 0
         for i = 0 to fvgs.size()-1
             f = fvgs.get(i)
+            // [PERF] a finished FVG whose drawings already end at its end needs no more work (a merge resets
+            // end, and a kill clears the drawings, so those are redone)
+            if not na(f.end) and f.end == f.updEnd and (stySeg ? not na(f.hiln) : not na(f.rect))
+                continue
             isdone = not na(f.end)
             // check if filled
             if not isdone and f.isDone(dO,dC)
@@ -1302,14 +1307,19 @@ updfvgs(array<FVG> fvgs) =>
                     width = celnwid)
                 if f.isfp
                     f.celine.set_extend(extend.right)
-            // always follow the end: an FVG extended by a merged duplicate (end reset) has to grow again
-            if not na(f.rect) and not f.kept
-                f.rect.set_right(et)
-            if not na(f.hiln)
-                f.hiln.set_x2(et)
-                f.loln.set_x2(et)
-            if not na(f.celine)
-                f.celine.set_x2(et)
+            // always follow the end: an FVG extended by a merged duplicate (end reset) has to grow again.
+            // [PERF] a live FVG is only stretched to the current bar on the last bar (and in real time): on
+            // history nobody sees it, and moving every box on every bar was most of the run time
+            if not na(f.end) or barstate.islast or barstate.isrealtime
+                if not na(f.rect) and not f.kept
+                    f.rect.set_right(et)
+                if not na(f.hiln)
+                    f.hiln.set_x2(et)
+                    f.loln.set_x2(et)
+                if not na(f.celine)
+                    f.celine.set_x2(et)
+                if not na(f.end)
+                    f.updEnd := f.end
             if dofvgalert and na(f.end) and barstate.isconfirmed
                 f.alerts()
         if fvgs.size() >= maxfvgs  and fvgs.size() > 0

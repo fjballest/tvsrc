@@ -132,7 +132,7 @@ Pine requires every function to return a value, so functions that only mutate st
 | `longFVGHL`, `shortFVGHL` | Return the drawn zone extended to bodies, plus the wick-based zone used for the size filter. |
 | `isFPFVG` | True inside the 1PFVG window: hour = `fph`, minute beyond `fpm` plus two candles, minute chart up to 3m, and the 1m path (`fpLow`) off. |
 | `clearlastfp` | Keeps at most `nfp` 1PFVGs; the oldest stops extending and is killed. |
-| `updfvgs(array)` | Per FVG: closes it when mitigated, creates its box or segments and C.E. line, follows the right edge, fires bounce alerts, and trims the array beyond `maxfvgs`. |
+| `updfvgs(array)` | Per FVG: closes it when mitigated, creates its box or segments and C.E. line, follows the right edge, fires bounce alerts, and trims the array beyond `maxfvgs`. To keep it cheap, a finished FVG whose drawings already end at its `end` (`updEnd`) is skipped, and the right edge of a live FVG is moved only on the last bar and in real time (on history it stays where it was drawn). |
 | `bgColor`, `lnColor`, `endsAt`, `isDone`, `kill`, `alerts` | Methods on `FVG`: colors (with the hidden-by-draw-mode rule), end time, mitigation test, delete drawings, bounce alerts. |
 | `bounces(p)` | True when the bar touches level `p` and closes away from it. |
 
