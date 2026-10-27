@@ -7,7 +7,7 @@
 // FVGs closed through become IFVGs. Mitigated levels are removed.
 //
 // Port of the TradingView Pine Script v6 indicator ICTcotas.txt by franjballest
-// (source md5 3636809354c6e1a528daa558a99d3b6c). Mozilla Public License 2.0.
+// (source md5 dc3879361165ac5b47894af550db008a). Mozilla Public License 2.0.
 //
 // Install:
 //   1. Copy this file to  Documents\NinjaTrader 8\bin\Custom\Indicators\ICTcotas.cs
@@ -162,6 +162,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 		private List<Lvl> lvls;
 		private Lvl[] wcur;              // current wick group level: tfi * 2 + side
 		private DateTime[] lastKey;      // last processed bar time per series
+		private HashSet<Lvl> flippedNow = new HashSet<Lvl>();   // inverted since the last RunMit (not mitigated then)
 		private DateTime lastPrimaryKey;
 		private DateTime tfirst;
 		private int nextId;
@@ -467,6 +468,21 @@ namespace NinjaTrader.NinjaScript.Indicators
 					AddFvgs(3, 3 + i, MfMinSize, k, off);
 				if (wkOn[i])
 					AddWicks(3 + i, k, off);
+			}
+
+			// FVG -> IFVG only on a close of the FVG's own timeframe, never on a chart close
+			if (DoIfvg)
+			{
+				double c = Closes[k][off];
+				if (k == SerDay && dayOk)
+					InvertTf(0, c);
+				if (k == SerWeek && wkOk)
+					InvertTf(1, c);
+				if (k == SerMonth && monOk)
+					InvertTf(2, c);
+				for (int i = 0; i < 6; i++)
+					if (MfSeries[i] == k && mfOn[i])
+						InvertTf(3 + i, c);
 			}
 			dirty = true;
 		}
@@ -804,7 +820,24 @@ namespace NinjaTrader.NinjaScript.Indicators
 				AddWicks(tfi, k, off);
 		}
 
-		// checked on every closed chart bar: FVG -> IFVG inversion and mitigation
+		// a candle of timeframe tfi closed at c: live FVGs of that timeframe closed through become IFVGs
+		private void InvertTf(int tfi, double c)
+		{
+			foreach (Lvl l in lvls)
+			{
+				if (l.Dead || l.Tfi != tfi || l.Inv || !(l.Kind == 0 || l.Kind == 3))
+					continue;
+				if ((l.Dir == 1 && c < l.Lo) || (l.Dir == -1 && c > l.Hi))
+				{
+					l.Inv = true;
+					l.Dir = -l.Dir;
+					flippedNow.Add(l);
+					dirty = true;
+				}
+			}
+		}
+
+		// checked on every closed chart bar: mitigation (the inversion is done by InvertTf)
 		private void RunMit(double close, double high, double low)
 		{
 			for (int i = lvls.Count - 1; i >= 0; i--)
@@ -816,17 +849,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 					continue;
 				}
 				bool fvgLive = (l.Kind == 0 || l.Kind == 3) && DoIfvg && !l.Inv;
-				bool flipped = false;
-				if (fvgLive)
-				{
-					if ((l.Dir == 1 && close < l.Lo) || (l.Dir == -1 && close > l.Hi))
-					{
-						l.Inv = true;
-						l.Dir = -l.Dir;
-						flipped = true;
-						dirty = true;
-					}
-				}
+				bool flipped = flippedNow.Contains(l);
 				if (mmode > 0 && !fvgLive && !flipped)
 				{
 					bool m;
@@ -842,6 +865,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 					}
 				}
 			}
+			flippedNow.Clear();
 		}
 
 		#endregion
@@ -1204,7 +1228,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 		public string FvgText { get; set; }
 
 		[NinjaScriptProperty]
-		[Display(Name = "FVG becomes IFVG on a close through it", Description = "A candle closing beyond the far edge of an FVG inverts it into an IFVG with the opposite direction. While enabled, FVGs are not removed by the general mitigation rule; IFVGs are.", GroupName = GFvg, Order = 13)]
+		[Display(Name = "FVG becomes IFVG on a close through it", Description = "A candle of the FVG's own timeframe closing beyond its far edge inverts it into an IFVG with the opposite direction. While enabled, FVGs are not removed by the general mitigation rule; IFVGs are.", GroupName = GFvg, Order = 13)]
 		public bool DoIfvg { get; set; }
 
 		[NinjaScriptProperty]

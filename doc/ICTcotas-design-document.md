@@ -135,7 +135,7 @@ After a level is added, `addLvl` counts the live levels of the same kind and tim
 
 ### Inversion and mitigation
 
-`runMit` runs on every chart bar. With `doifvg` on, a live FVG (kind 0 or 3) is inverted when a bar closes beyond its far edge: below the low of a bullish one, above the high of a bearish one. It becomes an IFVG, its direction flips, and it is renamed. After the flip the usual mitigation rule applies to it. All other levels, and FVGs when `doifvg` is off, use the mitigation rule chosen in General:
+`runMit` runs on every chart bar. With `doifvg` on, a live FVG (kind 0 or 3) is inverted when a candle of its own timeframe closes beyond its far edge, never on a chart close. The per-bar array `tfNew` (9 entries, by `tfi`) is set when a candle of that timeframe completed on this chart bar (`newD` / `newW` / `newM`, or a new `t0` in the by-timeframe loop), and the `var` array `tfClose` holds that candle's close (`dC1`, `wC1`, `mC1`, `u1`); `runMit` tests only levels whose `tfi` has `tfNew`, against `tfClose`. NinjaTrader: `InvertTf(tfi, close)` from `OnHtfBar` with `Closes[k][off]` (levels flipped there skip the next `RunMit` mitigation, `flippedNow`). Tradovate: `applyBar` passes `tfc` (tfi to the completed candle's close) to `runMit`. ICTScalp and its generated variants copy this. Beyond the far edge means below the low of a bullish one, above the high of a bearish one. It becomes an IFVG, its direction flips, and it is renamed. After the flip the usual mitigation rule applies to it. All other levels, and FVGs when `doifvg` is off, use the mitigation rule chosen in General:
 
 | Rule | A bullish level is removed when | A bearish level is removed when |
 | --- | --- | --- |
@@ -227,7 +227,7 @@ Every function that would otherwise return nothing ends in `true`, because Pine 
 | `wickStep(tfi, side, q, sz, lo, hi, t)` | Wick group state machine |
 | `addLvl(kind, tfi, dir, lo, hi, t)` | Creates a level, applies the overlap rule for FVGs and enforces the keep limit. Returns `na` for a discarded FVG |
 | `fvgOk(kind, tfi, dir, lo, hi)` | Applies the overlap rule. Returns false when the new FVG is dropped |
-| `runMit()` | Inverts FVGs into IFVGs and removes mitigated levels, on every bar |
+| `runMit()` | Inverts FVGs into IFVGs (on a close of their own timeframe) and removes mitigated levels, on every bar |
 
 ## Limitations and extension points
 

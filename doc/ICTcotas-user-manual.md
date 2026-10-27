@@ -103,14 +103,14 @@ With **extend FVG range to include VIs with candle 2** on (default), the FVG is 
 
 ### Inversion (IFVG)
 
-With **FVG becomes IFVG on a close through it** on (default), a chart candle that closes beyond the far edge of an FVG inverts it:
+With **FVG becomes IFVG on a close through it** on (default), a candle of the FVG's own timeframe that closes beyond its far edge inverts it:
 
-- a bullish FVG inverts when a chart candle closes below its low and becomes a bearish IFVG (resistance);
-- a bearish FVG inverts when a chart candle closes above its high and becomes a bullish IFVG (support).
+- a bullish FVG inverts when a candle of its timeframe closes below its low and becomes a bearish IFVG (resistance);
+- a bearish FVG inverts when a candle of its timeframe closes above its high and becomes a bullish IFVG (support).
 
 The label changes from FVG to IFVG and the color switches to the opposite direction. While this option is on, a normal (not inverted) FVG is never removed by the mitigation rule; it only stays or inverts. The IFVG, once created, is removed by the mitigation rule in General.
 
-Note that inversion is tested on the closes of the chart timeframe, not on the closes of the FVG's own timeframe. A daily FVG inverts on a 5m chart when a 5m candle closes through it.
+Inversion is tested on the closes of the FVG's own timeframe, never on the chart's closes. A daily FVG on a 5m chart inverts only when a daily candle closes through it; 5m candles closing through it change nothing. The flip shows on the first chart candle after that daily candle closes.
 
 ### Overlapping FVGs
 
@@ -387,7 +387,8 @@ ICTcotas defines no alerts and no alert conditions. To be alerted at a level, dr
 ### Repainting and confirmation
 
 - All levels come from completed higher timeframe candles (the data request uses offsets of one, two and three candles with lookahead), so a detected level does not repaint and does not appear before its candle closes.
-- Inversion into an IFVG and the **Fully filled (close)** rule are checked on chart-bar closes. On the live bar they can show intrabar and revert if the bar does not close beyond the edge; they are final when the chart bar closes. Because they use the chart timeframe's closes, the result differs between, say, a 1m and a 15m chart.
+- Inversion into an IFVG is checked on the completed candles of the FVG's own timeframe, so it does not repaint and is the same on any chart timeframe.
+- The **Fully filled (close)** rule is checked on chart-bar closes. On the live bar it can show intrabar and revert if the bar does not close beyond the edge; it is final when the chart bar closes. Because it uses the chart timeframe's closes, the result differs between, say, a 1m and a 15m chart.
 - **CE touched** and **Fully filled (wick)** trigger as soon as the live bar's high or low reaches the level.
 - Objects are drawn only on the last bar, and they are updated in place as new bars arrive.
 
