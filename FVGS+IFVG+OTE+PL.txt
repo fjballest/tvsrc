@@ -484,6 +484,7 @@ type FVG
     int start  // time for start
     int end = na// time when mitigated
     int updEnd = na // [PERF] end already applied to the drawings (finished FVGs are then skipped)
+    int inhSeq = na // [PERF] tagSeq when ifvgInherit last scanned for this IFVG
     box rect = na // box drawn
     line celine = na // CE line
     bool isfp = false // is first presented FVG
@@ -510,6 +511,13 @@ type FVG
     bool swp = false // [REL] last FVG before a sweep: shown once it becomes an IFVG
     bool ext = false // [REL] extended by a merged duplicate
     int dbar = na // [REL] bar index where it was filled
+
+// [PERF] bumped whenever an FVG gets a breaker / mitigation block tag, is widened by a merge or a tagged one is
+// drawn: ifvgInherit
+// only rescans the FVGs when this changed (an array, since functions cannot assign global variables)
+var array<int> tagSeq = array.from(0)
+bumpTags() =>
+    tagSeq.set(0, tagSeq.get(0) + 1)
 
 
 // [DE] border width: thicker for flagged displacement FVGs
@@ -851,6 +859,7 @@ method mergeZone(FVG g, FVG f) =>
             g.celine.set_y2(g.ce)
         g.end := na
         g.ext := true
+        bumpTags()
     true
 
 // FVG filtering around liquidity sweeps ==============================================
@@ -873,6 +882,8 @@ insertSorted(array<FVG> a, FVG f) =>
         pos -= 1
     f.shown := true
     a.insert(pos, f)
+    if f.brkD != 0 or f.mbD != 0
+        bumpTags()
     true
 
 // older drawn FVG (any bias) that is almost exactly the same zone as f
@@ -2169,6 +2180,7 @@ brkTag(FVG f, Breaker b, box ib) =>
     if not na(f) and f.hi >= b.lo and f.lo <= b.hi
         f.brk := true
         f.brkD := b.dir
+        bumpTags()
         if not na(ib)
             ib.set_text_formatting(text.format_bold)
         else
@@ -2355,10 +2367,12 @@ mbTag(FVG f, MBlock b, box ib, int which) =>
         if not na(ib)
             if f.mbD != b.dir
                 f.mbD := b.dir
+                bumpTags()
                 ib.set_text(mbTxt(which, f.mbD))
             ib.set_text_formatting(text.format_bold)
         else
             f.mbD := b.dir
+            bumpTags()
             f.lblD := b.dir
             if na(f.end) and (not f.kept or (f.cand and not confIfvg(f))) and not (f.aplus and lblAp) and not na(f.rect)
                 f.rect.set_text(fvgLbl(f))
@@ -2465,7 +2479,9 @@ if mbOn and barstate.isconfirmed
 // [MB] a confirmed IFVG overlapping an FVG of its direction that a breaker / mitigation block tagged (live, or
 // mitigated after the IFVG's FVG started) gets the same tag: bold label, plus the arrow for a mitigation block
 ifvgInherit(FVG iv, box ib, int which, int dir) =>
-    if not na(iv) and not na(ib)
+    // [PERF] the tags of the FVGs did not change since the last scan for this IFVG: nothing new to inherit
+    if not na(iv) and not na(ib) and (na(iv.inhSeq) or iv.inhSeq != tagSeq.get(0))
+        iv.inhSeq := tagSeq.get(0)
         array<FVG> fs = dir == 1 ? lfvgs : sfvgs
         bool gb = false
         bool gm = false
