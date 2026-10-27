@@ -81,7 +81,7 @@ var dowick = input.bool(true, "Wick C.E.", group = GRP_EN, inline = "en",
 drawMode = input.string("all", "Draw", options = ["all", "1PFVGs", "IFVGs", "1PFVGs+IFVGs"], group = GRP_EN, inline = "dr",
     tooltip = "all: everything.\n1PFVGs: only 1PFVGs, no other FVG.\nIFVGs: only IFVG boxes and OTE bands.\n"+
         "1PFVGs+IFVGs: both.\nThe IFVGs modes hide regular FVGs, wick C.E., swing labels and signals (alerts keep working).")
-fltMode = input.string("none", "FVG filter", options = ["none", "sweeps", "sweeps&mid", "relevant"], group = GRP_EN, inline = "dr",
+fltMode = input.string("none", "FVG filter", options = ["none", "sweeps", "sweeps&mid", "relevant", "recent relevant"], group = GRP_EN, inline = "dr",
     tooltip = "Which FVGs are drawn (1PFVGs and the close-mode IFVG logic are not filtered).\n"+
         "A sweep is a bar breaking the last confirmed short-term high / low.\n"+
         "sweeps: the last FVG before the sweep and the first one after it.\n"+
@@ -90,13 +90,17 @@ fltMode = input.string("none", "FVG filter", options = ["none", "sweeps", "sweep
         "through it); FVGs flagged OTE (needs 'Flag OTE FVGs'); and, on the last bar, the live FVGs within "+
         "min swing (ATR) x ATR of the price. FVGs too small for a C.E. are drawn lighter and without border, and "+
         "are hidden once filled unless they formed at a swing high / low (Swing pivot left / right) or were "+
-        "extended by a merged FVG.")
+        "extended by a merged FVG. relevant is the slowest filter: every bar it checks all hidden live FVGs.\n"+
+        "recent relevant: as relevant, but hidden FVGs older than 1000 bars are dropped (they no longer "+
+        "reappear), which keeps it fast on long histories.")
 bool fponly = drawMode == "1PFVGs"            // regular FVGs are discarded
 bool ifvgOnly = drawMode == "IFVGs"           // all FVGs are hidden, 1PFVGs included
 bool hideReg = drawMode == "IFVGs" or drawMode == "1PFVGs+IFVGs"  // regular FVGs, wicks, swing labels, signals hidden
 bool fltOff = fltMode == "none"
 bool fltMid = fltMode == "sweeps&mid"
-bool fltRel = fltMode == "relevant"
+bool fltRel = fltMode == "relevant" or fltMode == "recent relevant"
+bool fltRecent = fltMode == "recent relevant"   // [REL] hidden FVGs older than relMaxAge bars are dropped
+int relMaxAge = 1000
 // fixed filter values (no inputs)
 int flN = 1      // FVGs kept after a sweep
 int flWin = 25   // "near the middle of the arm" = % of the arm length on each side of its middle
@@ -1333,6 +1337,10 @@ if not fltOff
 
 // [REL] "relevant" filter: live FVGs not shown yet ===============
 float relAtr = ta.atr(atrLen)
+// recent relevant: relF is in creation order, so the old ones are at its front
+if fltRecent
+    while relF.size() > 0 and bar_index - nz(relF.first().sbar, bar_index) > relMaxAge
+        relF.shift()
 if fltRel and barstate.isconfirmed and relF.size() > 0
     for i = relF.size() - 1 to 0
         FVG f = relF.get(i)

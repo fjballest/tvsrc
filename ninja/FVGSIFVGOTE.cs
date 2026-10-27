@@ -2,7 +2,7 @@
 // FVGSIFVGOTE - Fair value gaps, 1st presented FVGs, inverse FVGs (IFVG) and ICT OTE, for NinjaTrader 8
 // ---------------------------------------------------------------------------------------------------------------------
 // Port of the TradingView Pine Script v6 indicator "FVGs+IFVG+OTE5" by franjballest
-// (source file FVGS+IFVG+OTE.txt, md5 725ffc749482ef33e058ca1ee0bb9ae5). Mozilla Public License 2.0, as the original.
+// (source file FVGS+IFVG+OTE.txt, md5 f02c36db50b85eb17313eda302ba43dd). Mozilla Public License 2.0, as the original.
 //
 // What it draws: FVG boxes (or no-fill boxes, or hi / lo / C.E. segments) with C.E. lines, the 1st presented FVG of the
 // session open (New York 09:30, or Madrid 09:00 for DAX) and its optional inverse, wick C.E. segments, IFVG candidates
@@ -56,7 +56,7 @@ using NinjaTrader.NinjaScript.DrawingTools;
 
 // option lists of the Pine string inputs (global, uniquely prefixed, so the generated factory code can see them)
 public enum FioDrawMode { All, OnlyPFVGs, IFVGs, PFVGsAndIFVGs }
-public enum FioFilterMode { None, Sweeps, SweepsAndMid, Relevant }
+public enum FioFilterMode { None, Sweeps, SweepsAndMid, Relevant, RecentRelevant }
 public enum FioFvgStyle { Box, BoxNoFill, Segments }
 public enum FioConfirm { Close, FullBody }
 public enum FioDeadMode { Fade, BackToFVG }
@@ -224,7 +224,8 @@ namespace NinjaTrader.NinjaScript.Indicators
         private bool loggedErr;
 
         // derived inputs
-        private bool fponly, ifvgOnly, hideReg, fltOff, fltMid, fltRel, styNoFill, stySeg;
+        private bool fponly, ifvgOnly, hideReg, fltOff, fltMid, fltRel, fltRecent, styNoFill, stySeg;
+        private const int RelMaxAge = 1000;   // RecentRelevant: hidden FVGs older than this (bars) are dropped
         private Color cL, cLn, cS, cSn, cFp, cFpn, cWfp, cWfpn, cIfp, cIfpn, cWick, cDead, cBullIf, cBearIf;
         private Color cOteBand, cOteHi, cOteTxt, cBrk, cMb, cIfvgTxt;
         private Brush dispBrush;
@@ -549,7 +550,8 @@ namespace NinjaTrader.NinjaScript.Indicators
             hideReg = DrawSelection == FioDrawMode.IFVGs || DrawSelection == FioDrawMode.PFVGsAndIFVGs;
             fltOff = FvgFilter == FioFilterMode.None;
             fltMid = FvgFilter == FioFilterMode.SweepsAndMid;
-            fltRel = FvgFilter == FioFilterMode.Relevant;
+            fltRel = FvgFilter == FioFilterMode.Relevant || FvgFilter == FioFilterMode.RecentRelevant;
+            fltRecent = FvgFilter == FioFilterMode.RecentRelevant;
             styNoFill = FvgStyle == FioFvgStyle.BoxNoFill;
             stySeg = FvgStyle == FioFvgStyle.Segments;
 
@@ -1652,6 +1654,10 @@ namespace NinjaTrader.NinjaScript.Indicators
         // be confirmed); and box the live FVGs within MinSwingAtr x ATR of the price
         private void RelStep()
         {
+            // RecentRelevant: relF is in creation order, so the old ones are at its front
+            if (fltRecent)
+                while (relF.Count > 0 && bi - relF[0].sbar > RelMaxAge)
+                    relF.RemoveAt(0);
             for (int k = relF.Count - 1; k >= 0; k--)
             {
                 Fvg f = relF[k];
@@ -3392,7 +3398,7 @@ namespace NinjaTrader.NinjaScript.Indicators
         public FioDrawMode DrawSelection { get; set; }
 
         [NinjaScriptProperty]
-        [Display(Name = "FVG filter", GroupName = "Enable / Draw / Filter", Order = 105, Description = "Which FVGs are drawn (1PFVGs and the close-mode IFVG logic are not filtered). Sweeps: the last FVG before a sweep and the first one after it. SweepsAndMid: also the largest FVG near the middle of the arm. Relevant: the first FVG after a sweep; the last one before it only once it becomes an IFVG; FVGs flagged OTE; and the live FVGs within min swing (ATR) x ATR of the price. FVGs too small for a C.E. are drawn lighter and without border, and are hidden once filled unless they formed at a swing high / low or were extended by a merged FVG.")]
+        [Display(Name = "FVG filter", GroupName = "Enable / Draw / Filter", Order = 105, Description = "Which FVGs are drawn (1PFVGs and the close-mode IFVG logic are not filtered). Sweeps: the last FVG before a sweep and the first one after it. SweepsAndMid: also the largest FVG near the middle of the arm. Relevant: the first FVG after a sweep; the last one before it only once it becomes an IFVG; FVGs flagged OTE; and the live FVGs within min swing (ATR) x ATR of the price. FVGs too small for a C.E. are drawn lighter and without border, and are hidden once filled unless they formed at a swing high / low or were extended by a merged FVG. Relevant is the slowest filter: every bar it checks all hidden live FVGs. RecentRelevant: as Relevant, but hidden FVGs older than 1000 bars are dropped (they no longer reappear), which keeps it fast on long histories.")]
         public FioFilterMode FvgFilter { get; set; }
 
         [NinjaScriptProperty]
