@@ -44,7 +44,7 @@ string mitig = input.string("Fully filled (wick)", "remove when",
      tooltip = "When a level is considered mitigated and removed. Fully "
      + "filled means price crossed the far edge: the low of a "
      + "bullish level, the high of a bearish one (by wick or by "
-     + "close). FVGs follow the IFVG rule instead when it is enabled.")
+     + "close of the level's own timeframe). FVGs follow the IFVG rule instead when it is enabled.")
 
 const string G_COL = "Colors (by timeframe)"
 color dbull = input.color(color.green, "daily: bull", group = G_COL, inline = "c1")
@@ -691,10 +691,13 @@ runMit() =>
                     flipped := true
             if mmode > 0 and not fvgLive and not flipped
                 bool m = false
+                // close rule: on a close of the level's own timeframe, never on a chart close
+                bool tn = tfNew.get(l.tfi)
+                float tc = tfClose.get(l.tfi)
                 if l.dir == 1
-                    m := mmode == 1 ? low <= l.ce : mmode == 2 ? low <= l.lo : close < l.lo
+                    m := mmode == 1 ? low <= l.ce : mmode == 2 ? low <= l.lo : tn and tc < l.lo
                 else
-                    m := mmode == 1 ? high >= l.ce : mmode == 2 ? high >= l.hi : close > l.hi
+                    m := mmode == 1 ? high >= l.ce : mmode == 2 ? high >= l.hi : tn and tc > l.hi
                 if m
                     l.kill()
                     lvls.remove(i)

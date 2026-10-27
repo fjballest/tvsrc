@@ -243,7 +243,7 @@ Mitigation rules (tested on every chart bar):
 | Never | never | never |
 | CE touched | the bar's low is at or below the CE | the bar's high is at or above the CE |
 | Fully filled (wick) | the bar's low is at or below the level's low | the bar's high is at or above the level's high |
-| Fully filled (close) | the bar closes below the level's low | the bar closes above the level's high |
+| Fully filled (close) | a candle of the level's own timeframe closes below its low | a candle of the level's own timeframe closes above its high |
 
 For a wick CE, "low" and "high" are the ends of the wick.
 
@@ -388,7 +388,7 @@ ICTcotas defines no alerts and no alert conditions. To be alerted at a level, dr
 
 - All levels come from completed higher timeframe candles (the data request uses offsets of one, two and three candles with lookahead), so a detected level does not repaint and does not appear before its candle closes.
 - Inversion into an IFVG is checked on the completed candles of the FVG's own timeframe, so it does not repaint and is the same on any chart timeframe.
-- The **Fully filled (close)** rule is checked on chart-bar closes. On the live bar it can show intrabar and revert if the bar does not close beyond the edge; it is final when the chart bar closes. Because it uses the chart timeframe's closes, the result differs between, say, a 1m and a 15m chart.
+- The **Fully filled (close)** rule is checked on the completed candles of each level's own timeframe (a daily level only on a daily close), so it does not repaint and is the same on any chart timeframe.
 - **CE touched** and **Fully filled (wick)** trigger as soon as the live bar's high or low reaches the level.
 - Objects are drawn only on the last bar, and they are updated in place as new bars arrive.
 

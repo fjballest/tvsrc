@@ -9,7 +9,7 @@
  * closed through become IFVGs. Mitigated levels are removed.
  *
  * Port of the TradingView Pine Script v6 indicator ICTcotas.txt
- * (md5 dc3879361165ac5b47894af550db008a), (c) franjballest, Mozilla Public
+ * (md5 082ae5d33ac4090bce36f994af3ddbf2), (c) franjballest, Mozilla Public
  * License 2.0 (https://mozilla.org/MPL/2.0/). Same logic, same inputs (as
  * camelCase parameters) and the same defaults.
  *
@@ -373,8 +373,9 @@ class Engine {
             }
             if (c.mmode > 0 && !fvgLive && !flipped) {
                 let m;
-                if (l.dir === 1) m = c.mmode === 1 ? b.l <= l.ce : c.mmode === 2 ? b.l <= l.lo : b.c < l.lo;
-                else m = c.mmode === 1 ? b.h >= l.ce : c.mmode === 2 ? b.h >= l.hi : b.c > l.hi;
+                // close rule: on a close of the level's own timeframe (tc), never on a chart close
+                if (l.dir === 1) m = c.mmode === 1 ? b.l <= l.ce : c.mmode === 2 ? b.l <= l.lo : tc !== undefined && tc < l.lo;
+                else m = c.mmode === 1 ? b.h >= l.ce : c.mmode === 2 ? b.h >= l.hi : tc !== undefined && tc > l.hi;
                 if (m) {
                     this.kill(l);
                     lv.splice(i, 1);

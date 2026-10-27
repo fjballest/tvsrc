@@ -135,14 +135,14 @@ After a level is added, `addLvl` counts the live levels of the same kind and tim
 
 ### Inversion and mitigation
 
-`runMit` runs on every chart bar. With `doifvg` on, a live FVG (kind 0 or 3) is inverted when a candle of its own timeframe closes beyond its far edge, never on a chart close. The per-bar array `tfNew` (9 entries, by `tfi`) is set when a candle of that timeframe completed on this chart bar (`newD` / `newW` / `newM`, or a new `t0` in the by-timeframe loop), and the `var` array `tfClose` holds that candle's close (`dC1`, `wC1`, `mC1`, `u1`); `runMit` tests only levels whose `tfi` has `tfNew`, against `tfClose`. NinjaTrader: `InvertTf(tfi, close)` from `OnHtfBar` with `Closes[k][off]` (levels flipped there skip the next `RunMit` mitigation, `flippedNow`). Tradovate: `applyBar` passes `tfc` (tfi to the completed candle's close) to `runMit`. ICTScalp and its generated variants copy this. Beyond the far edge means below the low of a bullish one, above the high of a bearish one. It becomes an IFVG, its direction flips, and it is renamed. After the flip the usual mitigation rule applies to it. All other levels, and FVGs when `doifvg` is off, use the mitigation rule chosen in General:
+`runMit` runs on every chart bar. With `doifvg` on, a live FVG (kind 0 or 3) is inverted when a candle of its own timeframe closes beyond its far edge, never on a chart close. The per-bar array `tfNew` (9 entries, by `tfi`) is set when a candle of that timeframe completed on this chart bar (`newD` / `newW` / `newM`, or a new `t0` in the by-timeframe loop), and the `var` array `tfClose` holds that candle's close (`dC1`, `wC1`, `mC1`, `u1`); `runMit` tests only levels whose `tfi` has `tfNew`, against `tfClose`. NinjaTrader: `CloseTf(tfi, close)` from `OnHtfBar` with `Closes[k][off]` does the inversion and the Fully filled (close) rule (levels flipped there skip the next `RunMit`, `flippedNow`); `RunMit` keeps only the CE and wick rules. Tradovate: `applyBar` passes `tfc` (tfi to the completed candle's close) to `runMit`, for the inversion and the close rule. ICTScalp and its generated variants copy this. Beyond the far edge means below the low of a bullish one, above the high of a bearish one. It becomes an IFVG, its direction flips, and it is renamed. After the flip the usual mitigation rule applies to it. All other levels, and FVGs when `doifvg` is off, use the mitigation rule chosen in General:
 
 | Rule | A bullish level is removed when | A bearish level is removed when |
 | --- | --- | --- |
 | Never | Never | Never |
 | CE touched | `low <= ce` | `high >= ce` |
 | Fully filled (wick) | `low <= lo` | `high >= hi` |
-| Fully filled (close) | `close < lo` | `close > hi` |
+| Fully filled (close) | `tfNew` and `tfClose < lo` (a close of the level's own timeframe) | `tfNew` and `tfClose > hi` |
 
 ## Execution pipeline
 
