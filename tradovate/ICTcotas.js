@@ -9,7 +9,7 @@
  * closed through become IFVGs. Mitigated levels are removed.
  *
  * Port of the TradingView Pine Script v6 indicator ICTcotas.txt
- * (md5 3636809354c6e1a528daa558a99d3b6c), (c) franjballest, Mozilla Public
+ * (md5 082ae5d33ac4090bce36f994af3ddbf2), (c) franjballest, Mozilla Public
  * License 2.0 (https://mozilla.org/MPL/2.0/). Same logic, same inputs (as
  * camelCase parameters) and the same defaults.
  *
@@ -350,8 +350,9 @@ class Engine {
         if (c.doWk) this.addWicks(tfi, k1);
     }
 
-    // FVG -> IFVG inversion and mitigation, every chart bar
-    runMit(b) {
+    // FVG -> IFVG inversion and mitigation, every chart bar. tfc maps a level timeframe (tfi) to the
+    // close of its candle completed on this bar: an FVG inverts only on a close of its own timeframe
+    runMit(b, tfc) {
         const c = this.cfg;
         const lv = this.S.lvls;
         for (let i = lv.length - 1; i >= 0; i--) {
@@ -362,8 +363,9 @@ class Engine {
             }
             const fvgLive = (l.kind === 0 || l.kind === 3) && c.doIfvg && !l.inv;
             let flipped = false;
-            if (fvgLive) {
-                if ((l.dir === 1 && b.c < l.lo) || (l.dir === -1 && b.c > l.hi)) {
+            const tc = tfc[l.tfi];
+            if (fvgLive && tc !== undefined) {
+                if ((l.dir === 1 && tc < l.lo) || (l.dir === -1 && tc > l.hi)) {
                     l.inv = true;
                     l.dir = -l.dir;
                     flipped = true;
@@ -371,8 +373,9 @@ class Engine {
             }
             if (c.mmode > 0 && !fvgLive && !flipped) {
                 let m;
-                if (l.dir === 1) m = c.mmode === 1 ? b.l <= l.ce : c.mmode === 2 ? b.l <= l.lo : b.c < l.lo;
-                else m = c.mmode === 1 ? b.h >= l.ce : c.mmode === 2 ? b.h >= l.hi : b.c > l.hi;
+                // close rule: on a close of the level's own timeframe (tc), never on a chart close
+                if (l.dir === 1) m = c.mmode === 1 ? b.l <= l.ce : c.mmode === 2 ? b.l <= l.lo : tc !== undefined && tc < l.lo;
+                else m = c.mmode === 1 ? b.h >= l.ce : c.mmode === 2 ? b.h >= l.hi : tc !== undefined && tc > l.hi;
                 if (m) {
                     this.kill(l);
                     lv.splice(i, 1);
@@ -393,9 +396,10 @@ class Engine {
         const dayOk = c.doDaily && tfs < 86400;
         const wkOk = c.doWeekly && tfs < 604800;
         const monOk = c.doMonthly && tfs < 2592000;
-        if (dayOk && ev.d) this.processTf(0, A.d, j);
-        if (wkOk && ev.w) this.processTf(1, A.w, j);
-        if (monOk && ev.m) this.processTf(2, A.m, j);
+        const tfc = {};
+        if (dayOk && ev.d) { this.processTf(0, A.d, j); tfc[0] = A.d.get(1).c; }
+        if (wkOk && ev.w) { this.processTf(1, A.w, j); tfc[1] = A.w.get(1).c; }
+        if (monOk && ev.m) { this.processTf(2, A.m, j); tfc[2] = A.m.get(1).c; }
         const mfAgg = ["m15", "h1", "h4", "d", "w", "m"];
         for (let i = 0; i < 6; i++) {
             const fvgOn = this.mfEnabled(i);
@@ -405,9 +409,10 @@ class Engine {
                 const g = A[name];
                 if (fvgOn) this.addFvgs(3, 3 + i, c.mfMin, g.get(1), g.get(2), g.get(3), j);
                 if (wkOn) this.addWicks(3 + i, g.get(1));
+                tfc[3 + i] = g.get(1).c;
             }
         }
-        this.runMit(b);
+        this.runMit(b, tfc);
     }
 }
 

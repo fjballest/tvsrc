@@ -13,7 +13,7 @@
  *   BM↑/BM↓, inheritance of the tags by IFVGs) and LONG / SHORT / OTE signal markers.
  *
  *   Port of the TradingView Pine Script v6 indicator "FVGS+IFVG+OTE.txt"
- *   (md5 816345d99ad0cae0fb95a11a2f83f53c, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
+ *   (md5 f02c36db50b85eb17313eda302ba43dd, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
  *   input variable names (camelCase). See the design document (d.md) and user manual (m.md) for the logic.
  *
  * How to install
@@ -91,7 +91,7 @@ const PARAMS = [
     // Enable / Draw / Filter
     ["dofp", "b", true], ["doifvg", "b", true], ["dowick", "b", true],
     ["drawMode", "e", "all", { all: "all", PFVG: "1PFVGs", IFVG: "IFVGs", PFVG_IFVG: "1PFVGs+IFVGs" }],
-    ["fltMode", "e", "none", { none: "none", sweeps: "sweeps", sweepsMid: "sweeps&mid", relevant: "relevant" }],
+    ["fltMode", "e", "none", { none: "none", sweeps: "sweeps", sweepsMid: "sweeps&mid", relevant: "relevant", recentRelevant: "recent relevant" }],
     // FVG Settings
     ["visible", "b", false], ["dofvgalert", "b", false], ["diag", "b", false],
     ["minfvg", "n", 3, [0.25, 1]], ["maxfvg", "n", 10000, [1, 100]], ["maxfvgs", "n", 200, [1, 2]],
@@ -396,7 +396,9 @@ class FVGSIFVGOTE {
         this.hideReg = P.drawMode === "IFVG" || P.drawMode === "PFVG_IFVG";
         this.fltOff = P.fltMode === "none";
         this.fltMid = P.fltMode === "sweepsMid";
-        this.fltRel = P.fltMode === "relevant";
+        this.fltRel = P.fltMode === "relevant" || P.fltMode === "recent relevant";
+        // recent relevant: hidden FVGs older than 1000 bars are dropped from relF
+        this.fltRecent = P.fltMode === "recent relevant";
         this.flN = 1;
         this.flWin = 25;
         this.styNoFill = P.drawStyle === "boxNoFill";
@@ -1450,6 +1452,10 @@ class FVGSIFVGOTE {
     // pivot there would be confirmed); and box the live FVGs within minATR x ATR of the price
     relStep(j) {
         const P = this.P;
+        // recent relevant: relF is in creation order, so the old ones are at its front
+        if (this.fltRecent) {
+            while (this.relF.length > 0 && j - (this.relF[0].sbar ?? j) > 1000) this.relF.shift();
+        }
         for (let k = this.relF.length - 1; k >= 0; k--) {
             const f = this.relF[k];
             if (f.shown || f.dup) this.relF.splice(k, 1);

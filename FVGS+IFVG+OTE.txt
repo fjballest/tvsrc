@@ -81,7 +81,7 @@ var dowick = input.bool(true, "Wick C.E.", group = GRP_EN, inline = "en",
 drawMode = input.string("all", "Draw", options = ["all", "1PFVGs", "IFVGs", "1PFVGs+IFVGs"], group = GRP_EN, inline = "dr",
     tooltip = "all: everything.\n1PFVGs: only 1PFVGs, no other FVG.\nIFVGs: only IFVG boxes and OTE bands.\n"+
         "1PFVGs+IFVGs: both.\nThe IFVGs modes hide regular FVGs, wick C.E., swing labels and signals (alerts keep working).")
-fltMode = input.string("none", "FVG filter", options = ["none", "sweeps", "sweeps&mid", "relevant"], group = GRP_EN, inline = "dr",
+fltMode = input.string("none", "FVG filter", options = ["none", "sweeps", "sweeps&mid", "relevant", "recent relevant"], group = GRP_EN, inline = "dr",
     tooltip = "Which FVGs are drawn (1PFVGs and the close-mode IFVG logic are not filtered).\n"+
         "A sweep is a bar breaking the last confirmed short-term high / low.\n"+
         "sweeps: the last FVG before the sweep and the first one after it.\n"+
@@ -90,13 +90,17 @@ fltMode = input.string("none", "FVG filter", options = ["none", "sweeps", "sweep
         "through it); FVGs flagged OTE (needs 'Flag OTE FVGs'); and, on the last bar, the live FVGs within "+
         "min swing (ATR) x ATR of the price. FVGs too small for a C.E. are drawn lighter and without border, and "+
         "are hidden once filled unless they formed at a swing high / low (Swing pivot left / right) or were "+
-        "extended by a merged FVG.")
+        "extended by a merged FVG. relevant is the slowest filter: every bar it checks all hidden live FVGs.\n"+
+        "recent relevant: as relevant, but hidden FVGs older than 1000 bars are dropped (they no longer "+
+        "reappear), which keeps it fast on long histories.")
 bool fponly = drawMode == "1PFVGs"            // regular FVGs are discarded
 bool ifvgOnly = drawMode == "IFVGs"           // all FVGs are hidden, 1PFVGs included
 bool hideReg = drawMode == "IFVGs" or drawMode == "1PFVGs+IFVGs"  // regular FVGs, wicks, swing labels, signals hidden
 bool fltOff = fltMode == "none"
 bool fltMid = fltMode == "sweeps&mid"
-bool fltRel = fltMode == "relevant"
+bool fltRel = fltMode == "relevant" or fltMode == "recent relevant"
+bool fltRecent = fltMode == "recent relevant"   // [REL] hidden FVGs older than relMaxAge bars are dropped
+int relMaxAge = 1000
 // fixed filter values (no inputs)
 int flN = 1      // FVGs kept after a sweep
 int flWin = 25   // "near the middle of the arm" = % of the arm length on each side of its middle
@@ -457,6 +461,8 @@ type FVG
     bool islong // bullish?
     int start  // time for start
     int end = na// time when mitigated
+    int updEnd = na // [PERF] end already applied to the drawings (finished FVGs are then skipped)
+    int inhSeq = na // [PERF] tagSeq when ifvgInherit last scanned for this IFVG
     box rect = na // box drawn
     line celine = na // CE line
     bool isfp = false // is first presented FVG
@@ -483,6 +489,13 @@ type FVG
     bool swp = false // [REL] last FVG before a sweep: shown once it becomes an IFVG
     bool ext = false // [REL] extended by a merged duplicate
     int dbar = na // [REL] bar index where it was filled
+
+// [PERF] bumped whenever an FVG gets a breaker / mitigation block tag, is widened by a merge or a tagged one is
+// drawn: ifvgInherit
+// only rescans the FVGs when this changed (an array, since functions cannot assign global variables)
+var array<int> tagSeq = array.from(0)
+bumpTags() =>
+    tagSeq.set(0, tagSeq.get(0) + 1)
 
 
 // [DE] border width: thicker for flagged displacement FVGs
@@ -824,6 +837,7 @@ method mergeZone(FVG g, FVG f) =>
             g.celine.set_y2(g.ce)
         g.end := na
         g.ext := true
+        bumpTags()
     true
 
 // FVG filtering around liquidity sweeps ==============================================
@@ -846,6 +860,8 @@ insertSorted(array<FVG> a, FVG f) =>
         pos -= 1
     f.shown := true
     a.insert(pos, f)
+    if f.brkD != 0 or f.mbD != 0
+        bumpTags()
     true
 
 // older drawn FVG (any bias) that is almost exactly the same zone as f
@@ -1228,6 +1244,10 @@ updfvgs(array<FVG> fvgs) =>
     if fvgs.size() > 0
         for i = 0 to fvgs.size()-1
             f = fvgs.get(i)
+            // [PERF] a finished FVG whose drawings already end at its end needs no more work (a merge resets
+            // end, and a kill clears the drawings, so those are redone)
+            if not na(f.end) and f.end == f.updEnd and (stySeg ? not na(f.hiln) : not na(f.rect))
+                continue
             isdone = not na(f.end)
             // check if filled
             if not isdone and f.isDone(open,close)
@@ -1276,14 +1296,19 @@ updfvgs(array<FVG> fvgs) =>
                     width = celnwid)
                 if f.isfp
                     f.celine.set_extend(extend.right)
-            // always follow the end: an FVG extended by a merged duplicate (end reset) has to grow again
-            if not na(f.rect) and not f.kept
-                f.rect.set_right(et)
-            if not na(f.hiln)
-                f.hiln.set_x2(et)
-                f.loln.set_x2(et)
-            if not na(f.celine)
-                f.celine.set_x2(et)
+            // always follow the end: an FVG extended by a merged duplicate (end reset) has to grow again.
+            // [PERF] a live FVG is only stretched to the current bar on the last bar (and in real time): on
+            // history nobody sees it, and moving every box on every bar was most of the run time
+            if not na(f.end) or barstate.islast or barstate.isrealtime
+                if not na(f.rect) and not f.kept
+                    f.rect.set_right(et)
+                if not na(f.hiln)
+                    f.hiln.set_x2(et)
+                    f.loln.set_x2(et)
+                if not na(f.celine)
+                    f.celine.set_x2(et)
+                if not na(f.end)
+                    f.updEnd := f.end
             if dofvgalert and na(f.end) and barstate.isconfirmed
                 f.alerts()
         if fvgs.size() >= maxfvgs  and fvgs.size() > 0
@@ -1312,6 +1337,10 @@ if not fltOff
 
 // [REL] "relevant" filter: live FVGs not shown yet ===============
 float relAtr = ta.atr(atrLen)
+// recent relevant: relF is in creation order, so the old ones are at its front
+if fltRecent
+    while relF.size() > 0 and bar_index - nz(relF.first().sbar, bar_index) > relMaxAge
+        relF.shift()
 if fltRel and barstate.isconfirmed and relF.size() > 0
     for i = relF.size() - 1 to 0
         FVG f = relF.get(i)
@@ -2133,6 +2162,7 @@ brkTag(FVG f, Breaker b, box ib) =>
     if not na(f) and f.hi >= b.lo and f.lo <= b.hi
         f.brk := true
         f.brkD := b.dir
+        bumpTags()
         if not na(ib)
             ib.set_text_formatting(text.format_bold)
         else
@@ -2319,10 +2349,12 @@ mbTag(FVG f, MBlock b, box ib, int which) =>
         if not na(ib)
             if f.mbD != b.dir
                 f.mbD := b.dir
+                bumpTags()
                 ib.set_text(mbTxt(which, f.mbD))
             ib.set_text_formatting(text.format_bold)
         else
             f.mbD := b.dir
+            bumpTags()
             f.lblD := b.dir
             if na(f.end) and (not f.kept or (f.cand and not confIfvg(f))) and not (f.aplus and lblAp) and not na(f.rect)
                 f.rect.set_text(fvgLbl(f))
@@ -2429,7 +2461,9 @@ if mbOn and barstate.isconfirmed
 // [MB] a confirmed IFVG overlapping an FVG of its direction that a breaker / mitigation block tagged (live, or
 // mitigated after the IFVG's FVG started) gets the same tag: bold label, plus the arrow for a mitigation block
 ifvgInherit(FVG iv, box ib, int which, int dir) =>
-    if not na(iv) and not na(ib)
+    // [PERF] the tags of the FVGs did not change since the last scan for this IFVG: nothing new to inherit
+    if not na(iv) and not na(ib) and (na(iv.inhSeq) or iv.inhSeq != tagSeq.get(0))
+        iv.inhSeq := tagSeq.get(0)
         array<FVG> fs = dir == 1 ? lfvgs : sfvgs
         bool gb = false
         bool gm = false

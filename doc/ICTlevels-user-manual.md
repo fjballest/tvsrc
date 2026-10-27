@@ -144,7 +144,7 @@ For each Asia, London, NY AM and NY PM session (times in section 3):
 
 - **Session high and low lines** (green and red, solid, width 1) from the bar that made the extreme, extending right until price takes the level. Taken levels keep their line up to the bar that took them.
 - **Labels** on untaken levels: "Asia hi", "Asia lo", "London hi", "London lo", "NY AM hi", "NY AM lo", "NY PM hi", "NY PM lo". The label disappears when the level is taken.
-- **Session rectangles** (optional): a shaded box from the session start to its end, between its high and low, in the session color (Asia red, London green, NY blue) at 75% transparency. By default rectangles are hidden on 5m and lower charts.
+- **Session rectangles** (optional): a shaded box from the session start to its end, between its high and low, in the session color (Asia red, London green, NY blue) at 75% transparency. With **border only**, just its outline is drawn, 2 px wide and with half the transparency. By default rectangles are hidden on 5m and lower charts.
 
 The current session's lines and rectangle grow while it is in progress.
 
@@ -372,6 +372,7 @@ Settings are listed in the order they appear in the settings dialog. Several set
 | (no label, count) | 20 (min 3) | How many sessions to keep, all four kinds together. Values above 40 are reduced to 40. Also the number of premarket ranges kept. |
 | Draw session rectangles | on | Draws a shaded box for each session. |
 | transparency | 75 | Transparency of the session boxes (0 opaque, 100 invisible). |
+| Session rectangles: border only | off | Draws only the outline of each session box, 2 px wide, in the session color with half the transparency above (37 at the default 75), and no fill. On Tradovate the outline is drawn solid, without the transparency. |
 | No session rectangles at or under | on | Hides the session boxes on low timeframes. |
 | timeframe | 5 (5 minutes) | Boxes are hidden when the chart timeframe is at or below this value and below 15 minutes. Setting a timeframe of 15m or more hides them on every chart below 15m. |
 | ses. | on | Draws the session high and low lines (also used for the premarket high and low). |

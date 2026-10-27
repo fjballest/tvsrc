@@ -36,7 +36,7 @@ The indicator raises alerts for IFVG signals, OTE IFVG signals and, optionally, 
 | NY open on NQ, all tools | 1m or 3m | Defaults (TZ `Auto` gives 09:30 New York) |
 | DAX open | 1m or 3m | Defaults (TZ `Auto` detects DAX / FDX / Germany and uses 09:00 Madrid) |
 | Clean IFVG execution chart | 1m to 5m | **Draw** = `IFVGs`; optionally **Alert only OTE** |
-| Only FVGs around liquidity sweeps | any intraday | **FVG filter** = `sweeps`, `sweeps&mid` or `relevant` |
+| Only FVGs around liquidity sweeps | any intraday | **FVG filter** = `sweeps`, `sweeps&mid`, `relevant` or `recent relevant` |
 | Higher-quality FVGs | any intraday | **Displacement FVGs only**, or just **Flag displacement FVGs** to see them thicker |
 | A+ setups | 1m to 15m | **A+ setups** on; optionally **A+ only with the HTF structure** |
 
@@ -136,7 +136,8 @@ With **FVG filter** = `none` every FVG is drawn. The other modes draw only the F
 - `sweeps`: on a sweep, the last FVG created before it is revealed (drawn from where it started), and the first FVG created after it is drawn when it forms. Other FVGs are hidden.
 - `sweeps&mid`: also the largest FVG whose start lies near the middle of the arm, the move from the last opposite short-term pivot to the sweep (within 25% of the arm's length on each side of its middle).
 - `relevant`: the FVGs that matter now. The first FVG after each sweep; the last FVG before a sweep, but only once price closes through it (it becomes an IFVG); every FVG that becomes an OTE FVG; and, on the last candle, live FVGs within **min swing ATR** × ATR of the price. FVGs smaller than the C.E. minimum size are drawn lighter (halfway to fully transparent) and with no border, and are hidden once filled unless a short-term pivot formed within a candle before or three after their start, or they were widened by a merge. No extra inputs.
-- Nothing is drawn before the first sweep (except near-price boxes with `relevant`). The values "one FVG after the sweep" and "25%" are fixed, not inputs.
+- `recent relevant`: as `relevant`, but hidden FVGs older than 1000 candles are dropped and can no longer reappear. `relevant` is the slowest filter, since on every candle it checks every hidden live FVG; on long 1m histories `recent relevant` is noticeably faster.
+- Nothing is drawn before the first sweep (except near-price boxes with `relevant` / `recent relevant`). The values "one FVG after the sweep" and "25%" are fixed, not inputs.
 - 1PFVGs are not filtered. The close-mode IFVG logic still uses every FVG: a hidden FVG that becomes an IFVG candidate gets its own IFVG box. In swing mode, IFVG candidates come only from the drawn FVGs, so the filter also decides which FVGs can become IFVGs.
 
 ### FVG style
@@ -388,7 +389,7 @@ Inputs on one line in the settings dialog are listed together; a field without i
 | IFVGs | On | Detect, draw and alert IFVGs (needed for OTE). |
 | Wick C.E. | On | Draw the C.E. of large candle wicks. |
 | Draw | `all` | `all`, `1PFVGs`, `IFVGs`, `1PFVGs+IFVGs` (see section 7, Draw modes). Alerts keep working in every mode. |
-| FVG filter | `none` | `none`, `sweeps`, `sweeps&mid`, `relevant` (see section 4). Does not filter 1PFVGs or the close-mode IFVG logic. |
+| FVG filter | `none` | `none`, `sweeps`, `sweeps&mid`, `relevant`, `recent relevant` (see section 4; `relevant` is the slowest). Does not filter 1PFVGs or the close-mode IFVG logic. |
 
 ### FVG Settings
 

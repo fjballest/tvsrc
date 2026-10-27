@@ -775,6 +775,10 @@ var array<int> mfSecs = array.from(900, 3600, 14400, 86400, 604800, 2628003)
 var array<string> mfTfs = array.from("15", "60", "240", "D", "W", "M")
 var array<bool> mfSel = array.from(mf15, mf1h, mf4h, mfd, mfw, mfm)
 var array<int> mfLastT = array.new<int>(6, na)
+// per level timeframe (tfi 0..8): a candle of it completed on this chart bar, and its close.
+// An FVG inverts into an IFVG only on a close of its own timeframe, never on a chart close (as in ICTcotas).
+array<bool> tfNew = array.new<bool>(9, false)
+var array<float> tfClose = array.new<float>(9, na)
 
 // only timeframes above the chart are used, never the chart's own
 mfOk(int s) =>
@@ -931,17 +935,21 @@ runMit() =>
         else
             bool fvgLive = (l.kind == 0 or l.kind == 3) and doifvg and not l.inv
             bool flipped = false
-            if fvgLive
-                if (l.dir == 1 and close < l.lo) or (l.dir == -1 and close > l.hi)
+            if fvgLive and tfNew.get(l.tfi)
+                float c = tfClose.get(l.tfi)
+                if (l.dir == 1 and c < l.lo) or (l.dir == -1 and c > l.hi)
                     l.inv := true
                     l.dir := -l.dir
                     flipped := true
             if mmode > 0 and not fvgLive and not flipped
                 bool m = false
+                // close rule: on a close of the level's own timeframe, never on a chart close
+                bool tn = tfNew.get(l.tfi)
+                float tc = tfClose.get(l.tfi)
                 if l.dir == 1
-                    m := mmode == 1 ? low <= l.ce : mmode == 2 ? low <= l.lo : close < l.lo
+                    m := mmode == 1 ? low <= l.ce : mmode == 2 ? low <= l.lo : tn and tc < l.lo
                 else
-                    m := mmode == 1 ? high >= l.ce : mmode == 2 ? high >= l.hi : close > l.hi
+                    m := mmode == 1 ? high >= l.ce : mmode == 2 ? high >= l.hi : tn and tc > l.hi
                 if m
                     l.kill()
                     lvls.remove(i)
@@ -967,10 +975,16 @@ bool newW = wkOk and wT != nz(wT[1], wT)
 bool newM = monOk and mT != nz(mT[1], mT)
 
 if newD
+    tfNew.set(0, true)
+    tfClose.set(0, dC1)
     processTf(0, dO1, dH1, dL1, dC1, dT1, dO2, dH2, dL2, dC2, dT2, dH3, dL3, dO3, dC3)
 if newW
+    tfNew.set(1, true)
+    tfClose.set(1, wC1)
     processTf(1, wO1, wH1, wL1, wC1, wT1, wO2, wH2, wL2, wC2, wT2, wH3, wL3, wO3, wC3)
 if newM
+    tfNew.set(2, true)
+    tfClose.set(2, mC1)
     processTf(2, mO1, mH1, mL1, mC1, mT1, mO2, mH2, mL2, mC2, mT2, mH3, mL3, mO3, mC3)
 for i = 0 to 5
     bool fvgOn = mfEnabled(i)
@@ -980,6 +994,8 @@ for i = 0 to 5
         if not na(t0)
             int last = mfLastT.get(i)
             if not na(last) and t0 != last
+                tfNew.set(3 + i, true)
+                tfClose.set(3 + i, u1)
                 if fvgOn
                     addFvgs(3, 3 + i, mfmin, p1, q1, r1, u1, p2, q2, r2, u2, h3, l3, p3, u3, t2, t0)
                 if wkOn

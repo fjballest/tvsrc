@@ -11,7 +11,7 @@
  *   It draws levels only: no signals, no alerts, no plots.
  *
  *   It is a port of the TradingView Pine Script v6 indicator ICTlevels.txt
- *   (md5 0d076ecfcaddbeb73756f31e4e1eaaa6). Parameter names are the Pine variable names and the
+ *   (md5 10c08c9d1179ec5648c1b9765ea01b2a). Parameter names are the Pine variable names and the
  *   defaults are the Pine defaults; see "doc/ICTlevels-user-manual.md" for what every level means.
  *
  * How to install
@@ -117,6 +117,7 @@ const PARAMS = {
     nses: ps.number(20, 1, 3),
     dorect: ps.bool(true),
     rtransp: ps.number(75, 1, 0),
+    rectbord: ps.bool(false),
     nolowrects: ps.bool(true),
     rectmintf: ps.number(5, 1, 1),
     dosmaxmin: ps.bool(true),
@@ -1186,7 +1187,10 @@ class ICTlevels {
                 G.text(xe, z.op, "M.O.", P.opcolor, 12);
             }
             if (z.drawrect) {
-                G.rect(z.tstart, xe, z.hi, z.lo, lnsty.col, lnsty.op);
+                // border only: the outline in the session color (Tradovate ignores the alpha of a line
+                // color, so the transparency does not apply to it), no fill
+                if (P.rectbord) G.outline(z.tstart, xe, z.hi, z.lo, lnsty.col, "solid", 2);
+                else G.rect(z.tstart, xe, z.hi, z.lo, lnsty.col, lnsty.op);
             }
         };
         for (const z of S.days) drawZone(z);
@@ -1640,6 +1644,19 @@ class Gfx {
             infiniteStart: false,
             infiniteEnd: !!infEnd
         });
+    }
+
+    // outline of a rectangle from bar x1 to bar x2, between prices top and bot
+    outline(x1, x2, top, bot, col, sty, wid) {
+        if (isna(top) || isna(bot) || isna(x1) || isna(x2)) {
+            return;
+        }
+        const s = this.seg(col, sty, wid);
+        const p = [[x1, top, x2, top], [x2, top, x2, bot], [x2, bot, x1, bot], [x1, bot, x1, top]];
+        for (const [xa, ya, xb, yb] of p) {
+            s.lines.push({ tag: "Line", a: { x: du(xa), y: du(ya) }, b: { x: du(xb), y: du(yb) },
+                infiniteStart: false, infiniteEnd: false });
+        }
     }
 
     // vertical line over the whole chart height at bar x

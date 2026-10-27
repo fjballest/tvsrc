@@ -7,7 +7,7 @@
 // FVGs closed through become IFVGs. Mitigated levels are removed.
 //
 // Port of the TradingView Pine Script v6 indicator ICTcotas.txt by franjballest
-// (source md5 3636809354c6e1a528daa558a99d3b6c). Mozilla Public License 2.0.
+// (source md5 082ae5d33ac4090bce36f994af3ddbf2). Mozilla Public License 2.0.
 //
 // Install:
 //   1. Copy this file to  Documents\NinjaTrader 8\bin\Custom\Indicators\ICTcotas.cs
@@ -162,6 +162,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 		private List<Lvl> lvls;
 		private Lvl[] wcur;              // current wick group level: tfi * 2 + side
 		private DateTime[] lastKey;      // last processed bar time per series
+		private HashSet<Lvl> flippedNow = new HashSet<Lvl>();   // inverted since the last RunMit (not mitigated then)
 		private DateTime lastPrimaryKey;
 		private DateTime tfirst;
 		private int nextId;
@@ -468,6 +469,19 @@ namespace NinjaTrader.NinjaScript.Indicators
 				if (wkOn[i])
 					AddWicks(3 + i, k, off);
 			}
+
+			// FVG -> IFVG and the close mitigation rule only on a close of the level's own timeframe,
+			// never on a chart close
+			double c = Closes[k][off];
+			if (k == SerDay && dayOk)
+				CloseTf(0, c);
+			if (k == SerWeek && wkOk)
+				CloseTf(1, c);
+			if (k == SerMonth && monOk)
+				CloseTf(2, c);
+			for (int i = 0; i < 6; i++)
+				if (MfSeries[i] == k && (mfOn[i] || wkOn[i]))
+					CloseTf(3 + i, c);
 			dirty = true;
 		}
 
@@ -804,7 +818,37 @@ namespace NinjaTrader.NinjaScript.Indicators
 				AddWicks(tfi, k, off);
 		}
 
-		// checked on every closed chart bar: FVG -> IFVG inversion and mitigation
+		// a candle of timeframe tfi closed at c: live FVGs of that timeframe closed through become IFVGs,
+		// and with the Fully filled (close) rule the other levels of that timeframe closed through are removed
+		private void CloseTf(int tfi, double c)
+		{
+			for (int i = lvls.Count - 1; i >= 0; i--)
+			{
+				Lvl l = lvls[i];
+				if (l.Dead || l.Tfi != tfi)
+					continue;
+				bool fvgLive = (l.Kind == 0 || l.Kind == 3) && DoIfvg && !l.Inv;
+				bool through = (l.Dir == 1 && c < l.Lo) || (l.Dir == -1 && c > l.Hi);
+				if (fvgLive)
+				{
+					if (through)
+					{
+						l.Inv = true;
+						l.Dir = -l.Dir;
+						flippedNow.Add(l);
+						dirty = true;
+					}
+				}
+				else if (mmode == 3 && through && !flippedNow.Contains(l))
+				{
+					Kill(l);
+					lvls.RemoveAt(i);
+					dirty = true;
+				}
+			}
+		}
+
+		// checked on every closed chart bar: CE / wick mitigation (inversion and the close rule are in CloseTf)
 		private void RunMit(double close, double high, double low)
 		{
 			for (int i = lvls.Count - 1; i >= 0; i--)
@@ -816,24 +860,14 @@ namespace NinjaTrader.NinjaScript.Indicators
 					continue;
 				}
 				bool fvgLive = (l.Kind == 0 || l.Kind == 3) && DoIfvg && !l.Inv;
-				bool flipped = false;
-				if (fvgLive)
-				{
-					if ((l.Dir == 1 && close < l.Lo) || (l.Dir == -1 && close > l.Hi))
-					{
-						l.Inv = true;
-						l.Dir = -l.Dir;
-						flipped = true;
-						dirty = true;
-					}
-				}
-				if (mmode > 0 && !fvgLive && !flipped)
+				bool flipped = flippedNow.Contains(l);
+				if (mmode > 0 && mmode < 3 && !fvgLive && !flipped)
 				{
 					bool m;
 					if (l.Dir == 1)
-						m = mmode == 1 ? low <= l.Ce : mmode == 2 ? low <= l.Lo : close < l.Lo;
+						m = mmode == 1 ? low <= l.Ce : low <= l.Lo;
 					else
-						m = mmode == 1 ? high >= l.Ce : mmode == 2 ? high >= l.Hi : close > l.Hi;
+						m = mmode == 1 ? high >= l.Ce : high >= l.Hi;
 					if (m)
 					{
 						Kill(l);
@@ -842,6 +876,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 					}
 				}
 			}
+			flippedNow.Clear();
 		}
 
 		#endregion
@@ -1028,7 +1063,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 		public int WidthExtra { get; set; }
 
 		[NinjaScriptProperty]
-		[Display(Name = "Remove when", Description = "When a level is considered mitigated and removed. Fully filled means price crossed the far edge (by wick or by close). FVGs follow the IFVG rule instead when it is enabled.", GroupName = GGen, Order = 5)]
+		[Display(Name = "Remove when", Description = "When a level is considered mitigated and removed. Fully filled means price crossed the far edge (by wick, or by a close of the level's own timeframe). FVGs follow the IFVG rule instead when it is enabled.", GroupName = GGen, Order = 5)]
 		public ICTcotasMitigation Mitigation { get; set; }
 
 		// ---------------------------------------------------------------- Colors
@@ -1204,7 +1239,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 		public string FvgText { get; set; }
 
 		[NinjaScriptProperty]
-		[Display(Name = "FVG becomes IFVG on a close through it", Description = "A candle closing beyond the far edge of an FVG inverts it into an IFVG with the opposite direction. While enabled, FVGs are not removed by the general mitigation rule; IFVGs are.", GroupName = GFvg, Order = 13)]
+		[Display(Name = "FVG becomes IFVG on a close through it", Description = "A candle of the FVG's own timeframe closing beyond its far edge inverts it into an IFVG with the opposite direction. While enabled, FVGs are not removed by the general mitigation rule; IFVGs are.", GroupName = GFvg, Order = 13)]
 		public bool DoIfvg { get; set; }
 
 		[NinjaScriptProperty]
