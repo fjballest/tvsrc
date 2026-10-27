@@ -11,7 +11,7 @@
  *   It draws levels only: no signals, no alerts, no plots.
  *
  *   It is a port of the TradingView Pine Script v6 indicator ICTlevels.txt
- *   (md5 539d117057b21ca3312a0943138d8bef). Parameter names are the Pine variable names and the
+ *   (md5 10c08c9d1179ec5648c1b9765ea01b2a). Parameter names are the Pine variable names and the
  *   defaults are the Pine defaults; see "doc/ICTlevels-user-manual.md" for what every level means.
  *
  * How to install
@@ -1189,7 +1189,7 @@ class ICTlevels {
             if (z.drawrect) {
                 // border only: the outline in the session color (Tradovate ignores the alpha of a line
                 // color, so the transparency does not apply to it), no fill
-                if (P.rectbord) G.outline(z.tstart, xe, z.hi, z.lo, lnsty.col, "solid", 1);
+                if (P.rectbord) G.outline(z.tstart, xe, z.hi, z.lo, lnsty.col, "solid", 2);
                 else G.rect(z.tstart, xe, z.hi, z.lo, lnsty.col, lnsty.op);
             }
         };

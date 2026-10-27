@@ -148,8 +148,8 @@ bool dorect = input.bool(true, "Draw session rectangles", inline = "transp", gro
 int rtransp = input.int(75, "transparency", inline = "transp", group = G_ZONES,
      tooltip = "transparency for the session rectangles when drawn")
 bool rectbord = input.bool(false, "Session rectangles: border only", group = G_ZONES,
-     tooltip = "draw only the outline of the session rectangles (session color, with the transparency above), "
-     + "no fill")
+     tooltip = "draw only the outline of the session rectangles, no fill: 2 px wide, in the session color "
+     + "with half the transparency above")
 bool nolowrects = input.bool(true, "No session rectangles at or under", group = G_ZONES,
      inline = "stf")
 string rectmintf = input.timeframe("5", "timeframe", group = G_ZONES, inline = "stf")
@@ -824,8 +824,8 @@ method refresh(Zone z) =>
     if z.drawrect
         if na(z.rect)
             z.rect := box.new(z.tstart, z.hi, xe, z.lo, xloc = xloc.bar_time,
-                 border_color = rectbord ? z.lnsty.col : transparent, bgcolor = rectbord ? transparent
-                 : z.lnsty.col)
+                 border_color = rectbord ? color.new(z.lnsty.col, rtransp / 2) : transparent,
+                 border_width = rectbord ? 2 : 1, bgcolor = rectbord ? transparent : z.lnsty.col)
         else
             z.rect.set_right(xe)
             z.rect.set_top(z.hi)

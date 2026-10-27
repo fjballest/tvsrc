@@ -4,7 +4,7 @@
 // quadrants and standard deviations, premarket range, EQH/EQL, PO3 lines, TGIF levels, macros,
 // silver bullet and a session/macro status text. Draws levels only: no plots, no signals, no alerts.
 //
-// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 539d117057b21ca3312a0943138d8bef),
+// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 10c08c9d1179ec5648c1b9765ea01b2a),
 // © franjballest, Mozilla Public License 2.0 (https://mozilla.org/MPL/2.0/).
 //
 // Install:
@@ -2161,11 +2161,13 @@ namespace NinjaTrader.NinjaScript.Indicators
 			int op = Math.Max(0, Math.Min(100, opacity));
 			if (borderOnly)
 			{
-				// outline only: the area color, with the rectangle opacity, as the border; no fill
+				// outline only, no fill: the area color with half the transparency, 2 px wide
 				Brush b = area.Clone();
-				b.Opacity = op / 100.0;
+				b.Opacity = (100 - (100 - op) / 2) / 100.0;
 				b.Freeze();
-				Draw.Rectangle(this, tag, false, t1, y1, t2, y2, b, Brushes.Transparent, 0);
+				Rectangle r = Draw.Rectangle(this, tag, false, t1, y1, t2, y2, b, Brushes.Transparent, 0);
+				if (r != null && r.OutlineStroke != null)
+					r.OutlineStroke.Width = 2;
 			}
 			else
 				Draw.Rectangle(this, tag, false, t1, y1, t2, y2, Brushes.Transparent, area, op);
@@ -2533,7 +2535,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 		public int RectTransparency { get; set; }
 
 		[NinjaScriptProperty]
-		[Display(Name = "Session rectangles: border only", Description = "Draw only the outline of the session rectangles (session color, with the transparency above), no fill", GroupName = "Session Settings", Order = 504)]
+		[Display(Name = "Session rectangles: border only", Description = "Draw only the outline of the session rectangles, no fill: 2 px wide, in the session color with half the transparency above", GroupName = "Session Settings", Order = 504)]
 		public bool RectBorderOnly { get; set; }
 
 		[NinjaScriptProperty]
