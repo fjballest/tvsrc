@@ -148,6 +148,11 @@ string wksty = getstyle(input.string("dashed", "line", options = ["solid", "dash
 int wkwid = input.int(1, "", options = [1, 2, 3], group = G_WK, inline = "w2")
 string txtwku = input.string("UW", "labels: upper", group = G_WK, inline = "w3")
 string txtwkl = input.string("LW", "lower", group = G_WK, inline = "w3")
+bool doulw = input.bool(true, "ULW CE", group = G_WK, inline = "w4",
+     tooltip = "D / W / M candle with both a long upper and a long lower wick (both count as wicks, see min "
+     + "wick %): a level at the midpoint between the CE of its upper wick and the CE of its lower wick. "
+     + "Follows the mitigation rule and the wick keep count.")
+string txtulw = input.string("ULW", "label", group = G_WK, inline = "w4")
 
 const string G_MF = "FVGs and wick CE by timeframe (15m / 1H / 4H / D / W / M)"
 bool domf = input.bool(true, "Draw FVGs of selected timeframes", group = G_MF, inline = "m0",
@@ -241,7 +246,7 @@ string mflsz = getsize(mflsize)
 var int tfirst = time
 
 type Lvl
-    int kind    // 0 FVG / IFVG, 1 volume imbalance, 2 wick
+    int kind    // 0 FVG / IFVG, 1 volume imbalance, 2 wick, 3 FVG by timeframe, 4 ULW CE (both wicks of a candle)
     int tfi     // 0 daily, 1 weekly, 2 monthly
     int dir     // 1 bullish / support, -1 bearish / resistance
     float hi
@@ -361,7 +366,7 @@ kfill(int k) =>
     k == 0 ? not fvgnofill : k == 1 ? not vinofill : false
 
 lbltxt(Lvl l, string part) =>
-    string nm = l.kind == 0 ? (l.inv ? txtifvg : txtfvg) : l.kind == 1 ? txtvi
+    string nm = l.kind == 0 ? (l.inv ? txtifvg : txtfvg) : l.kind == 1 ? txtvi : l.kind == 4 ? txtulw
          : (l.dir == -1 ? txtwku : txtwkl)
     string sg = lbldir and l.kind < 2 ? (l.dir == 1 ? "+" : "-") : ""
     string tf = l.tfi >= 3 ? mfNames.get(l.tfi - 3) : l.tfi == 0 ? txtd : l.tfi == 1 ? txtw : txtm
@@ -650,6 +655,10 @@ addWicks(int tfi, float o1, float h1, float l1, float c1, int t1) =>
     bool lq = rng > 0 and lw >= wkmin / 100.0 * rng
     wickStep(tfi, 0, uq, uw, topC, h1, t1)
     wickStep(tfi, 1, lq, lw, l1, botC, t1)
+    // ULW CE: both wicks of a D / W / M candle are long, level halfway between their CEs
+    if doulw and tfi < 3 and uq and lq
+        float p = ((topC + h1) / 2 + (l1 + botC) / 2) / 2
+        addLvl(4, tfi, c1 >= p ? 1 : -1, p, p, t1)
     true
 
 // called once per completed higher timeframe candle. 1 is the candle just completed,

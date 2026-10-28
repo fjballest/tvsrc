@@ -9,7 +9,7 @@
  * closed through become IFVGs. Mitigated levels are removed.
  *
  * Port of the TradingView Pine Script v6 indicator ICTcotas.txt
- * (md5 082ae5d33ac4090bce36f994af3ddbf2), (c) franjballest, Mozilla Public
+ * (md5 4089f053e285078f810d1e95f07652e7), (c) franjballest, Mozilla Public
  * License 2.0 (https://mozilla.org/MPL/2.0/). Same logic, same inputs (as
  * camelCase parameters) and the same defaults.
  *
@@ -333,6 +333,11 @@ class Engine {
         const lq = rng > 0 && lw >= (wkmin / 100) * rng;
         this.wickStep(tfi, 0, uq, uw, topC, k1.h, k1.t);
         this.wickStep(tfi, 1, lq, lw, k1.l, botC, k1.t);
+        // ULW CE: both wicks of a D / W / M candle are long, level halfway between their CEs
+        if (this.cfg.doUlw && tfi < 3 && uq && lq) {
+            const p = ((topC + k1.h) / 2 + (k1.l + botC) / 2) / 2;
+            this.addLvl(4, tfi, k1.c >= p ? 1 : -1, p, p, k1.t);
+        }
     }
 
     // one completed daily / weekly / monthly candle
@@ -488,6 +493,7 @@ function buildConfig(p, chart) {
         wkSty: sty(p.wkSty, "dashed"),
         wkWid: clamp(Math.round(num(p.wkWid, 1)), 1, 3),
         txtWkU: str(p.txtWkU, "UW"), txtWkL: str(p.txtWkL, "LW"),
+        doUlw: bool(p.doUlw, true), txtUlw: str(p.txtUlw, "ULW"),
 
         doMf: bool(p.doMf, true),
         mfNext: clamp(Math.round(num(p.mfNext, 0)), 0, 6),
@@ -565,7 +571,7 @@ function kfill(c, k) {
     return k === 0 ? !c.fvgNoFill : k === 1 ? !c.viNoFill : false;
 }
 function lbltxt(c, l, part) {
-    const nm = l.kind === 0 ? (l.inv ? c.txtIfvg : c.txtFvg) : l.kind === 1 ? c.txtVi : l.dir === -1 ? c.txtWkU : c.txtWkL;
+    const nm = l.kind === 0 ? (l.inv ? c.txtIfvg : c.txtFvg) : l.kind === 1 ? c.txtVi : l.kind === 4 ? c.txtUlw : l.dir === -1 ? c.txtWkU : c.txtWkL;
     const sg = c.lblDir && l.kind < 2 ? (l.dir === 1 ? "+" : "-") : "";
     const tf = l.tfi >= 3 ? MF_NAMES[l.tfi - 3] : l.tfi === 0 ? c.txtD : l.tfi === 1 ? c.txtW : c.txtM;
     return tf + " " + nm + sg + " " + part;
@@ -599,7 +605,7 @@ function textItem(key, x, y, text, color, size, bold, align) {
     };
 }
 
-// level of kind 0, 1 or 2 (Pine draw)
+// level of kind 0, 1, 2 or 4 (Pine draw)
 function drawLvl(c, l, x, items) {
     const col = tcol(c, l.tfi, l.dir);
     const w = kwid(c, l.kind, l.tfi);
@@ -919,6 +925,9 @@ module.exports = {
         wkWid: int(1, 1),
         txtWkU: predef.paramSpecs.text("UW"),
         txtWkL: predef.paramSpecs.text("LW"),
+        // ULW CE: D / W / M candle with both wicks long, midpoint between the two wick CEs
+        doUlw: predef.paramSpecs.bool(true),
+        txtUlw: predef.paramSpecs.text("ULW"),
         // FVGs and wick CE by timeframe (15m / 1H / 4H / D / W / M)
         doMf: predef.paramSpecs.bool(true),
         mfNext: int(0, 0),
