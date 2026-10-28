@@ -232,6 +232,16 @@ int mfextn = input.int(20, "candles", minval = 1, maxval = 500, group = G_MF, in
      + "\"to creation\" the end of its third candle, when the FVG was formed (so the third candle's "
      + "own prices are not taken as reactions to the FVG).")
 
+const string G_DAY = "Daily Settings"
+bool setchk = input.bool(false, "Check settlement (SET) on daily", group = G_DAY,
+     tooltip = "Futures only. Each completed daily candle is read twice, with and without the settlement "
+     + "price as its close (TradingView's \"use settlement as close\"), and the daily FVG, VI, wick and ULW "
+     + "levels use the version with the larger volume imbalance or wick (ties: without settlement). The "
+     + "FVGs by timeframe keep the chart's setting.")
+bool setlbl = input.bool(true, "show SET label", group = G_DAY,
+     tooltip = "With the check on: \"SET on\" or \"SET off\" in the upper right corner, for the version used "
+     + "for the last daily candle")
+
 // ============================================================ setup
 int tfsecs = timeframe.in_seconds()
 int tfms = tfsecs * 1000
@@ -715,14 +725,37 @@ runMit() =>
 
 // ============================================================ higher timeframe data
 // previous completed candles only (lookahead_on with [n]), so nothing repaints
-htf(string tf) =>
-    request.security(syminfo.tickerid, tf,
+htfT(string tid, string tf) =>
+    request.security(tid, tf,
          [time, open[1], high[1], low[1], close[1], time[1],
          open[2], high[2], low[2], close[2], time[2], high[3], low[3], open[3], close[3]],
          lookahead = barmerge.lookahead_on)
 
+htf(string tf) =>
+    htfT(syminfo.tickerid, tf)
+
 [dT, dO1, dH1, dL1, dC1, dT1, dO2, dH2, dL2, dC2, dT2, dH3, dL3, dO3, dC3] = htf(dayOk ? "D"
      : timeframe.period)
+// SET check (futures): the daily candles with and without the settlement as close
+bool setOn = setchk and syminfo.type == "futures" and dayOk
+string setTf = setOn ? "D" : timeframe.period
+[sT, sO1, sH1, sL1, sC1, sT1, sO2, sH2, sL2, sC2, sT2, sH3, sL3, sO3, sC3] = htfT(ticker.modify(
+     syminfo.tickerid, settlement_as_close = settlement_as_close.on), setTf)
+[uT, uO1, uH1, uL1, uC1, uT1, uO2, uH2, uL2, uC2, uT2, uH3, uL3, uO3, uC3] = htfT(ticker.modify(
+     syminfo.tickerid, settlement_as_close = settlement_as_close.off), setTf)
+// largest volume imbalance (candle 2 to 1) or wick (candle 1) of a daily candle
+setScore(float o1, float h1, float l1, float c1, float o2, float h2, float l2, float c2) =>
+    float topP = math.max(o2, c2)
+    float botP = math.min(o2, c2)
+    float topC = math.max(o1, c1)
+    float botC = math.min(o1, c1)
+    float vi = 0.0
+    if botC > topP and l1 <= h2
+        vi := botC - topP
+    if topC < botP and h1 >= l2
+        vi := botP - topC
+    math.max(vi, h1 - topC, botC - l1)
+var string setUsed = ""
 [wT, wO1, wH1, wL1, wC1, wT1, wO2, wH2, wL2, wC2, wT2, wH3, wL3, wO3, wC3] = htf(wkOk ? "W"
      : timeframe.period)
 [mT, mO1, mH1, mL1, mC1, mT1, mO2, mH2, mL2, mC2, mT2, mH3, mL3, mO3, mC3] = htf(monOk ? "M"
@@ -732,6 +765,22 @@ bool newD = dayOk and dT != nz(dT[1], dT)
 bool newW = wkOk and wT != nz(wT[1], wT)
 bool newM = monOk and mT != nz(mT[1], mT)
 
+if newD and setOn and not na(sO1) and not na(uO1)
+    bool useSet = setScore(sO1, sH1, sL1, sC1, sO2, sH2, sL2, sC2) > setScore(uO1, uH1, uL1, uC1, uO2, uH2,
+         uL2, uC2)
+    setUsed := useSet ? "SET on" : "SET off"
+    dO1 := useSet ? sO1 : uO1
+    dH1 := useSet ? sH1 : uH1
+    dL1 := useSet ? sL1 : uL1
+    dC1 := useSet ? sC1 : uC1
+    dO2 := useSet ? sO2 : uO2
+    dH2 := useSet ? sH2 : uH2
+    dL2 := useSet ? sL2 : uL2
+    dC2 := useSet ? sC2 : uC2
+    dH3 := useSet ? sH3 : uH3
+    dL3 := useSet ? sL3 : uL3
+    dO3 := useSet ? sO3 : uO3
+    dC3 := useSet ? sC3 : uC3
 if newD
     tfNew.set(0, true)
     tfClose.set(0, dC1)
@@ -774,6 +823,10 @@ if barstate.islast
             l.draw()
 
 var table note = table.new(position.bottom_right, 1, 1)
+var table setNote = table.new(position.top_right, 1, 1)
+if barstate.islast and setOn and setlbl and setUsed != ""
+    table.cell(setNote, 0, 0, setUsed, text_color = setUsed == "SET on" ? color.orange : color.gray,
+         text_size = size.small)
 if barstate.islast
     table.cell(note, 0, 0, dayOk or wkOk or monOk ? ""
          : "ICTcotas: use a chart timeframe lower than 1M",

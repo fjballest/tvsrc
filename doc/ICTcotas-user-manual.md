@@ -377,6 +377,15 @@ Fills use these colors with the transparency set in each section.
 
 The by-timeframe timeframe names in labels (15m, 1H, 4H, D, W, M) are fixed; the **text: daily / weekly / monthly** inputs do not change them.
 
+### Daily Settings
+
+| Setting | Default | What it does |
+|---|---|---|
+| Check settlement (SET) on daily | off | Futures only (TradingView only). Each completed daily candle is read twice, with and without the settlement price as its close (TradingView's "use settlement as close"). The daily FVG, VI, wick CE and ULW CE levels use the version whose largest volume imbalance or wick is bigger; on a tie, the one without settlement. Weekly, monthly and FVGs by timeframe keep the chart's setting. |
+| show SET label | on | With the check on, shows `SET on` (orange) or `SET off` (gray) in the upper right corner, for the version used for the last daily candle. |
+
+The settlement price usually differs from the last trade of the session, so the body of a daily candle, and with it its volume imbalances and wicks, can change with that setting. The check picks whichever version shows the clearer imbalance or wick for each day.
+
 ## 9. Alerts, limits and behaviour
 
 ### Alerts

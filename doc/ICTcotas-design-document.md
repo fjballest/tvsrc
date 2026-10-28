@@ -251,3 +251,8 @@ Every function that would otherwise return nothing ends in `true`, because Pine 
 ## ULW CE (kind 4)
 
 `addWicks` computes `uq` / `lq` (upper / lower wick at least `wkmin` % of the range) for each completed candle. With `doulw` on and `tfi < 3` (D, W, M only, never the 1H / 4H wicks), when both are true it adds `addLvl(4, tfi, dir, p, p, t1)` with `p = ((topC + h1) / 2 + (l1 + botC) / 2) / 2`, the midpoint of the two wick CEs, and `dir` 1 when the candle closed at or above `p`, else -1. It is drawn like a wick level (CE only, `wksty` / `wkwid`, label `txtulw`), is kept with `nwk` per timeframe and is removed by the general mitigation rule. NinjaTrader: `DrawUlw` / `UlwText` in `AddWicks`; Tradovate: `doUlw` / `txtUlw` in `addWicks`.
+
+## SET check (Daily Settings)
+
+Inputs `setchk` and `setlbl` (group `G_DAY`). `setOn` requires `setchk`, `syminfo.type == "futures"` and `dayOk`. Two extra daily requests, `htfT(ticker.modify(syminfo.tickerid, settlement_as_close = settlement_as_close.on), "D")` and the same with `.off`, return the same candle triples as `htf("D")` (they ask for the chart timeframe when `setOn` is off). On `newD`, `setScore()` of each version is the largest of the volume imbalance between candles 2 and 1 (bodies, wicks overlapping, as in `processTf`) and the upper and lower wick of candle 1; the version with the larger score (ties: without settlement) overwrites `dO1` to `dC3` before `processTf(0, ...)` and `tfClose`, and `setUsed` holds "SET on" / "SET off" for the `top_right` table drawn on the last bar when `setlbl` is on. Not ported: NinjaTrader daily bars come from the data provider, and Tradovate builds its daily candles from the chart bars.
+

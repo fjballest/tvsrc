@@ -7,7 +7,7 @@
 // FVGs closed through become IFVGs. Mitigated levels are removed.
 //
 // Port of the TradingView Pine Script v6 indicator ICTcotas.txt by franjballest
-// (source md5 4089f053e285078f810d1e95f07652e7). Mozilla Public License 2.0.
+// (source md5 a3c320b4ad0495b8f0aaaab0d661ebe1). Mozilla Public License 2.0.
 //
 // Install:
 //   1. Copy this file to  Documents\NinjaTrader 8\bin\Custom\Indicators\ICTcotas.cs
@@ -38,6 +38,8 @@
 //     Label sizes map to font sizes 8 / 10 / 12 / 16 / 20 pt. There is no 500-object limit.
 //   - Non time based charts (tick, volume, range...) count as lower than 15m. A month counts as
 //     2628003 s as in Pine, so monthly levels are off on a 1-month chart.
+//   - The Daily Settings SET check (daily candles with and without the settlement as close) is
+//     not ported: NinjaTrader daily bars come as the data provider builds them.
 
 #region Using declarations
 using System;

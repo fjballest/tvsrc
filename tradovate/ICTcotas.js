@@ -9,7 +9,7 @@
  * closed through become IFVGs. Mitigated levels are removed.
  *
  * Port of the TradingView Pine Script v6 indicator ICTcotas.txt
- * (md5 4089f053e285078f810d1e95f07652e7), (c) franjballest, Mozilla Public
+ * (md5 a3c320b4ad0495b8f0aaaab0d661ebe1), (c) franjballest, Mozilla Public
  * License 2.0 (https://mozilla.org/MPL/2.0/). Same logic, same inputs (as
  * camelCase parameters) and the same defaults.
  *
@@ -20,6 +20,8 @@
  *   Use it on an intraday time-based chart (1m .. 4H) of a CME future.
  *
  * Differences from the Pine version that could not be avoided:
+ *   - The Daily Settings SET check (settlement as close) is not ported: the
+ *     daily candles are built from the chart bars, with no settlement price.
  *   - There is no request.security. Higher timeframe candles are built from
  *     the chart bars by timestamp: trading days start at sessionStartHour
  *     (default 18:00) America/New_York, weeks on Sunday at that hour, months
