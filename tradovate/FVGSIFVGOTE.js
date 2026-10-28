@@ -1454,7 +1454,7 @@ class FVGSIFVGOTE {
         const P = this.P;
         // recent relevant: relF is in creation order, so the old ones are at its front
         if (this.fltRecent) {
-            while (this.relF.length > 0 && j - (this.relF[0].sbar ?? j) > 1000) this.relF.shift();
+            while (this.relF.length > 0 && j - (this.relF[0].sbar == null ? j : this.relF[0].sbar) > 1000) this.relF.shift();
         }
         for (let k = this.relF.length - 1; k >= 0; k--) {
             const f = this.relF[k];
