@@ -233,14 +233,15 @@ int mfextn = input.int(20, "candles", minval = 1, maxval = 500, group = G_MF, in
      + "own prices are not taken as reactions to the FVG).")
 
 const string G_DAY = "Daily Settings"
-bool setchk = input.bool(true, "Check settlement (SET) on daily", group = G_DAY,
-     tooltip = "Futures only. Each completed daily candle is read twice, with and without the settlement "
-     + "price as its close (TradingView's \"use settlement as close\"), and the daily FVG, VI, wick and ULW "
-     + "levels use the version with the larger volume imbalance or wick (ties: without settlement). The "
-     + "FVGs by timeframe keep the chart's setting.")
+string setmode = input.string("auto", "Use settlement (SET) on daily", options = ["auto", "on", "off"],
+     group = G_DAY,
+     tooltip = "Futures only: the close of the daily candles used for the daily FVG, VI, wick and ULW levels. "
+     + "on: the settlement price (TradingView's \"use settlement as close\"). off: the last trade. auto: each "
+     + "completed daily candle is read both ways and the version with the larger volume imbalance or wick is "
+     + "used (ties: off). The FVGs by timeframe keep the chart's setting.")
 bool setlbl = input.bool(true, "show SET label", group = G_DAY,
-     tooltip = "With the check on: \"SET on\" or \"SET off\" in the upper right corner, for the version used "
-     + "for the last daily candle")
+     tooltip = "Futures only: \"SET on\" or \"SET off\" in the upper right corner, for the version used for "
+     + "the last daily candle")
 
 // ============================================================ setup
 int tfsecs = timeframe.in_seconds()
@@ -737,7 +738,7 @@ htf(string tf) =>
 [dT, dO1, dH1, dL1, dC1, dT1, dO2, dH2, dL2, dC2, dT2, dH3, dL3, dO3, dC3] = htf(dayOk ? "D"
      : timeframe.period)
 // SET check (futures): the daily candles with and without the settlement as close
-bool setOn = setchk and syminfo.type == "futures" and dayOk
+bool setOn = syminfo.type == "futures" and dayOk
 string setTf = setOn ? "D" : timeframe.period
 [sT, sO1, sH1, sL1, sC1, sT1, sO2, sH2, sL2, sC2, sT2, sH3, sL3, sO3, sC3] = htfT(ticker.modify(
      syminfo.tickerid, settlement_as_close = settlement_as_close.on), setTf)
@@ -766,8 +767,8 @@ bool newW = wkOk and wT != nz(wT[1], wT)
 bool newM = monOk and mT != nz(mT[1], mT)
 
 if newD and setOn and not na(sO1) and not na(uO1)
-    bool useSet = setScore(sO1, sH1, sL1, sC1, sO2, sH2, sL2, sC2) > setScore(uO1, uH1, uL1, uC1, uO2, uH2,
-         uL2, uC2)
+    bool useSet = setmode == "on" or (setmode == "auto" and setScore(sO1, sH1, sL1, sC1, sO2, sH2, sL2, sC2)
+         > setScore(uO1, uH1, uL1, uC1, uO2, uH2, uL2, uC2))
     setUsed := useSet ? "SET on" : "SET off"
     dO1 := useSet ? sO1 : uO1
     dH1 := useSet ? sH1 : uH1
