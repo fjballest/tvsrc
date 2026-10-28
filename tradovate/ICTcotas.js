@@ -9,7 +9,7 @@
  * closed through become IFVGs. Mitigated levels are removed.
  *
  * Port of the TradingView Pine Script v6 indicator ICTcotas.txt
- * (md5 a3c320b4ad0495b8f0aaaab0d661ebe1), (c) franjballest, Mozilla Public
+ * (md5 bbf6f8a99813f3a5303f89a82dd28a49), (c) franjballest, Mozilla Public
  * License 2.0 (https://mozilla.org/MPL/2.0/). Same logic, same inputs (as
  * camelCase parameters) and the same defaults.
  *

@@ -233,7 +233,7 @@ int mfextn = input.int(20, "candles", minval = 1, maxval = 500, group = G_MF, in
      + "own prices are not taken as reactions to the FVG).")
 
 const string G_DAY = "Daily Settings"
-bool setchk = input.bool(false, "Check settlement (SET) on daily", group = G_DAY,
+bool setchk = input.bool(true, "Check settlement (SET) on daily", group = G_DAY,
      tooltip = "Futures only. Each completed daily candle is read twice, with and without the settlement "
      + "price as its close (TradingView's \"use settlement as close\"), and the daily FVG, VI, wick and ULW "
      + "levels use the version with the larger volume imbalance or wick (ties: without settlement). The "
