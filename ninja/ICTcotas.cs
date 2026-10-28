@@ -7,7 +7,7 @@
 // FVGs closed through become IFVGs. Mitigated levels are removed.
 //
 // Port of the TradingView Pine Script v6 indicator ICTcotas.txt by franjballest
-// (source md5 082ae5d33ac4090bce36f994af3ddbf2). Mozilla Public License 2.0.
+// (source md5 bbf6f8a99813f3a5303f89a82dd28a49). Mozilla Public License 2.0.
 //
 // Install:
 //   1. Copy this file to  Documents\NinjaTrader 8\bin\Custom\Indicators\ICTcotas.cs
@@ -38,6 +38,8 @@
 //     Label sizes map to font sizes 8 / 10 / 12 / 16 / 20 pt. There is no 500-object limit.
 //   - Non time based charts (tick, volume, range...) count as lower than 15m. A month counts as
 //     2628003 s as in Pine, so monthly levels are off on a 1-month chart.
+//   - The Daily Settings SET check (daily candles with and without the settlement as close) is
+//     not ported: NinjaTrader daily bars come as the data provider builds them.
 
 #region Using declarations
 using System;
@@ -144,7 +146,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 		private class Lvl
 		{
 			public int Id;
-			public int Kind;      // 0 FVG / IFVG, 1 volume imbalance, 2 wick, 3 FVG by timeframe
+			public int Kind;      // 0 FVG / IFVG, 1 volume imbalance, 2 wick, 3 FVG by timeframe, 4 ULW CE
 			public int Tfi;       // 0 daily, 1 weekly, 2 monthly, 3..7 by-timeframe 15m..W
 			public int Dir;       // 1 bullish / support, -1 bearish / resistance
 			public double Hi;
@@ -270,6 +272,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 				WickWidth = 1;
 				WickTextUpper = "UW";
 				WickTextLower = "LW";
+				DrawUlw = true;
+				UlwText = "ULW";
 
 				// FVGs and wick CE by timeframe
 				DrawMf = true;
@@ -585,7 +589,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 
 		private string LblTxt(Lvl l, string part)
 		{
-			string nm = l.Kind == 0 ? (l.Inv ? IfvgText : FvgText) : l.Kind == 1 ? ViText
+			string nm = l.Kind == 0 ? (l.Inv ? IfvgText : FvgText) : l.Kind == 1 ? ViText : l.Kind == 4 ? UlwText
 				: (l.Dir == -1 ? WickTextUpper : WickTextLower);
 			string sg = LabelDirection && l.Kind < 2 ? (l.Dir == 1 ? "+" : "-") : "";
 			string tf = l.Tfi >= 3 ? MfNames[l.Tfi - 3] : l.Tfi == 0 ? TextDaily : l.Tfi == 1 ? TextWeekly : TextMonthly;
@@ -791,6 +795,12 @@ namespace NinjaTrader.NinjaScript.Indicators
 			bool lq = rng > 0 && lw >= WickMinPct / 100.0 * rng;
 			WickStep(tfi, 0, uq, uw, topC, h1, t1);
 			WickStep(tfi, 1, lq, lw, l1, botC, t1);
+			// ULW CE: both wicks of a D / W / M candle are long, level halfway between their CEs
+			if (DrawUlw && tfi < 3 && uq && lq)
+			{
+				double p = ((topC + h1) / 2 + (l1 + botC) / 2) / 2;
+				AddLvl(4, tfi, c1 >= p ? 1 : -1, p, p, t1);
+			}
 		}
 
 		// one completed daily, weekly or monthly candle: 1 = [off], 2 = [off+1], 3 = [off+2]
@@ -1338,6 +1348,14 @@ namespace NinjaTrader.NinjaScript.Indicators
 		[NinjaScriptProperty]
 		[Display(Name = "Labels: lower", GroupName = GWk, Order = 7)]
 		public string WickTextLower { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "ULW CE", Description = "D / W / M candle with both a long upper and a long lower wick (both count as wicks, see min wick %): a level at the midpoint between the CE of its upper wick and the CE of its lower wick. Follows the mitigation rule and the wick keep count.", GroupName = GWk, Order = 8)]
+		public bool DrawUlw { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "ULW CE label", GroupName = GWk, Order = 9)]
+		public string UlwText { get; set; }
 
 		// ---------------------------------------------------------------- FVGs and wick CE by timeframe
 		[NinjaScriptProperty]

@@ -16,6 +16,7 @@ It works in two layers:
 | FVG / IFVG | 0 | Three-candle gap. It becomes an IFVG when a candle closes through it |
 | Volume imbalance | 1 | Gap between the bodies of two consecutive candles while their wicks still overlap |
 | Wick CE | 2 | Midpoint of the longest wick of a group of consecutive same-side wicks |
+| ULW CE | 4 | D / W / M candle with both wicks qualifying: midpoint between its upper wick CE and its lower wick CE |
 | FVG by timeframe | 3 | FVG of a 15m, 1H, 4H, D, W or M candle selected in its own input group |
 
 Objects are placed with `xloc.bar_time`, and every level extends to the right margin of the chart. Levels removed by the mitigation rule disappear.
@@ -50,7 +51,7 @@ Inputs are grouped by type of level. Related controls share a row with `inline`.
 | Labels | Show labels; bold; direction (+/-); size; offset in bars; label text per timeframe (D, W, M) and per part (hi, lo, CE) |
 | Fair Value Gaps | Draw, keep (up to 20), minimum size; line style, width and CE style; show hi, lo, CE; no fill and transparency; label; IFVG inversion and its label; overlap rule (Most recent, Enclosing, Keep all); extend the range to include VIs with candle 2 |
 | Volume Imbalances | Draw, keep, minimum size; styles; show hi, lo, CE; no fill and transparency; label |
-| Wick CE | Draw, keep, minimum wick as a percentage of the candle range (default 30); line style and width; upper and lower wick labels |
+| Wick CE | Draw, keep, minimum wick as a percentage of the candle range (default 30); line style and width; upper and lower wick labels; ULW CE (`doulw`) and its label (`txtulw`) |
 | FVGs and wick CE by timeframe | Draw; plus N next higher timeframes; 15m, 1H, 4H, D, W, M tick boxes; keep per timeframe and minimum size; bull and bear colors per timeframe; outline style and width; fill (`mffill`: never, at margin (default), always) and transparency; formation marker; CE box and its style; labels with TF, FVG/IFVG and direction parts; label size, position and vertical anchor; wick CE for 1H and 4H; right margin layout (`mfmargin`, off) with offset (`mfmoff`, 4) and box width (`mfmw`, 4); extend levels (`mfext`, off) to the point set by `mfextto` ("for" `mfextn` (20) candles, "to start" of the FVG, or "to creation", the end of its third candle) |
 
 The by-timeframe group has several defaults chosen on purpose. It is on by default (1H and 4H ticked), the fill is off, the CE box has zero height and the label position is Inside right. The label anchor is the CE of the FVG unless set to High or Low.
@@ -61,7 +62,7 @@ There is a single user-defined type, `Lvl`. One instance is one level, and it al
 
 | Field | Meaning |
 | --- | --- |
-| `kind` | 0 FVG or IFVG, 1 volume imbalance, 2 wick CE, 3 FVG by timeframe |
+| `kind` | 0 FVG or IFVG, 1 volume imbalance, 2 wick CE, 3 FVG by timeframe, 4 ULW CE |
 | `tfi` | Timeframe index: 0 daily, 1 weekly, 2 monthly, and 3 to 8 for 15m, 1H, 4H, D, W, M of the by-timeframe layer |
 | `dir` | 1 bullish (support), -1 bearish (resistance). Lower wicks count as bullish, upper wicks as bearish |
 | `hi`, `lo`, `ce` | Upper edge, lower edge and midpoint |
@@ -246,3 +247,12 @@ Every function that would otherwise return nothing ends in `true`, because Pine 
 - A new kind of level: add a kind code, a detection function that calls `addLvl`, entries in `ksty`, `kcesty`, `kwid`, `kshow`, `kfill` and `lbltxt`, and a keep limit in `addLvl`.
 - A new by-timeframe candidate: extend `mfSecs`, `mfTfs`, `mfNames`, `mfSel`, `mfLastT`, `mfcol`, the loop bound and `wcur`, and add its inputs.
 - A new mitigation rule: add an option to `mitig`, a code in `mmode`, and a branch in `runMit`.
+
+## ULW CE (kind 4)
+
+`addWicks` computes `uq` / `lq` (upper / lower wick at least `wkmin` % of the range) for each completed candle. With `doulw` on and `tfi < 3` (D, W, M only, never the 1H / 4H wicks), when both are true it adds `addLvl(4, tfi, dir, p, p, t1)` with `p = ((topC + h1) / 2 + (l1 + botC) / 2) / 2`, the midpoint of the two wick CEs, and `dir` 1 when the candle closed at or above `p`, else -1. It is drawn like a wick level (CE only, `wksty` / `wkwid`, label `txtulw`), is kept with `nwk` per timeframe and is removed by the general mitigation rule. NinjaTrader: `DrawUlw` / `UlwText` in `AddWicks`; Tradovate: `doUlw` / `txtUlw` in `addWicks`.
+
+## SET check (Daily Settings)
+
+Inputs `setchk` and `setlbl` (group `G_DAY`). `setOn` requires `setchk`, `syminfo.type == "futures"` and `dayOk`. Two extra daily requests, `htfT(ticker.modify(syminfo.tickerid, settlement_as_close = settlement_as_close.on), "D")` and the same with `.off`, return the same candle triples as `htf("D")` (they ask for the chart timeframe when `setOn` is off). On `newD`, `setScore()` of each version is the largest of the volume imbalance between candles 2 and 1 (bodies, wicks overlapping, as in `processTf`) and the upper and lower wick of candle 1; the version with the larger score (ties: without settlement) overwrites `dO1` to `dC3` before `processTf(0, ...)` and `tfClose`, and `setUsed` holds "SET on" / "SET off" for the `top_right` table drawn on the last bar when `setlbl` is on. Not ported: NinjaTrader daily bars come from the data provider, and Tradovate builds its daily candles from the chart bars.
+

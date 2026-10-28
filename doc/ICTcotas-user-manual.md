@@ -176,6 +176,10 @@ With the default mitigation rule (Fully filled, wick), a lower wick CE is remove
 
 The 1H and 4H wick CE options in the last settings section add the same kind of lines for those timeframes, using the Wick CE settings (they need **Draw wick CE** on). They use the 1H / 4H box colors and their labels start with `1H` or `4H`.
 
+### ULW CE
+
+When a daily, weekly or monthly candle has both a qualifying upper wick and a qualifying lower wick (each at least **min wick %** of its range), a third line is drawn for that candle, labelled `ULW CE` (for example `D ULW CE`): the midpoint between the CE of its upper wick and the CE of its lower wick. It uses the wick line style and width, and the bull color when the candle closed above the line, the bear color otherwise. It is not drawn for 1H / 4H wicks. It needs **Draw wick CE** on and is controlled by **ULW CE** in the Wick CE settings. It counts against the same **keep** limit as the wick levels (a separate count per timeframe), and follows the general mitigation rule: as a single price, it is removed when price reaches it (CE touched or Fully filled by wick) or when a candle of its timeframe closes beyond it (Fully filled, close).
+
 ## 7. FVGs by timeframe (15m / 1H / 4H / D / W)
 
 ### What you see
@@ -325,6 +329,8 @@ Fills use these colors with the transparency set in each section.
 | (blank) | 1 | Base width of the wick CE line: 1, 2 or 3 |
 | labels: upper | UW | Name used for upper wick levels |
 | lower | LW | Name used for lower wick levels |
+| ULW CE | on | D / W / M candles with both wicks long: a level halfway between the two wick CEs (section 6) |
+| label | ULW | Name used for ULW CE levels |
 
 ### FVGs and wick CE by timeframe (15m / 1H / 4H / D / W)
 
@@ -370,6 +376,15 @@ Fills use these colors with the transparency set in each section.
 | candles | 20 | How far back the extended lines go with **for**, in candles before the last one |
 
 The by-timeframe timeframe names in labels (15m, 1H, 4H, D, W, M) are fixed; the **text: daily / weekly / monthly** inputs do not change them.
+
+### Daily Settings
+
+| Setting | Default | What it does |
+|---|---|---|
+| Check settlement (SET) on daily | on | Futures only (TradingView only). Each completed daily candle is read twice, with and without the settlement price as its close (TradingView's "use settlement as close"). The daily FVG, VI, wick CE and ULW CE levels use the version whose largest volume imbalance or wick is bigger; on a tie, the one without settlement. Weekly, monthly and FVGs by timeframe keep the chart's setting. |
+| show SET label | on | With the check on, shows `SET on` (orange) or `SET off` (gray) in the upper right corner, for the version used for the last daily candle. |
+
+The settlement price usually differs from the last trade of the session, so the body of a daily candle, and with it its volume imbalances and wicks, can change with that setting. The check picks whichever version shows the clearer imbalance or wick for each day.
 
 ## 9. Alerts, limits and behaviour
 
@@ -437,6 +452,7 @@ ICTcotas defines no alerts and no alert conditions. To be alerted at a level, dr
 | CE | Consequent encroachment: the 50 percent midpoint of a gap or wick |
 | Wick CE | Midpoint of a candle wick; here the longest wick of a run of same-side wicks |
 | UW / LW | Upper wick / lower wick |
+| ULW | Midpoint between the upper and lower wick CEs of one D / W / M candle |
 | Mitigation | Price returning to a level and using it up; the level is then removed |
 | Bullish / bearish level | Support below price / resistance above price |
 | Formation marker | Vertical line in a by-timeframe box at the close of the FVG's third candle |
