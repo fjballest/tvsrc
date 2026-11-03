@@ -13,7 +13,7 @@
  *   BM↑/BM↓, inheritance of the tags by IFVGs) and LONG / SHORT / OTE signal markers.
  *
  *   Port of the TradingView Pine Script v6 indicator "FVGS+IFVG+OTE.txt"
- *   (md5 f02c36db50b85eb17313eda302ba43dd, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
+ *   (md5 e965062dd49133c9e8cf4998c810288c, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
  *   input variable names (camelCase). See the design document (d.md) and user manual (m.md) for the logic.
  *
  * How to install
@@ -786,7 +786,8 @@ class FVGSIFVGOTE {
                     const g = this.twoCandleFVG(islong);
                     if (g) { [hi, lo] = g; fhi = hi; flo = lo; fk = 2; }
                 }
-                if (fhi - flo > P.minfvg && fhi - flo < P.maxfvg && (!P.deDisp || deDispOK || isfpNow)) {
+                if (fhi - flo > P.minfvg && fhi - flo < P.maxfvg && (!P.deDisp || deDispOK || isfpNow ||
+                    (!this.hasifp && this.hasfp && P.doifp && this.fpfvgs.length > 0))) {
                     const f = this.newFVG(hi, lo, avg(hi, lo), islong, j - fk);
                     this.dg.fvgs++;
                     f.sbar = j - fk;
@@ -809,7 +810,7 @@ class FVGSIFVGOTE {
                         this.hasfp = f.isfp;
                         this.fpfvgs.push(f);
                         this.clearlastfp();
-                    } else if (!this.fponly && !f.isifp) {
+                    } else if (!this.fponly && !f.isifp && (!P.deDisp || deDispOK)) {
                         this.route(f);
                     } else {
                         this.kill(f);
@@ -998,7 +999,7 @@ class FVGSIFVGOTE {
                         } else {
                             this.bullconfirm = null;
                             this.gCancel(this.gBull);
-                            this.deRecolor(this.ifvgBox, dd);
+                            this.deRecolor(this.ifvgBox, dd, this.bullifvg);
                         }
                         this.bullAp = this.deAp(dd);
                         this.setText(this.ifvgBox, this.ifvgTxt(dd, this.bullInv, false, "", this.bullAp, this.mbOf(this.bullifvg)));
@@ -1024,7 +1025,7 @@ class FVGSIFVGOTE {
                         } else {
                             this.bearconfirm = null;
                             this.gCancel(this.gBear);
-                            this.deRecolor(this.ifvgBoxb, dd);
+                            this.deRecolor(this.ifvgBoxb, dd, this.bearifvg);
                         }
                         this.bearAp = this.deAp(dd);
                         this.setText(this.ifvgBoxb, this.ifvgTxt(dd, this.bearInv, false, "", this.bearAp, this.mbOf(this.bearifvg)));
@@ -1066,15 +1067,15 @@ class FVGSIFVGOTE {
             const hl = col(P.oteHighlight, 0);
             if (bearOteSig !== 0 && this.ifvgBoxb) {
                 this.setText(this.ifvgBoxb, this.ifvgTxt(-1, 1, true, this.gBear.tags, this.bearAp, this.mbOf(this.bearifvg)));
-                this.ifvgBoxb.border = hl;
+                if (!this.isFp(this.bearifvg)) this.ifvgBoxb.border = hl;
             }
             if (bullOteSig !== 0 && this.ifvgBox) {
                 this.setText(this.ifvgBox, this.ifvgTxt(1, 1, true, this.gBull.tags, this.bullAp, this.mbOf(this.bullifvg)));
-                this.ifvgBox.border = hl;
+                if (!this.isFp(this.bullifvg)) this.ifvgBox.border = hl;
             }
             if (swOteSig !== 0 && this.ifvgBox) {
                 this.setText(this.ifvgBox, this.ifvgTxt(swOteSig, 1, true, this.gSw.tags, this.swAp, this.mbOf(this.swFvg)));
-                this.ifvgBox.border = hl;
+                if (!this.isFp(this.swFvg)) this.ifvgBox.border = hl;
             }
         }
 
@@ -1224,7 +1225,7 @@ class FVGSIFVGOTE {
         }
         return r;
     }
-    bw(f) { return this.P.deFlag && f.disp ? this.P.deFlagW : 1; }
+    bw(f) { return this.P.deFlag && f.disp && !f.isfp && !f.isifp ? this.P.deFlagW : 1; } // 1PFVGs keep their look
     kill(f) {
         if (!f) return;
         this.g.del(f.rect); this.g.del(f.celine); this.g.del(f.hiln); this.g.del(f.loln);
@@ -1353,7 +1354,8 @@ class FVGSIFVGOTE {
         }
     }
     mergeZone(g, f) {
-        if (!g.kept) {
+        // a 1PFVG is never changed by a duplicate: it keeps its zone
+        if (!g.kept && !g.isfp && !g.isifp) {
             const nh = Math.max(g.hi, f.hi), nl = Math.min(g.lo, f.lo);
             g.hi = nh; g.lo = nl; g.ce = avg(nh, nl);
             f.hi = nh; f.lo = nl; f.ce = g.ce;
@@ -1416,7 +1418,7 @@ class FVGSIFVGOTE {
             this.insertSorted(f.islong ? this.lfvgs : this.sfvgs, f);
         } else {
             f.dup = d;
-            if (f.start < d.start && !d.kept) {
+            if (f.start < d.start && !d.kept && !d.isfp && !d.isifp) {
                 d.start = f.start;
                 if (d.rect) d.rect.left = d.start;
                 if (d.hiln) { d.hiln.x1 = d.start; d.loln.x1 = d.start; }
@@ -1574,7 +1576,7 @@ class FVGSIFVGOTE {
     mbOf(f) { return f ? f.mbD : 0; }
     deKill(fv) {
         const f = fv.dup ? fv.dup : fv;
-        if (this.P.deDead === "backToFVG") {
+        if (this.P.deDead === "backToFVG" || f.isfp || f.isifp) {
             this.restore(f);
         } else {
             f.kept = false;
@@ -1590,8 +1592,14 @@ class FVGSIFVGOTE {
             }
         }
     }
-    deRecolor(b, d) {
-        if (b) {
+    // 1PFVG (or inverse 1PFVG) zone, or a duplicate merged into one: it keeps its own look
+    isFp(fv) {
+        if (!fv) return false;
+        const f = fv.dup ? fv.dup : fv;
+        return !!(f.isfp || f.isifp);
+    }
+    deRecolor(b, d, fv) {
+        if (b && !this.isFp(fv)) {
             const cc = d < 0 ? this.P.bearIFVGColor : this.P.bullIFVGColor;
             b.bg = col(cc, this.P.ifvgTrans);
             b.border = col(cc, this.P.borderTrans);

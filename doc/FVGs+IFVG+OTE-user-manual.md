@@ -166,11 +166,11 @@ A cyan box (default) for the first FVG after the session open, extended to the r
 - **Week 1PFVG**: on Mondays the 1PFVG, bullish or bearish, is drawn in the week colors (blue).
 - **Inverse 1PFVG** (**1PFVG inverse**, off by default): the first FVG of the opposite bias after the 1PFVG, in the same hour. With **From 1m candles** it also comes from the 1m candles.
 - **Keep** (6): number of 1PFVGs kept; when a new one appears the oldest is removed. Inverse 1PFVGs share this list.
-- 1PFVGs stay extended to the right even after price trades through them, until they drop out of the list. They are not affected by the FVG filter or the displacement filter.
+- 1PFVGs stay extended to the right even after price trades through them, until they drop out of the list. They always keep their 1PFVG colors, width and zone, whatever the filtering: they are not affected by the FVG filter or the displacement filter (inverse 1PFVG included), a regular FVG on the same zone never widens or moves them, and the Delivery Engine inversion rules, the displacement flag and the OTE highlight do not recolor them. Only **Draw** = `IFVGs` hides them.
 
 ### How to use it
 
-The 1PFVG is the first imbalance of the session's delivery and is used as a reference for the day: a draw on liquidity, a support / resistance, and a bias tell (price respecting it versus closing through it). If you keep several days, earlier 1PFVGs that are still unfilled are reference levels for the coming sessions. A 1PFVG can also become an IFVG: its box keeps the 1PFVG colors and extension and only gets the IFVG label.
+The 1PFVG is the first imbalance of the session's delivery and is used as a reference for the day: a draw on liquidity, a support / resistance, and a bias tell (price respecting it versus closing through it). If you keep several days, earlier 1PFVGs that are still unfilled are reference levels for the coming sessions. A 1PFVG can also become an IFVG: its box keeps the 1PFVG colors and extension and only gets the IFVG label. When it is invalidated it goes back to the plain 1PFVG (never the faded dead color).
 
 ## 6. Wick C.E.
 
@@ -299,7 +299,7 @@ These features come from Nuno's Delivery Engine (V20, updated to V29). All are o
 
 A candle is a **displacement candle** when its range (open to close, or high to low) is larger than **strength** (4.0) times the standard deviation of the last **Length** (100) candle ranges.
 
-- **Displacement FVGs only**: an FVG is created only when its middle candle is a displacement candle. This applies to the drawn FVGs and to the IFVG candidates. FVGs that form in the 1PFVG window are not filtered.
+- **Displacement FVGs only**: an FVG is created only when its middle candle is a displacement candle. This applies to the drawn FVGs and to the IFVG candidates. FVGs that form in the 1PFVG window, and the inverse 1PFVG, are not filtered.
 - **Flag displacement FVGs, border width**: FVGs whose middle candle is a displacement candle are drawn with this border width (3), with or without the filter.
 - **Color displacement candles**: colors (yellow) the middle candle of each FVG that has a displacement middle candle, with or without the filter. This coloring checks only the gap itself, not the FVG size limits.
 

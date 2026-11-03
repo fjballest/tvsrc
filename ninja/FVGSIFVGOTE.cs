@@ -2,7 +2,7 @@
 // FVGSIFVGOTE - Fair value gaps, 1st presented FVGs, inverse FVGs (IFVG) and ICT OTE, for NinjaTrader 8
 // ---------------------------------------------------------------------------------------------------------------------
 // Port of the TradingView Pine Script v6 indicator "FVGs+IFVG+OTE5" by franjballest
-// (source file FVGS+IFVG+OTE.txt, md5 f02c36db50b85eb17313eda302ba43dd). Mozilla Public License 2.0, as the original.
+// (source file FVGS+IFVG+OTE.txt, md5 e965062dd49133c9e8cf4998c810288c). Mozilla Public License 2.0, as the original.
 //
 // What it draws: FVG boxes (or no-fill boxes, or hi / lo / C.E. segments) with C.E. lines, the 1st presented FVG of the
 // session open (New York 09:30, or Madrid 09:00 for DAX) and its optional inverse, wick C.E. segments, IFVG candidates
@@ -1180,7 +1180,10 @@ namespace NinjaTrader.NinjaScript.Indicators
             return r;
         }
 
-        private int Bw(Fvg f) { return FlagDispFvgs && f.disp ? FlagDispWidth : 1; }
+        private int Bw(Fvg f) { return FlagDispFvgs && f.disp && !f.isfp && !f.isifp ? FlagDispWidth : 1; } // 1PFVGs keep their look
+
+        // 1PFVG (or inverse 1PFVG) zone, or a duplicate merged into one: it keeps its own look
+        private static bool IsFp(Fvg fv) { if (fv == null) return false; Fvg f = fv.dup ?? fv; return f.isfp || f.isifp; }
 
         // label of a plain FVG box: A+, or the breaker / mitigation block tag (B↑, M↓, BM↑...), plus OTE
         private string FvgLbl(Fvg f)
@@ -1456,7 +1459,7 @@ namespace NinjaTrader.NinjaScript.Indicators
         // widen g (older FVG) with f (new almost identical one): max hi / min lo, for both, and extend g
         private void MergeZone(Fvg g, Fvg f)
         {
-            if (g.kept) return;
+            if (g.kept || g.isfp || g.isifp) return; // a 1PFVG keeps its zone
             double nh = Math.Max(g.hi, f.hi);
             double nl = Math.Min(g.lo, f.lo);
             g.hi = nh;
@@ -1565,7 +1568,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             else
             {
                 f.dup = d;
-                if (f.start < d.start && !d.kept)
+                if (f.start < d.start && !d.kept && !d.isfp && !d.isifp)
                 {
                     d.start = f.start;
                     if (d.rect != null) { d.rect.T1 = d.start; Touch(d.rect); }
@@ -1633,7 +1636,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                 fpfvgs.Add(f);
                 ClearLastFp();
             }
-            else if (!fponly && !f.isifp)
+            else if (!fponly && !f.isifp && (!DisplacementOnly || f.disp))
                 Route(f);
             else
                 Kill(f);
@@ -1817,7 +1820,7 @@ namespace NinjaTrader.NinjaScript.Indicators
         private void DeKill(Fvg fv)
         {
             Fvg f = fv.dup ?? fv;
-            if (InvalidatedIfvg == FioDeadMode.BackToFVG)
+            if (InvalidatedIfvg == FioDeadMode.BackToFVG || f.isfp || f.isifp)
                 Restore(f);
             else
             {
@@ -1836,9 +1839,9 @@ namespace NinjaTrader.NinjaScript.Indicators
         }
 
         // the box of an inverted zone in direction d
-        private void DeRecolor(GBox b, int d)
+        private void DeRecolor(GBox b, int d, Fvg fv)
         {
-            if (b == null) return;
+            if (b == null || IsFp(fv)) return;
             Color c = d < 0 ? cBearIf : cBullIf;
             b.Bg = Tr(c, IfvgFillTransparency);
             b.Bd = Tr(c, IfvgBorderTransparency);
@@ -2845,6 +2848,8 @@ namespace NinjaTrader.NinjaScript.Indicators
                 double o2 = Op(2), c2 = Cp(2);
                 double o3 = Op(3), c3 = Cp(3), h3 = Hp(3), l3 = Lp(3);
                 bool fpNow = IsFPFVG();
+                // the inverse 1PFVG candidate is not subject to the displacement filter
+                bool ifpNow = !hasifp && hasfp && FpInverse && fpfvgs.Count > 0 && fp1mIdx < 0;
                 {
                     // long: low of [1] above the high of [3]; include suspension blocks
                     double hi = l1, lo = h3;
@@ -2862,7 +2867,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                         flo = lo;
                         fk = 2;
                     }
-                    if (fhi - flo > MinFvgSize && fhi - flo < MaxFvgSize && (!DisplacementOnly || deDispOK || fpNow))
+                    if (fhi - flo > MinFvgSize && fhi - flo < MaxFvgSize && (!DisplacementOnly || deDispOK || fpNow || ifpNow))
                     {
                         Fvg f = new Fvg();
                         f.hi = hi;
@@ -2895,7 +2900,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                         flo = lo;
                         fk = 2;
                     }
-                    if (fhi - flo > MinFvgSize && fhi - flo < MaxFvgSize && (!DisplacementOnly || deDispOK || fpNow))
+                    if (fhi - flo > MinFvgSize && fhi - flo < MaxFvgSize && (!DisplacementOnly || deDispOK || fpNow || ifpNow))
                     {
                         Fvg f = new Fvg();
                         f.hi = hi;
@@ -3177,7 +3182,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                             {
                                 bullconfirm = null;
                                 GCancel(gBull); // only the first inversion
-                                DeRecolor(ifvgBox, d);
+                                DeRecolor(ifvgBox, d, bullifvg);
                             }
                             bullAp = DeAp(d);
                             BText(ifvgBox, IfvgTxt(d, bullInv, false, "", bullAp, MbOf(bullifvg)));
@@ -3211,7 +3216,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                             {
                                 bearconfirm = null;
                                 GCancel(gBear); // only the first inversion
-                                DeRecolor(ifvgBoxb, d);
+                                DeRecolor(ifvgBoxb, d, bearifvg);
                             }
                             bearAp = DeAp(d);
                             BText(ifvgBoxb, IfvgTxt(d, bearInv, false, "", bearAp, MbOf(bearifvg)));
@@ -3331,19 +3336,19 @@ namespace NinjaTrader.NinjaScript.Indicators
                 if (bearOteSig != 0 && ifvgBoxb != null)
                 {
                     ifvgBoxb.Txt = IfvgTxt(-1, 1, true, gBear.tags, bearAp, MbOf(bearifvg));
-                    ifvgBoxb.Bd = cOteHi;
+                    if (!IsFp(bearifvg)) ifvgBoxb.Bd = cOteHi;
                     Touch(ifvgBoxb);
                 }
                 if (bullOteSig != 0 && ifvgBox != null)
                 {
                     ifvgBox.Txt = IfvgTxt(1, 1, true, gBull.tags, bullAp, MbOf(bullifvg));
-                    ifvgBox.Bd = cOteHi;
+                    if (!IsFp(bullifvg)) ifvgBox.Bd = cOteHi;
                     Touch(ifvgBox);
                 }
                 if (swOteSig != 0 && ifvgBox != null)
                 {
                     ifvgBox.Txt = IfvgTxt(swOteSig, 1, true, gSw.tags, swAp, MbOf(swFvg));
-                    ifvgBox.Bd = cOteHi;
+                    if (!IsFp(swFvg)) ifvgBox.Bd = cOteHi;
                     Touch(ifvgBox);
                 }
             }

@@ -500,7 +500,8 @@ bumpTags() =>
 
 // [DE] border width: thicker for flagged displacement FVGs
 method bw(FVG f) =>
-    deFlag and f.disp ? deFlagW : 1
+    // 1PFVGs keep their own look: no displacement flag
+    deFlag and f.disp and not f.isfp and not f.isifp ? deFlagW : 1
 
 // label of a plain FVG box: A+, or the breaker / mitigation block tag (B↑, M↓, BM↑...), plus OTE
 fvgLbl(FVG f) =>
@@ -814,8 +815,9 @@ updKept() =>
     true
 
 // widen g (older FVG) with f (new almost identical one): max hi / min lo, for both, and extend g
+// (a 1PFVG is never changed by a duplicate: it keeps its zone)
 method mergeZone(FVG g, FVG f) =>
-    if not g.kept
+    if not g.kept and not g.isfp and not g.isifp
         float nh = math.max(g.hi, f.hi)
         float nl = math.min(g.lo, f.lo)
         g.hi := nh
@@ -885,7 +887,8 @@ method route(FltState s, FVG f) =>
     FVG d = findDup(f)
     bool shown = false
     if not na(d)
-        // extend the old FVG instead of adding the new one; the new FVG keeps feeding the IFVG logic
+        // extend the old FVG instead of adding the new one; the new FVG keeps feeding the IFVG logic.
+        // A 1PFVG is never changed by a duplicate: it keeps its zone
         f.dup := d
         d.mergeZone(f)
     else if fltOff
@@ -912,7 +915,8 @@ reveal(FVG f) =>
         insertSorted(f.islong ? lfvgs : sfvgs, f)
     else
         f.dup := d
-        if f.start < d.start and not d.kept
+        // a 1PFVG keeps its zone and start
+        if f.start < d.start and not d.kept and not d.isfp and not d.isifp
             // the revealed FVG is the older one: the merged box starts where it started
             d.start := f.start
             if not na(d.rect)
@@ -1125,7 +1129,7 @@ if true
         fhi := hi
         flo := lo
         fk := 2
-    if fhi - flo > minfvg and fhi-flo < maxfvg and (not deDisp or deDispOK or isFPFVG())
+    if fhi - flo > minfvg and fhi-flo < maxfvg and (not deDisp or deDispOK or isFPFVG() or (not hasifp and hasfp and doifp and not fpLow))
         f = FVG.new(hi,lo,math.avg(hi,lo),true,timeat(-fk))
         f.sbar := bar_index - fk // [OTE]
         f.oteInit() // [OTEF]
@@ -1144,7 +1148,7 @@ if true
             hasfp := f.isfp
             fpfvgs.push(f)
             clearlastfp(fpfvgs)
-        else if not fponly and not f.isifp
+        else if not fponly and not f.isifp and (not deDisp or deDispOK)
             fs.route(f)
         else
             f.kill()
@@ -1160,7 +1164,7 @@ if true
         fhi := hi
         flo := lo
         fk := 2
-    if fhi - flo > minfvg and fhi - flo < maxfvg and (not deDisp or deDispOK or isFPFVG())
+    if fhi - flo > minfvg and fhi - flo < maxfvg and (not deDisp or deDispOK or isFPFVG() or (not hasifp and hasfp and doifp and not fpLow))
         f = FVG.new(hi,lo,math.avg(hi,lo),false,timeat(-fk))
         f.sbar := bar_index - fk // [OTE]
         f.oteInit() // [OTEF]
@@ -1179,7 +1183,7 @@ if true
             hasfp := f.isfp
             fpfvgs.push(f)
             clearlastfp(fpfvgs)
-        else if not fponly and not  f.isifp
+        else if not fponly and not f.isifp and (not deDisp or deDispOK)
             fs.route(f)
         else 
             f.kill()
@@ -1987,10 +1991,16 @@ if doifvg and ifvgswings
             sig := -1
         else if ifsdir == 1 and low <= ifshi and low >= ifslo
             sig := 1
+// 1PFVG (or inverse 1PFVG) zone, or a duplicate merged into one: it keeps its own look
+isFp(FVG fv) =>
+    FVG f = na(fv) ? na : (na(fv.dup) ? fv : fv.dup)
+    not na(f) and (f.isfp or f.isifp)
+
 // [DE] invalidated IFVG: faded (stays as it is, no longer extended) or back to the plain FVG
 deKill(FVG fv) =>
     FVG f = na(fv.dup) ? fv : fv.dup
-    if deDead == "Back to FVG"
+    // a 1PFVG always goes back to its own look
+    if deDead == "Back to FVG" or f.isfp or f.isifp
         f.restore()
     else
         f.kept := false
@@ -2004,8 +2014,8 @@ deKill(FVG fv) =>
     true
 
 // [DE] the box of an inverted zone in direction d
-deRecolor(box b, int d) =>
-    if not na(b)
+deRecolor(box b, int d, FVG fv) =>
+    if not na(b) and not isFp(fv)
         color c = d < 0 ? bearIFVGColor : bullIFVGColor
         b.set_bgcolor(color.new(c, ifvgTrans))
         b.set_border_color(color.new(c, borderTrans))
@@ -2054,7 +2064,7 @@ if doifvg and not ifvgswings and deInv and barstate.isconfirmed
                 else
                     bullconfirm := na
                     gBull.gCancel() // [OTE] only the first inversion
-                    deRecolor(ifvgBox, d)
+                    deRecolor(ifvgBox, d, bullifvg)
                 bullAp := deAp(d)
                 ifvgBox.set_text(ifvgTxt(d, bullInv, false, "", bullAp, mbOf(bullifvg)))
                 sig := d
@@ -2076,7 +2086,7 @@ if doifvg and not ifvgswings and deInv and barstate.isconfirmed
                 else
                     bearconfirm := na
                     gBear.gCancel() // [OTE] only the first inversion
-                    deRecolor(ifvgBoxb, d)
+                    deRecolor(ifvgBoxb, d, bearifvg)
                 bearAp := deAp(d)
                 ifvgBoxb.set_text(ifvgTxt(d, bearInv, false, "", bearAp, mbOf(bearifvg)))
                 sig := sig == 0 ? d : sig
@@ -2507,13 +2517,16 @@ else if swOteSig != 0
 if doifvg and useOTE
     if bearOteSig != 0 and not na(ifvgBoxb)
         ifvgBoxb.set_text(ifvgTxt(-1, 1, true, gBear.tags, bearAp, mbOf(bearifvg)))
-        ifvgBoxb.set_border_color(oteHighlight)
+        if not isFp(bearifvg)
+            ifvgBoxb.set_border_color(oteHighlight)
     if bullOteSig != 0 and not na(ifvgBox)
         ifvgBox.set_text(ifvgTxt(1, 1, true, gBull.tags, bullAp, mbOf(bullifvg)))
-        ifvgBox.set_border_color(oteHighlight)
+        if not isFp(bullifvg)
+            ifvgBox.set_border_color(oteHighlight)
     if swOteSig != 0 and not na(ifvgBox)
         ifvgBox.set_text(ifvgTxt(swOteSig, 1, true, gSw.tags, swAp, mbOf(swFvg)))
-        ifvgBox.set_border_color(oteHighlight)
+        if not isFp(swFvg)
+            ifvgBox.set_border_color(oteHighlight)
 
 plotshape(showSignals and not hideReg and sig == -1 and sig[1] == 0, 
     title = "SHORT", style = shape.triangledown, 
