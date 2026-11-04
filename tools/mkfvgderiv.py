@@ -169,7 +169,7 @@ def noRel(txt):
 
 def noMidOte(txt):
     """ICTblocks has fltMid and useOTE as constants false: drop the mid-arm FVG search of onSweep (armStart would be
-    unused) and oteStep (always 0, its tracker argument would be unused)"""
+    unused) and oteStep and gStep (always 0, their arguments would be unused)"""
     txt, n = re.subn(r"(?m)^        if fltMid and [^\n]*\n(?:            [^\n]*\n)+", "", txt)
     assert n == 1, "fltMid"
     txt = txt.replace("onSweep(int armStart) =>", "onSweep() =>")
@@ -179,6 +179,11 @@ def noMidOte(txt):
     assert n == 1, "oteStep"
     txt, n = re.subn(r"g\.t[012]\.oteStep\(\)", "0", txt)
     assert n == 3 and "oteStep" not in txt, "oteStep calls"
+    # with oteStep gone gStep never flags: drop it too (its group argument would be unused)
+    txt, n = re.subn(r"(?m)^method gStep\(OteGroup g\) =>\n(?:(?: [^\n]*)?\n)+?(?=\S)", "", txt)
+    assert n == 1, "gStep"
+    txt, n = re.subn(r"\bg(?:Bear|Bull|Sw)\.gStep\(\)", "0", txt)
+    assert n == 3 and "gStep" not in txt, "gStep calls"
     return txt
 
 

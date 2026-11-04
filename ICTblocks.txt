@@ -1448,24 +1448,6 @@ method gCancel(OteGroup g) =>
     g.t1.oteCancel()
     g.t2.oteCancel()
 
-method gStep(OteGroup g) =>
-    int s0 = 0
-    int s1 = 0
-    int s2 = 0
-    int s = 0
-    if not g.flagged and (s0 != 0 or s1 != 0 or s2 != 0)
-        g.flagged := true
-        s := s0 != 0 ? s0 : (s1 != 0 ? s1 : s2)
-        string tg = ""
-        if s0 != 0
-            tg += g.t0.tag
-        if s1 != 0
-            tg += (tg == "" ? "" : "+") + g.t1.tag
-        if s2 != 0
-            tg += (tg == "" ? "" : "+") + g.t2.tag
-        g.tags := tg
-    s
-
 var OteGroup gBear = OteGroup.new(OteTrack.new(), OteTrack.new(), OteTrack.new())  // non-swing mode, bearish IFVG (from last long FVG)
 var OteGroup gBull = OteGroup.new(OteTrack.new(), OteTrack.new(), OteTrack.new())  // non-swing mode, bullish IFVG (from last short FVG)
 var OteGroup gSw   = OteGroup.new(OteTrack.new(), OteTrack.new(), OteTrack.new())  // swing mode, single IFVG under watch
@@ -2012,9 +1994,9 @@ if (brkOn or mbOn) and barstate.isconfirmed
             ifvgInherit(bearifvg, ifvgBoxb, -1, -1)
 
 // [OTE] signals: IFVG retraced into and matches the OTE band =================
-int bearOteSig = gBear.gStep()
-int bullOteSig = gBull.gStep()
-int swOteSig = gSw.gStep()
+int bearOteSig = 0
+int bullOteSig = 0
+int swOteSig = 0
 
 int oteSig = 0
 if bearOteSig != 0
