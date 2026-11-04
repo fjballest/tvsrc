@@ -399,10 +399,6 @@ bumpTags() =>
     tagSeq.set(0, tagSeq.get(0) + 1)
 
 
-// [DE] border width: thicker for flagged displacement FVGs
-method bw(FVG f) =>
-    // 1PFVGs keep their own look: no displacement flag
-    deFlag and f.disp and not f.isfp and not f.isifp ? deFlagW : 1
 
 // label of a plain FVG box: A+, or the breaker / mitigation block tag (B↑, M↓, BM↑...), plus OTE
 fvgLbl(FVG f) =>
@@ -640,7 +636,7 @@ method restore(FVG f) =>
         else
             f.rect.set_bgcolor(f.bgColor())
             f.rect.set_border_color(f.lnColor())
-            f.rect.set_border_width(f.bw())
+            f.rect.set_border_width(1)
             f.rect.set_text(fvgLbl(f))
             f.rect.set_right(f.endsAt())
             f.rect.set_extend((f.isifp or f.isfp) ? extend.right : extend.none)
@@ -897,9 +893,6 @@ if deSsl.size() > 0
 bool deSslRecent = not na(deLastSsl) and bar_index - deLastSsl <= deSeqWin
 bool deBslRecent = not na(deLastBsl) and bar_index - deLastBsl <= deSeqWin
 
-// A+ for an IFVG confirmed on this bar in direction d
-deAp(int d) =>
-    deAplus and deKzOK and (d == 1 ? deSslRecent and deHtfUp : deBslRecent and deHtfDn)
 
 // structure of the chart (swings of deMssLen): MSS = break of the last swing against the structure with
 // displacement, or a break with displacement in the direction of a recent CHoCH (break without displacement)
@@ -921,7 +914,7 @@ if not na(deShP) and close > deShP
     else if isRev
         deChochUp := bar_index
     deChochDn := na
-    if isMss and deAp(1)
+    if isMss and false
         deMssUpBar := bar_index
         // FVGs born after the sweep become A+
         for f in lfvgs
@@ -940,7 +933,7 @@ if not na(deSlP) and close < deSlP
     else if isRev
         deChochDn := bar_index
     deChochUp := na
-    if isMss and deAp(-1)
+    if isMss and false
         deMssDnBar := bar_index
         for f in sfvgs
             if f.sbar >= deLastBsl and not f.aplus
@@ -1192,7 +1185,7 @@ if fltRel and barstate.islast
             float dist = close > f.hi ? close - f.hi : close < f.lo ? f.lo - close : 0.0
             if dist <= rng
                 relB.push(box.new(f.start, f.hi, time, f.lo, xloc = xloc.bar_time,
-                     bgcolor = f.bgColor(), border_color = f.lnColor(), border_width = f.bw(),
+                     bgcolor = f.bgColor(), border_color = f.lnColor(), border_width = 1,
                      border_style = line.style_solid, text = fvgLbl(f), text_size = ifvgtsz,
                      text_halign = ifvgha, text_valign = ifvgva))
 
@@ -1716,7 +1709,7 @@ if doifvg and not ifvgswings and not deInv
     if not na(bullifvg) and barstate.isconfirmed and upBreak(bullifvg.hi) and na(bullconfirm)
         bullconfirm := time
         gBull.gConfirm() // [OTE]
-        bullAp := deAp(1)
+        bullAp := false
         ifvgBox.set_text(ifvgTxt(1, 1, false, "", bullAp, mbOf(bullifvg)))
         sig := 1
     if not na(bearifvg) and not na(bearconfirm) and barstate.isconfirmed and close > bearifvg.hi
@@ -1724,7 +1717,7 @@ if doifvg and not ifvgswings and not deInv
         gBear.gCancel() // [OTE]
         ifvgBoxb.set_text(na)
     if not na(bearifvg) and barstate.isconfirmed and dnBreak(bearifvg.lo) and na(bearconfirm)
-        bearAp := deAp(-1)
+        bearAp := false
         ifvgBoxb.set_text(ifvgTxt(-1, 1, false, "", bearAp, mbOf(bearifvg)))
         bearconfirm := time
         gBear.gConfirm() // [OTE]
@@ -1752,7 +1745,7 @@ if doifvg and not ifvgswings and deInv and barstate.isconfirmed
                     bullconfirm := na
                     gBull.gCancel() // [OTE] only the first inversion
                     deRecolor(ifvgBox, d, bullifvg)
-                bullAp := deAp(d)
+                bullAp := false
                 ifvgBox.set_text(ifvgTxt(d, bullInv, false, "", bullAp, mbOf(bullifvg)))
                 sig := d
     if not na(bearifvg) and bearInv >= 0
@@ -1774,7 +1767,7 @@ if doifvg and not ifvgswings and deInv and barstate.isconfirmed
                     bearconfirm := na
                     gBear.gCancel() // [OTE] only the first inversion
                     deRecolor(ifvgBoxb, d, bearifvg)
-                bearAp := deAp(d)
+                bearAp := false
                 ifvgBoxb.set_text(ifvgTxt(d, bearInv, false, "", bearAp, mbOf(bearifvg)))
                 sig := sig == 0 ? d : sig
 

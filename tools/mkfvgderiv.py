@@ -126,6 +126,19 @@ def derive(lines, tag, keep, setv, title, header, srctitle="FVGs+IFVG+OTE5"):
     return txt
 
 
+def fold(txt):
+    """both derivatives have deFlag and deAplus as constants false: drop bw() (always 1) and deAp() (always
+    false), whose arguments would be unused"""
+    txt, n = re.subn(r"(?m)^// \[DE\] border width[^\n]*\nmethod bw\(FVG f\) =>\n(?: [^\n]*\n)+", "", txt)
+    assert n == 1, "bw"
+    txt = txt.replace("f.bw()", "1")
+    txt, n = re.subn(r"(?m)^(?:// A\+ for an IFVG[^\n]*\n)?deAp\(int d\) =>\n(?: [^\n]*\n)+", "", txt)
+    assert n == 1, "deAp"
+    txt = re.sub(r"\bdeAp\([^()]*\)", "false", txt)
+    assert "bw(" not in txt and not re.search(r"\bdeAp\b", txt)
+    return txt
+
+
 def main():
     os.chdir(os.path.dirname(os.path.abspath(__file__)) + "/..")
     src = open(SRC, newline="").read()
@@ -145,6 +158,8 @@ def main():
                "// close-mode IFVGs are computed as in FVGs+IFVG+OTE5 (they decide where the blocks are drawn) but not\n"
                "// drawn: use it next to FVGs+IFVG+OTE4. Delivery Engine: displacement filter of those FVGs, colored\n"
                "// displacement candles, IFVG confirmation and inversion rules.\n\n")
+    ote4 = fold(ote4)
+    s = fold(s)
     for a, b in BLK_SUBST:
         assert s.count(a) == 1, a
         s = s.replace(a, b)
