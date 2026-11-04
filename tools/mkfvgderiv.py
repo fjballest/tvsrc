@@ -15,6 +15,7 @@ import re, sys, os
 SRC = "FVGS+IFVG+OTE.txt"
 
 # FVGS+IFVG+OTE4: everything but breakers, mitigation blocks, the Delivery Engine and swing-mode IFVGs
+OTE4_KEEP = {"deConf", "deInv", "deMaxInv", "deDead", "deDeadCol"}  # IFVG confirmation and inversion rules
 OTE4_DROP = re.compile(r"^(brk\w*|mb\w*|de\w*|ifvgswings|useSwingFilter|showSwing|lblAp)$")
 OTE4_SET = {"brkOn": "false", "mbOn": "false", "lblAp": "false"}
 
@@ -147,10 +148,11 @@ def main():
     note = ("// GENERATED from FVGS+IFVG+OTE.txt by tools/mkfvgderiv.py: do not edit, change FVGS+IFVG+OTE.txt and\n"
             "// rerun the script.\n")
     lic = "\n".join(lines[:2]) + "\n"
-    ote4 = derive(lines, "ote4", lambda n: not OTE4_DROP.match(n), OTE4_SET, "FVGs+IFVG+OTE4",
+    ote4 = derive(lines, "ote4", lambda n: n in OTE4_KEEP or not OTE4_DROP.match(n), OTE4_SET, "FVGs+IFVG+OTE4",
                   lic + note +
                   "// FVGs+IFVG+OTE4: the FVGs+IFVG+OTE5 indicator without the breakers, mitigation blocks and Delivery\n"
-                  "// Engine (see ICTblocks) and without the swing-mode IFVGs (IFVGs are created on a close through the FVG).\n"
+                  "// Engine (see ICTblocks; its IFVG confirmation and inversion rules are kept here) and without the\n"
+                  "// swing-mode IFVGs (IFVGs are created on a close through the FVG).\n"
                   "// The rest (FVGs, 1PFVGs, wick C.E., filters, IFVGs, OTE, poor liquidity) is the same.\n\n")
     s = derive(lines, "blk", lambda n: bool(BLK_KEEP.match(n)), BLK_SET, "ICTblocks",
                lic + note +

@@ -2017,7 +2017,6 @@ isFp(FVG fv) =>
     FVG f = na(fv) ? na : (na(fv.dup) ? fv : fv.dup)
     not na(f) and (f.isfp or f.isifp)
 
-//#cut ote4
 // [DE] invalidated IFVG: faded (stays as it is, no longer extended) or back to the plain FVG
 deKill(FVG fv) =>
     FVG f = na(fv.dup) ? fv : fv.dup
@@ -2043,7 +2042,6 @@ deRecolor(box b, int d, FVG fv) =>
         b.set_border_color(color.new(c, borderTrans))
     true
 
-//#end
 if doifvg and not ifvgswings and not deInv
     if not na(bullifvg) and not na(bullconfirm) and barstate.isconfirmed and close < bullifvg.lo
         bullconfirm := na
@@ -2066,7 +2064,6 @@ if doifvg and not ifvgswings and not deInv
         gBear.gConfirm() // [OTE]
         sig := -1
 
-//#cut ote4
 // [DE] inversion rules: every close through the zone inverts it again, up to the max; then it is invalidated.
 // Bull candidate (bearish FVG): inversions 1, 3, ... are bullish (close above), 2, 4, ... bearish (close below).
 if doifvg and not ifvgswings and deInv and barstate.isconfirmed
@@ -2115,7 +2112,6 @@ if doifvg and not ifvgswings and deInv and barstate.isconfirmed
                 ifvgBoxb.set_text(ifvgTxt(d, bearInv, false, "", bearAp, mbOf(bearifvg)))
                 sig := sig == 0 ? d : sig
 
-//#end
 updKept()
 
 //#cut ote4
