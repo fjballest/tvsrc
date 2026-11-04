@@ -425,50 +425,7 @@ if not na(otePivH)
     otePH := otePivH
     otePHb := bar_index - pivR
 
-// [OTEF] leg of a new FVG (candles [3] to [1]): origin = the lowest low (bullish) / highest high (bearish) from the
-// last swing before the FVG, extreme = the high / low of the FVG candles
-method oteInit(FVG f) =>
-    if oteFvg
-        int n = 3
-        if f.islong and not na(otePLb) and otePLb <= bar_index - 3
-            n := math.min(bar_index - otePLb, 4000)
-        else if not f.islong and not na(otePHb) and otePHb <= bar_index - 3
-            n := math.min(bar_index - otePHb, 4000)
-        float lo = low[1]
-        float hi = high[1]
-        for k = 1 to n
-            if f.islong
-                lo := math.min(lo, low[k])
-            else
-                hi := math.max(hi, high[k])
-        if f.islong
-            f.oLo := lo
-            f.oHi := math.max(high[1], high[2], high[3])
-        else
-            f.oHi := hi
-            f.oLo := math.min(low[1], low[2], low[3])
 
-// [OTEF] once per bar for a live FVG: true on the bar it retraces into the FVG while it matches the OTE band
-method oteFvgStep(FVG f) =>
-    bool hit = false
-    if oteFvg and not f.ote and not na(f.oLo) and not na(f.oHi)
-        float r = f.oHi - f.oLo
-        if r > 0 and barstate.isconfirmed
-            float bLo = f.islong ? f.oHi - oteMax * r : f.oLo + oteMin * r
-            float bHi = f.islong ? f.oHi - oteMin * r : f.oLo + oteMax * r
-            bool m = oteMode == "Overlap" ? f.hi >= bLo and f.lo <= bHi
-                 : oteMode == "Fully inside" ? f.lo >= bLo and f.hi <= bHi
-                 : f.ce >= bLo and f.ce <= bHi
-            bool tap = f.islong ? low <= f.hi : high >= f.lo
-            if m and tap
-                f.ote := true
-                hit := true
-        // keep extending the leg AFTER evaluating this bar
-        if f.islong
-            f.oHi := math.max(f.oHi, high)
-        else
-            f.oLo := math.min(f.oLo, low)
-    hit
 
 method kill(FVG f) =>
     if not na(f)
@@ -984,7 +941,6 @@ if true
     if fhi - flo > minfvg and fhi-flo < maxfvg and (not deDisp or deDispOK or isFPFVG() or (not hasifp and hasfp and doifp and not fpLow))
         f = FVG.new(hi,lo,math.avg(hi,lo),true,timeat(-fk))
         f.sbar := bar_index - fk // [OTE]
-        f.oteInit() // [OTEF]
         f.aplus := false // [DE] A+ off
         f.disp := deDispOK // [DE]
         lastlongfvg := f
@@ -1018,7 +974,6 @@ if true
     if fhi - flo > minfvg and fhi - flo < maxfvg and (not deDisp or deDispOK or isFPFVG() or (not hasifp and hasfp and doifp and not fpLow))
         f = FVG.new(hi,lo,math.avg(hi,lo),false,timeat(-fk))
         f.sbar := bar_index - fk // [OTE]
-        f.oteInit() // [OTEF]
         f.aplus := false // [DE] A+ off
         f.disp := deDispOK // [DE]
         lastshortfvg := f
@@ -1153,10 +1108,6 @@ if fltRel and barstate.isconfirmed and relF.size() > 0
             if f.swp
                 f.end := time
                 reveal(f)
-            relF.remove(i)
-        else if f.oteFvgStep()
-            // retraced into while matching the OTE band of its leg
-            reveal(f)
             relF.remove(i)
 if fltRel and barstate.islast
     // live FVGs near the price: redrawn on each update of the last bar

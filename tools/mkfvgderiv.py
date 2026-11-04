@@ -145,6 +145,19 @@ def fold(txt):
     return txt
 
 
+def noOteF(txt):
+    """ICTblocks has oteFvg as constant false: drop the OTE-of-the-FVG-leg code (its FVG argument would be unused)"""
+    for name in ("oteInit", "oteFvgStep"):
+        txt, n = re.subn(r"(?m)^// \[OTEF\][^\n]*\n(?://[^\n]*\n)*method %s\(FVG f\) =>\n(?: [^\n]*\n)+" % name, "", txt)
+        assert n == 1, name
+    txt, n = re.subn(r"(?m)^ *f\.oteInit\(\) // \[OTEF\]\n", "", txt)
+    assert n == 2, "oteInit calls"
+    txt, n = re.subn(r"(?m)^( *)else if f\.oteFvgStep\(\)\n(?:\1 [^\n]*\n)+", "", txt)
+    assert n == 1, "oteFvgStep call"
+    assert not re.search(r"\boteInit\b|\boteFvgStep\b", txt)
+    return txt
+
+
 def main():
     os.chdir(os.path.dirname(os.path.abspath(__file__)) + "/..")
     src = open(SRC, newline="").read()
@@ -166,7 +179,7 @@ def main():
                "// drawn: use it next to FVGs+IFVG+OTE4. Delivery Engine: displacement filter of those FVGs, colored\n"
                "// displacement candles, IFVG confirmation and inversion rules.\n\n")
     ote4 = fold(ote4)
-    s = fold(s)
+    s = noOteF(fold(s))
     for a, b in BLK_SUBST:
         assert s.count(a) == 1, a
         s = s.replace(a, b)
