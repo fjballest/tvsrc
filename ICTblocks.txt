@@ -533,7 +533,7 @@ clearlastfp(array<FVG> fpfvgs) =>
 
 isLongFVG(l1,h3) =>
     l1 > h3
-longFVGHL(o1,c1,h1,l1,o2,c2,h2,l2,o3,c3,h3,l3) =>
+longFVGHL(o1,c1,l1,o2,c2,o3,c3,h3) =>
     hi = l1
     lo = h3
     blow1 = math.min(o1,c1)
@@ -551,7 +551,7 @@ longFVGHL(o1,c1,h1,l1,o2,c2,h2,l2,o3,c3,h3,l3) =>
 
 isShortFVG(h1,l3) =>
     h1 < l3
-shortFVGHL(o1,c1,h1,l1,o2,c2,h2,l2,o3,c3,h3,l3) =>
+shortFVGHL(o1,c1,h1,o2,c2,o3,c3,l3) =>
     hi = l3
     lo = h1
     blow3 = math.min(o3,c3)
@@ -649,7 +649,6 @@ method restore(FVG f) =>
 // the (older) FVG that absorbed a duplicate is the one that is shown
 method adopt(FVG fv, int dir) =>
     FVG f = na(fv.dup) ? fv : fv.dup
-    color c = dir < 0 ? bearIFVGColor : bullIFVGColor
     if not f.kept
         keptIf.push(f)
     f.kept := true
@@ -996,9 +995,8 @@ timeat(int n) =>
 FVG lastlongfvg = na
 FVG lastshortfvg = na
 if true
-    [hi, lo, fhi, flo] = longFVGHL(open[1],close[1],high[1],low[1],
-         open[2],close[2],high[2],low[2],
-         open[3],close[3],high[3],low[3])
+    [hi, lo, fhi, flo] = longFVGHL(open[1], close[1], low[1], open[2],
+         close[2], open[3], close[3], high[3])
     // [PL] poor liquidity: two up-close candles in a row with a gap make an FVG (as if one more was between)
     int fk = 3
     if poorLiq and not (fhi - flo > minfvg) and close[1] > open[1] and close[2] > open[2] and low[1] > high[2]
@@ -1031,9 +1029,8 @@ if true
         else
             f.kill()
 if true
-    [hi, lo, fhi, flo] = shortFVGHL(open[1],close[1],high[1],low[1],
-         open[2],close[2],high[2],low[2],
-         open[3],close[3],high[3],low[3])
+    [hi, lo, fhi, flo] = shortFVGHL(open[1], close[1], high[1], open[2],
+         close[2], open[3], close[3], low[3])
     // [PL] poor liquidity: two down-close candles in a row with a gap make an FVG (as if one more was between)
     int fk = 3
     if poorLiq and not (fhi - flo > minfvg) and close[1] < open[1] and close[2] < open[2] and high[1] < low[2]
@@ -1096,10 +1093,10 @@ if fpLow and barstate.isconfirmed and not na(l1t) and l1t.size() > 0
             bool ifpWin = hasfp and doifp and not hasifp and fpfvgs.size() > 0
             if fpT.size() == 4 and hour(t0, tz) == fph and (fpWin or ifpWin)
                 // index 2: candle [1], 1: [2], 0: [3]
-                [lhi, llo, lfhi, lflo] = longFVGHL(fpO.get(2), fpC.get(2), fpH.get(2), fpL.get(2),
-                     fpO.get(1), fpC.get(1), fpH.get(1), fpL.get(1), fpO.get(0), fpC.get(0), fpH.get(0), fpL.get(0))
-                [shi, slo, sfhi, sflo] = shortFVGHL(fpO.get(2), fpC.get(2), fpH.get(2), fpL.get(2),
-                     fpO.get(1), fpC.get(1), fpH.get(1), fpL.get(1), fpO.get(0), fpC.get(0), fpH.get(0), fpL.get(0))
+                [lhi, llo, lfhi, lflo] = longFVGHL(fpO.get(2), fpC.get(2), fpL.get(2), fpO.get(1),
+                     fpC.get(1), fpO.get(0), fpC.get(0), fpH.get(0))
+                [shi, slo, sfhi, sflo] = shortFVGHL(fpO.get(2), fpC.get(2), fpH.get(2), fpO.get(1),
+                     fpC.get(1), fpO.get(0), fpC.get(0), fpL.get(0))
                 bool isL = lfhi - lflo > minfvg and lfhi - lflo < maxfvg
                 bool isS = sfhi - sflo > minfvg and sfhi - sflo < maxfvg
                 if ifpWin

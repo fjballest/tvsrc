@@ -974,7 +974,7 @@ if inWin and tfok
 // level, then stay fixed. When the week closes displaced and the retracement did not happen on Friday,
 // the levels of the final week apply on Monday (until Tuesday starts). Otherwise they are removed when
 // the day ends.
-tgEval(float h, float l, float o, float c) =>
+tgEval(float h, float l, float c) =>
     float r = h - l
     int d = 0
     if r > 0
@@ -1001,7 +1001,7 @@ var label tgB2 = na
 if inWin and tfok and dotgif
     bool clr = false
     if newWeek
-        int d = na(twO) ? 0 : tgEval(twH, twL, twO, close[1])
+        int d = na(twO) ? 0 : tgEval(twH, twL, close[1])
         bool carry = d != 0 and not (tgDir == d and tgHit)
         clr := true
         tgDir := 0
@@ -1019,7 +1019,7 @@ if inWin and tfok and dotgif
     else if not na(twO)
         if newDay and dow == dayofweek.friday
             clr := true
-            tgDir := tgEval(twH, twL, twO, close[1])
+            tgDir := tgEval(twH, twL, close[1])
             tgMon := false
             tgHit := false
             tgT0 := time

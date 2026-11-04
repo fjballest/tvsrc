@@ -11,7 +11,7 @@
  *   It draws levels only: no signals, no alerts, no plots.
  *
  *   It is a port of the TradingView Pine Script v6 indicator ICTlevels.txt
- *   (md5 10c08c9d1179ec5648c1b9765ea01b2a). Parameter names are the Pine variable names and the
+ *   (md5 50d99c98ecdeacf2c3229c74c92f3501). Parameter names are the Pine variable names and the
  *   defaults are the Pine defaults; see "doc/ICTlevels-user-manual.md" for what every level means.
  *
  * How to install
@@ -771,7 +771,7 @@ class ICTlevels {
         if (tfok && P.dotgif) {
             const prevClose = pv ? pv.c : close;
             if (newWeek) {
-                const dd = S.twO === null ? 0 : this.tgEval(S.twH, S.twL, S.twO, prevClose);
+                const dd = S.twO === null ? 0 : this.tgEval(S.twH, S.twL, prevClose);
                 const carry = dd !== 0 && !(S.tgDir === dd && S.tgHit);
                 S.tgDir = 0;
                 S.tgMon = false;
@@ -788,7 +788,7 @@ class ICTlevels {
                 S.twL = low;
             } else if (S.twO !== null) {
                 if (newDay && dow === FRI) {
-                    S.tgDir = this.tgEval(S.twH, S.twL, S.twO, prevClose);
+                    S.tgDir = this.tgEval(S.twH, S.twL, prevClose);
                     S.tgMon = false;
                     S.tgHit = false;
                     S.tgT0 = i;
@@ -1011,7 +1011,7 @@ class ICTlevels {
         return { name, tstart, hi: price, lo: null, isw, n: 1, nd: 0, show: true, uhi: null, ulo: null, ut: null };
     }
 
-    tgEval(h, l, o, c) {
+    tgEval(h, l, c) {
         const P = this.P;
         const r = h - l;
         let d = 0;

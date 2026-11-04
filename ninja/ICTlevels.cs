@@ -4,7 +4,7 @@
 // quadrants and standard deviations, premarket range, EQH/EQL, PO3 lines, TGIF levels, macros,
 // silver bullet and a session/macro status text. Draws levels only: no plots, no signals, no alerts.
 //
-// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 10c08c9d1179ec5648c1b9765ea01b2a),
+// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 50d99c98ecdeacf2c3229c74c92f3501),
 // © franjballest, Mozilla Public License 2.0 (https://mozilla.org/MPL/2.0/).
 //
 // Install:
@@ -684,7 +684,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 			{
 				if (newWeek)
 				{
-					int d = double.IsNaN(twO) ? 0 : TgEval(twH, twL, twO, Close[1]);
+					int d = double.IsNaN(twO) ? 0 : TgEval(twH, twL, Close[1]);
 					bool carry = d != 0 && !(tgDir == d && tgHit);
 					tgDir = 0;
 					tgMon = false;
@@ -705,7 +705,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 				{
 					if (newDay && dow == DayOfWeek.Friday)
 					{
-						tgDir = TgEval(twH, twL, twO, Close[1]);
+						tgDir = TgEval(twH, twL, Close[1]);
 						tgMon = false;
 						tgHit = false;
 						tgT0 = Time[0];
@@ -1391,7 +1391,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 
 		#region TGIF
 
-		private int TgEval(double h, double l, double o, double c)
+		private int TgEval(double h, double l, double c)
 		{
 			double r = h - l;
 			int d = 0;

@@ -658,7 +658,7 @@ clearlastfp(array<FVG> fpfvgs) =>
 
 isLongFVG(l1,h3) =>
     l1 > h3
-longFVGHL(o1,c1,h1,l1,o2,c2,h2,l2,o3,c3,h3,l3) =>
+longFVGHL(o1,c1,l1,o2,c2,o3,c3,h3) =>
     hi = l1
     lo = h3
     blow1 = math.min(o1,c1)
@@ -676,7 +676,7 @@ longFVGHL(o1,c1,h1,l1,o2,c2,h2,l2,o3,c3,h3,l3) =>
 
 isShortFVG(h1,l3) =>
     h1 < l3
-shortFVGHL(o1,c1,h1,l1,o2,c2,h2,l2,o3,c3,h3,l3) =>
+shortFVGHL(o1,c1,h1,o2,c2,o3,c3,l3) =>
     hi = l3
     lo = h1
     blow3 = math.min(o3,c3)
@@ -1144,9 +1144,8 @@ timeat(int n) =>
 FVG lastlongfvg = na
 FVG lastshortfvg = na
 if true
-    [hi, lo, fhi, flo] = longFVGHL(dO[1],dC[1],dH[1],dL[1],
-         dO[2],dC[2],dH[2],dL[2],
-         dO[3],dC[3],dH[3],dL[3])
+    [hi, lo, fhi, flo] = longFVGHL(dO[1], dC[1], dL[1], dO[2],
+         dC[2], dO[3], dC[3], dH[3])
     // [PL] poor liquidity: two up-close candles in a row with a gap make an FVG (as if one more was between)
     int fk = 3
     if poorLiq and not (fhi - flo > minfvg) and dC[1] > dO[1] and dC[2] > dO[2] and dL[1] > dH[2]
@@ -1179,9 +1178,8 @@ if true
         else
             f.kill()
 if true
-    [hi, lo, fhi, flo] = shortFVGHL(dO[1],dC[1],dH[1],dL[1],
-         dO[2],dC[2],dH[2],dL[2],
-         dO[3],dC[3],dH[3],dL[3])
+    [hi, lo, fhi, flo] = shortFVGHL(dO[1], dC[1], dH[1], dO[2],
+         dC[2], dO[3], dC[3], dL[3])
     // [PL] poor liquidity: two down-close candles in a row with a gap make an FVG (as if one more was between)
     int fk = 3
     if poorLiq and not (fhi - flo > minfvg) and dC[1] < dO[1] and dC[2] < dO[2] and dH[1] < dL[2]
@@ -1244,10 +1242,10 @@ if fpLow and barstate.isconfirmed and not na(l1t) and l1t.size() > 0
             bool ifpWin = hasfp and doifp and not hasifp and fpfvgs.size() > 0
             if fpT.size() == 4 and hour(t0, tz) == fph and (fpWin or ifpWin)
                 // index 2: candle [1], 1: [2], 0: [3]
-                [lhi, llo, lfhi, lflo] = longFVGHL(fpO.get(2), fpC.get(2), fpH.get(2), fpL.get(2),
-                     fpO.get(1), fpC.get(1), fpH.get(1), fpL.get(1), fpO.get(0), fpC.get(0), fpH.get(0), fpL.get(0))
-                [shi, slo, sfhi, sflo] = shortFVGHL(fpO.get(2), fpC.get(2), fpH.get(2), fpL.get(2),
-                     fpO.get(1), fpC.get(1), fpH.get(1), fpL.get(1), fpO.get(0), fpC.get(0), fpH.get(0), fpL.get(0))
+                [lhi, llo, lfhi, lflo] = longFVGHL(fpO.get(2), fpC.get(2), fpL.get(2), fpO.get(1),
+                     fpC.get(1), fpO.get(0), fpC.get(0), fpH.get(0))
+                [shi, slo, sfhi, sflo] = shortFVGHL(fpO.get(2), fpC.get(2), fpH.get(2), fpO.get(1),
+                     fpC.get(1), fpO.get(0), fpC.get(0), fpL.get(0))
                 bool isL = lfhi - lflo > minfvg and lfhi - lflo < maxfvg
                 bool isS = sfhi - sflo > minfvg and sfhi - sflo < maxfvg
                 if ifpWin
