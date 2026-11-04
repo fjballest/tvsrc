@@ -1620,7 +1620,6 @@ var int bullInv = 0       // [DE] inversions of the bull candidate (-1 invalidat
 var int bearInv = 0
 var bool bullAp = false   // [DE] A+ IFVG
 var bool bearAp = false
-var bool swAp = false
 if doifvg and not ifvgswings and not na(lastlongfvg)
     if not na(bearifvg)
         bearifvg.release(not na(bearconfirm), bearconfirm)
@@ -1645,12 +1644,6 @@ if not na(ifvgBoxb) and barstate.isnew
     ifvgBoxb.set_right(time)
 
 // Possible IFVGs for IFVG setups
-var FVG swFvg = na // FVG of the IFVG under watch in swing mode (to keep it when replaced)
-var int ifstime = na // current IFVG setup time for the ifvg
-var float ifshi = na // fvg hi
-var float ifslo = na // fvg lo
-var int ifsdir = 0  // -1 IFVG in swing high to trade short; 1 IFVG in swing lo to trade long
-var int ifsconfirm = na // did close above/below the IFVG confirming it is an IFVG? If so, the time, else na
 
 // IFVG signals
 sig = 0
@@ -1827,7 +1820,6 @@ sameF(FVG f, FVG g) =>
 
 confIfvg(FVG f) =>
     (not na(bullconfirm) and sameF(f, bullifvg)) or (not na(bearconfirm) and sameF(f, bearifvg))
-     or (not na(ifsconfirm) and sameF(f, swFvg))
 
 // breaker b drawn up to this candle when FVG / IFVG f overlaps it on the pullback (once); ib: the IFVG box
 // when f is the confirmed IFVG (its label turns bold), else na (a plain unlabeled FVG gets B↑ / B↓)
@@ -1928,13 +1920,9 @@ if brkOn and barstate.isconfirmed
                 if b.dir == 1
                     if not ifvgswings and not na(bullconfirm)
                         brkTag(bullifvg, b, ifvgBox)
-                    if ifvgswings and ifsdir == 1 and not na(ifsconfirm)
-                        brkTag(swFvg, b, ifvgBox)
                 else
                     if not ifvgswings and not na(bearconfirm)
                         brkTag(bearifvg, b, ifvgBoxb)
-                    if ifvgswings and ifsdir == -1 and not na(ifsconfirm)
-                        brkTag(swFvg, b, ifvgBox)
                 if b.tagged and ((b.dir == 1 and low < b.lo) or (b.dir == -1 and high > b.hi))
                     if not na(b.bx)
                         b.bx.delete()
@@ -2014,8 +2002,7 @@ mbAdd(int dir, float zh, float zl, int zt, int zt1) =>
 // text of the IFVG label (which: 1 bull, -1 bear, 2 swing IFVG) with the mitigation block arrow mbd
 mbTxt(int which, int mbd) =>
     which == 1 ? ifvgTxt(1, deInv ? bullInv : 1, useOTE and gBull.flagged, gBull.tags, bullAp, mbd)
-     : which == -1 ? ifvgTxt(-1, deInv ? bearInv : 1, useOTE and gBear.flagged, gBear.tags, bearAp, mbd)
-     : ifvgTxt(ifsdir, 1, useOTE and gSw.flagged, gSw.tags, swAp, mbd)
+     : ifvgTxt(-1, deInv ? bearInv : 1, useOTE and gBear.flagged, gBear.tags, bearAp, mbd)
 
 mbTag(FVG f, MBlock b, box ib, int which) =>
     if not na(f) and f.hi >= b.lo and f.lo <= b.hi
@@ -2115,13 +2102,9 @@ if mbOn and barstate.isconfirmed
                 if b.dir == 1
                     if not ifvgswings and not na(bullconfirm)
                         mbTag(bullifvg, b, ifvgBox, 1)
-                    if ifvgswings and ifsdir == 1 and not na(ifsconfirm)
-                        mbTag(swFvg, b, ifvgBox, 2)
                 else
                     if not ifvgswings and not na(bearconfirm)
                         mbTag(bearifvg, b, ifvgBoxb, -1)
-                    if ifvgswings and ifsdir == -1 and not na(ifsconfirm)
-                        mbTag(swFvg, b, ifvgBox, 2)
                 if b.tagged and ((b.dir == 1 and low < b.lo) or (b.dir == -1 and high > b.hi))
                     if not na(b.bx)
                         b.bx.delete()
@@ -2161,8 +2144,6 @@ if (brkOn or mbOn) and barstate.isconfirmed
             ifvgInherit(bullifvg, ifvgBox, 1, 1)
         if not na(bearconfirm)
             ifvgInherit(bearifvg, ifvgBoxb, -1, -1)
-    else if not na(ifsconfirm)
-        ifvgInherit(swFvg, ifvgBox, 2, ifsdir)
 
 // [OTE] signals: IFVG retraced into and matches the OTE band =================
 int bearOteSig = gBear.gStep()
@@ -2185,10 +2166,6 @@ if doifvg and useOTE
     if bullOteSig != 0 and not na(ifvgBox)
         ifvgBox.set_text(ifvgTxt(1, 1, true, gBull.tags, bullAp, mbOf(bullifvg)))
         if not isFp(bullifvg)
-            ifvgBox.set_border_color(oteHighlight)
-    if swOteSig != 0 and not na(ifvgBox)
-        ifvgBox.set_text(ifvgTxt(swOteSig, 1, true, gSw.tags, swAp, mbOf(swFvg)))
-        if not isFp(swFvg)
             ifvgBox.set_border_color(oteHighlight)
 
 plotshape(showSignals and not hideReg and sig == -1 and sig[1] == 0, 

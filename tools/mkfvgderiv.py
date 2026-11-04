@@ -80,23 +80,24 @@ def constant(stmt, value):
 def derive(lines, tag, keep, setv, title, header, srctitle="FVGs+IFVG+OTE5"):
     # 1. cuts and derivative-only lines
     res = []
-    cut = False
+    stack = []  # cut regions can nest: a line is removed when any open region applies
     for ln in lines:
+        cut = any(stack)
         m = re.match(r"^//#cut (\w+)\s*$", ln)
         if m:
-            assert not cut, "nested cut"
-            cut = m.group(1) in (tag, "sw")
+            stack.append(m.group(1) in (tag, "sw"))
             continue
         if re.match(r"^//#end\s*$", ln):
-            cut = False
+            stack.pop()
             continue
         m = re.match(r"^//#(\w+) ?(.*)$", ln)
         if m and m.group(1) in ("ote4", "blk", "sw"):
-            if m.group(1) == tag or m.group(1) == "sw":
+            if (m.group(1) == tag or m.group(1) == "sw") and not cut:
                 res.append(m.group(2))
             continue
         if not cut:
             res.append(ln)
+    assert not stack, "unclosed cut"
     # 2. inputs: statements at column 0 with input.xxx( and their indented continuation lines
     out = []
     i = 0

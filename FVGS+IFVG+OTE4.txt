@@ -1609,7 +1609,6 @@ var int bullInv = 0       // [DE] inversions of the bull candidate (-1 invalidat
 var int bearInv = 0
 var bool bullAp = false   // [DE] A+ IFVG
 var bool bearAp = false
-var bool swAp = false
 if doifvg and not ifvgswings and not na(lastlongfvg)
     if not na(bearifvg)
         bearifvg.release(not na(bearconfirm), bearconfirm)
@@ -1634,12 +1633,6 @@ if not na(ifvgBoxb) and barstate.isnew
     ifvgBoxb.set_right(time)
 
 // Possible IFVGs for IFVG setups
-var FVG swFvg = na // FVG of the IFVG under watch in swing mode (to keep it when replaced)
-var int ifstime = na // current IFVG setup time for the ifvg
-var float ifshi = na // fvg hi
-var float ifslo = na // fvg lo
-var int ifsdir = 0  // -1 IFVG in swing high to trade short; 1 IFVG in swing lo to trade long
-var int ifsconfirm = na // did close above/below the IFVG confirming it is an IFVG? If so, the time, else na
 
 // IFVG signals
 sig = 0
@@ -1766,10 +1759,6 @@ if doifvg and useOTE
     if bullOteSig != 0 and not na(ifvgBox)
         ifvgBox.set_text(ifvgTxt(1, 1, true, gBull.tags, bullAp, mbOf(bullifvg)))
         if not isFp(bullifvg)
-            ifvgBox.set_border_color(oteHighlight)
-    if swOteSig != 0 and not na(ifvgBox)
-        ifvgBox.set_text(ifvgTxt(swOteSig, 1, true, gSw.tags, swAp, mbOf(swFvg)))
-        if not isFp(swFvg)
             ifvgBox.set_border_color(oteHighlight)
 
 plotshape(showSignals and not hideReg and sig == -1 and sig[1] == 0, 
