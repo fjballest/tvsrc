@@ -252,7 +252,7 @@ tfOK(string tf) =>
 
 sLongFVG(l1,h3) =>
     l1 > h3
-longFVGHL(o1,c1,h1,l1,o2,c2,h2,l2,o3,c3,h3,l3) =>
+longFVGHL(o1,c1,l1,o2,c2,o3,c3,h3) =>
     hi = l1
     lo = h3
     blow1 = math.min(o1,c1)
@@ -270,7 +270,7 @@ longFVGHL(o1,c1,h1,l1,o2,c2,h2,l2,o3,c3,h3,l3) =>
 
 isShortFVG(h1,l3) =>
     h1 < l3
-shortFVGHL(o1,c1,h1,l1,o2,c2,h2,l2,o3,c3,h3,l3) =>
+shortFVGHL(o1,c1,h1,o2,c2,o3,c3,l3) =>
     hi = l3
     lo = h1
     blow3 = math.min(o3,c3)
@@ -356,12 +356,12 @@ isdup(FVG[] fvgs, float hi, float lo) =>
 
 mkFVGS(string tf, FVG[] fvgs) =>
     [o1,c1,h1,l1,o2,c2,h2,l2,o3,c3,h3,l3,t2] = getbars(tf)
-    [h, l, fh, fl] = longFVGHL(o1,c1,h1,l1,o2,c2,h2,l2,o3,c3,h3,l3)
+    [h, l, fh, fl] = longFVGHL(o1,c1,l1,o2,c2,o3,c3,h3)
     FVG f = na
     if fh > fl+5 and not isdup(fvgs, h, l)
         f := FVG.new(tf, true, t2, na, h, l, math.avg(h,l))
     if na(f)
-        [sh,sl, fsh, fsl] = shortFVGHL(o1,c1,h1,l1,o2,c2,h2,l2,o3,c3,h3,l3)
+        [sh,sl, fsh, fsl] = shortFVGHL(o1,c1,h1,o2,c2,o3,c3,l3)
         if fsh > fsl+5 and not isdup(fvgs, sh, sl)
             f := FVG.new(tf, false, t2, na, sh, sl, math.avg(sh,sl))
         // short FVG found

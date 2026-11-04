@@ -104,7 +104,7 @@ innerRange = input.string("Body", "", options = ["Body", "High-Low"], group = G_
         "whole range (low to high).")
 
 // FVG detection (same as the FVGs indicator, including suspension blocks) ===
-longFVGHL(o1,c1,h1,l1,o2,c2,h2,l2,o3,c3,h3,l3) =>
+longFVGHL(o1,c1,l1,o2,c2,o3,c3,h3) =>
     hi = l1
     lo = h3
     blow1 = math.min(o1,c1)
@@ -119,7 +119,7 @@ longFVGHL(o1,c1,h1,l1,o2,c2,h2,l2,o3,c3,h3,l3) =>
         hi := blow1
     [hi, lo, fhi, flo]
 
-shortFVGHL(o1,c1,h1,l1,o2,c2,h2,l2,o3,c3,h3,l3) =>
+shortFVGHL(o1,c1,h1,o2,c2,o3,c3,l3) =>
     hi = l3
     lo = h1
     blow3 = math.min(o3,c3)
@@ -149,17 +149,15 @@ ifvgCode() =>
     var float bullLo = na
     var bool bullConf = false
 
-    [lhi, llo, lfhi, lflo] = longFVGHL(open[1],close[1],high[1],low[1],
-         open[2],close[2],high[2],low[2],
-         open[3],close[3],high[3],low[3])
+    [lhi, llo, lfhi, lflo] = longFVGHL(open[1], close[1], low[1], open[2],
+         close[2], open[3], close[3], high[3])
     if lfhi - lflo > minfvg and lfhi - lflo < maxfvg
         bearHi := lhi
         bearLo := llo
         bearConf := false
 
-    [shi, slo, sfhi, sflo] = shortFVGHL(open[1],close[1],high[1],low[1],
-         open[2],close[2],high[2],low[2],
-         open[3],close[3],high[3],low[3])
+    [shi, slo, sfhi, sflo] = shortFVGHL(open[1], close[1], high[1], open[2],
+         close[2], open[3], close[3], low[3])
     if sfhi - sflo > minfvg and sfhi - sflo < maxfvg
         bullHi := shi
         bullLo := slo

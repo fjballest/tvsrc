@@ -11,7 +11,7 @@
  *   It draws levels only: no signals, no alerts, no plots.
  *
  *   It is a port of the TradingView Pine Script v6 indicator ICTlevels.txt
- *   (md5 10c08c9d1179ec5648c1b9765ea01b2a). Parameter names are the Pine variable names and the
+ *   (md5 682c74cb57ebd2d4730853b77b2c6061). Parameter names are the Pine variable names and the
  *   defaults are the Pine defaults; see "doc/ICTlevels-user-manual.md" for what every level means.
  *
  * How to install
@@ -771,7 +771,7 @@ class ICTlevels {
         if (tfok && P.dotgif) {
             const prevClose = pv ? pv.c : close;
             if (newWeek) {
-                const dd = S.twO === null ? 0 : this.tgEval(S.twH, S.twL, S.twO, prevClose);
+                const dd = S.twO === null ? 0 : this.tgEval(S.twH, S.twL, prevClose);
                 const carry = dd !== 0 && !(S.tgDir === dd && S.tgHit);
                 S.tgDir = 0;
                 S.tgMon = false;
@@ -788,7 +788,7 @@ class ICTlevels {
                 S.twL = low;
             } else if (S.twO !== null) {
                 if (newDay && dow === FRI) {
-                    S.tgDir = this.tgEval(S.twH, S.twL, S.twO, prevClose);
+                    S.tgDir = this.tgEval(S.twH, S.twL, prevClose);
                     S.tgMon = false;
                     S.tgHit = false;
                     S.tgT0 = i;
@@ -1011,7 +1011,7 @@ class ICTlevels {
         return { name, tstart, hi: price, lo: null, isw, n: 1, nd: 0, show: true, uhi: null, ulo: null, ut: null };
     }
 
-    tgEval(h, l, o, c) {
+    tgEval(h, l, c) {
         const P = this.P;
         const r = h - l;
         let d = 0;
@@ -1069,7 +1069,11 @@ class ICTlevels {
             }
         }
         if (m) {
+            if (!m.eq) {
+                m.pl = m.p;     // left (earlier) swing of the EQH / EQL
+            }
             m.eq = true;
+            m.pr = p;           // right (later) swing
             if (isHigh ? p > m.p : p < m.p) {
                 m.p = p;
             }
@@ -1109,6 +1113,8 @@ class ICTlevels {
                     const dd = isHigh ? q - p : p - q;
                     if (qt < t && dd >= 0 && dd <= this.P.eq3pts) {
                         v.eq = true;
+                        v.pl = q;
+                        v.pr = v.p;
                         v.p = q;
                         v.t = qt;
                         this.trimPivs(arr);
@@ -1268,19 +1274,22 @@ class ICTlevels {
         // ---- EQH / EQL
         if (P.doeqhl) {
             const sz = fs(P.eqlblsize);
-            const drawEq = (arr, txt, col) => {
+            // label: EQH, or eqH when the right swing is higher than the left one (EQL / eqL: lower, for lows)
+            const drawEq = (arr, isHigh, sfx, col) => {
                 for (const v of arr) {
                     if (v.eq) {
+                        const up = v.pl !== undefined && v.pr !== undefined && (isHigh ? v.pr > v.pl : v.pr < v.pl);
+                        const txt = (up ? (isHigh ? "eqH" : "eqL") : (isHigh ? "EQH" : "EQL")) + sfx;
                         G.line(v.t, xr, v.p, col, P.eqhlsty, P.eqhlwid);
                         G.text(xr, v.p, txt, col, sz, true);
                     }
                 }
             };
-            drawEq(S.hpv, "EQH", P.eqhcol);
-            drawEq(S.lpv, "EQL", P.eqlcol);
+            drawEq(S.hpv, true, "", P.eqhcol);
+            drawEq(S.lpv, false, "", P.eqlcol);
             if (P.doeqd) {
-                drawEq(S.hpvD, "EQH D", P.eqhcol);
-                drawEq(S.lpvD, "EQL D", P.eqlcol);
+                drawEq(S.hpvD, true, " D", P.eqhcol);
+                drawEq(S.lpvD, false, " D", P.eqlcol);
             }
         }
 
