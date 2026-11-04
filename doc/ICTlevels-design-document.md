@@ -156,7 +156,7 @@ The gap runs from the settlement of the last regular session bar (`mktClose`) to
 
 ### EQH and EQL
 
-Pivots come from `ta.pivothigh` and `ta.pivotlow` on the chart timeframe and, with `doeqd`, from a daily `request.security` call that reads only the previous completed daily bar (`[1]` with `lookahead_on`), so nothing repaints. The tolerance is `eqtol` times the ATR of the same timeframe. `addPiv` merges a new pivot into an existing one within tolerance and marks it `eq`, keeping the more extreme price. `sweepPivs` removes a pivot when the price takes it: an unconfirmed candidate gets the tolerance as slack, a confirmed equal level none. `trimPivs` keeps `eqkeep` equal levels and at most 30 candidates per side. Only equal levels are drawn, by `drawEq`.
+Pivots come from `ta.pivothigh` and `ta.pivotlow` on the chart timeframe and, with `doeqd`, from a daily `request.security` call that reads only the previous completed daily bar (`[1]` with `lookahead_on`), so nothing repaints. The tolerance is `eqtol` times the ATR of the same timeframe. `addPiv` merges a new pivot into an existing one within tolerance and marks it `eq`, keeping the more extreme price. `sweepPivs` removes a pivot when the price takes it: an unconfirmed candidate gets the tolerance as slack, a confirmed equal level none. `trimPivs` keeps `eqkeep` equal levels and at most 30 candidates per side. Only equal levels are drawn, by `drawEq`. A `Piv` also keeps `pl` / `pr`, the prices of the left (first) and right (latest) swing (for a 3-candle match, the swing and the new pivot); `drawEq(arr, isHigh, sfx, c)` labels it `eqH` when `pr > pl` (`eqL` when `pr < pl`, for lows), else `EQH` / `EQL`, plus `sfx` (" D" for daily). Ports: Ninja `IPiv.pl` / `pr`, `DrawEq`; Tradovate `pl` / `pr` on the pivot objects, `drawEq` in `render`.
 
 With `doeq3`, 3-candle swings (`ta.pivothigh` / `ta.pivotlow` with one bar on each side) are also kept, at most 60 per side, and `sweep3` drops them once price trades beyond them. When a new chart pivot is added as a candidate, `eq3` looks for an earlier unswept 3-candle swing with exactly its price, or at most `eq3pts` points beyond it (above for highs, below for lows). On a match the pivot becomes an equal level at the swing price and time. This catches equal lows such as a small swing low followed later by a pivot low at the same price, which the ATR tolerance and the pivot length can miss.
 
@@ -243,7 +243,7 @@ Methods are called on their object (`z.refresh()`); plain functions are called b
 | `addPiv(arr, p, t, isHigh, tol)` | Adds a pivot or promotes an existing one to an equal level |
 | `sweepPivs(arr, isHigh, tol)` | Removes pivots taken by the current bar |
 | `trimPivs(arr)`, `dropFirst(arr, wantEq)` | Enforce the limits on equal levels and candidates |
-| `drawEq(arr, txt, c)` | Draws or updates the equal levels |
+| `drawEq(arr, isHigh, sfx, c)` | Draws or updates the equal levels, labeled EQH / eqH (EQL / eqL) plus `sfx` |
 | `getm(m, t, p, c, txt)` | Creates or updates one month line and label |
 | `drawMonth(idx, h, l, c, t, tc)` | Draws the three lines of one month |
 

@@ -4,7 +4,7 @@
 // quadrants and standard deviations, premarket range, EQH/EQL, PO3 lines, TGIF levels, macros,
 // silver bullet and a session/macro status text. Draws levels only: no plots, no signals, no alerts.
 //
-// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 50d99c98ecdeacf2c3229c74c92f3501),
+// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 682c74cb57ebd2d4730853b77b2c6061),
 // © franjballest, Mozilla Public License 2.0 (https://mozilla.org/MPL/2.0/).
 //
 // Install:
@@ -181,6 +181,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 			public double p;
 			public DateTime t;
 			public bool eq;
+			public double pl = double.NaN; // price of the left (earlier) swing of the EQH / EQL
+			public double pr = double.NaN; // price of the right (later) swing
 		}
 
 		#endregion
@@ -963,12 +965,12 @@ namespace NinjaTrader.NinjaScript.Indicators
 				CombinePo3(rthogs[rthogs.Count - 1], premarkets[premarkets.Count - 1], PmCTol * Nz(datr));
 			if (DoEqhl)
 			{
-				DrawEq(hpv, "EQH", EqhColor);
-				DrawEq(lpv, "EQL", EqlColor);
+				DrawEq(hpv, true, "", EqhColor);
+				DrawEq(lpv, false, "", EqlColor);
 				if (DoEqDaily)
 				{
-					DrawEq(hpvD, "EQH D", EqhColor);
-					DrawEq(lpvD, "EQL D", EqlColor);
+					DrawEq(hpvD, true, " D", EqhColor);
+					DrawEq(lpvD, false, " D", EqlColor);
 				}
 			}
 			if (DoMonth)
@@ -1923,7 +1925,10 @@ namespace NinjaTrader.NinjaScript.Indicators
 			}
 			if (m != null)
 			{
+				if (!m.eq)
+					m.pl = m.p;
 				m.eq = true;
+				m.pr = p;
 				if (isHigh ? p > m.p : p < m.p)
 					m.p = p;
 			}
@@ -1973,6 +1978,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 				if (qt < t && d >= 0 && d <= Eq3Pts)
 				{
 					v.eq = true;
+					v.pl = q;
+					v.pr = v.p;
 					v.p = q;
 					v.t = qt;
 					TrimPivs(arr);
@@ -1981,13 +1988,16 @@ namespace NinjaTrader.NinjaScript.Indicators
 			}
 		}
 
-		private void DrawEq(List<IPiv> arr, string txt, Brush c)
+		// label: EQH, or eqH when the right swing is higher than the left one (EQL / eqL: lower, for lows)
+		private void DrawEq(List<IPiv> arr, bool isHigh, string sfx, Brush c)
 		{
 			DateTime x = TRight(Xoff);
 			foreach (IPiv v in arr)
 			{
 				if (!v.eq)
 					continue;
+				bool up = !double.IsNaN(v.pl) && !double.IsNaN(v.pr) && (isHigh ? v.pr > v.pl : v.pr < v.pl);
+				string txt = (up ? (isHigh ? "eqH" : "eqL") : (isHigh ? "EQH" : "EQL")) + sfx;
 				string tg = PTag(v);
 				DLine(tg + "ln", v.t, v.p, x, v.p, c, EqhlStyle, EqhlWidth);
 				DText(tg + "lb", txt, x, v.p, c, fEq, 0);

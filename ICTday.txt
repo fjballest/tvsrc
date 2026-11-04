@@ -203,7 +203,8 @@ float pmctol = float(0.05)
 const string G_EQ = "Equal Highs / Lows"
 bool doeqhl = input.bool(true, "Draw EQH / EQL", group = G_EQ, inline = "eq1",
      tooltip = "Two or more swing highs (lows) within the tolerance "
-     + "form an EQH (EQL). The level is removed once price " + "trades through it.")
+     + "form an EQH (EQL). The level is removed once price " + "trades through it. It is labeled eqH "
+     + "(eqL) when the later swing is higher (lower) than the earlier one, else EQH (EQL).")
 bool doeqd = input.bool(true, "also from the daily chart", group = G_EQ, inline = "eq1",
      tooltip = "Also computes EQH/EQL on daily swings (labels end with "
      + "D). Uses completed daily bars only, no repaint.")
@@ -429,6 +430,8 @@ type Piv
     float p
     int t
     bool eq = false
+    float pl = na   // price of the left (earlier) swing of the EQH / EQL
+    float pr = na   // price of the right (later) swing
     line ln = na
     label lb = na
 
@@ -1501,17 +1504,23 @@ addPiv(array<Piv> arr, float p, int t, bool isHigh, float tol) =>
             m := v
             break
     if not na(m)
+        if not m.eq
+            m.pl := m.p
         m.eq := true
+        m.pr := p
         if isHigh ? p > m.p : p < m.p
             m.p := p
     else
         arr.push(Piv.new(p, t))
     trimPivs(arr)
 
-drawEq(array<Piv> arr, string txt, color c) =>
+// label: EQH, or eqH when the right swing is higher than the left one (EQL / eqL: lower, for lows)
+drawEq(array<Piv> arr, bool isHigh, string sfx, color c) =>
     int x = tright(xoff)
     for v in arr
         if v.eq
+            bool up = not na(v.pl) and not na(v.pr) and (isHigh ? v.pr > v.pl : v.pr < v.pl)
+            string txt = (up ? (isHigh ? "eqH" : "eqL") : (isHigh ? "EQH" : "EQL")) + sfx
             if na(v.ln)
                 v.ln := line.new(v.t, v.p, x, v.p, xloc = xloc.bar_time, color = c, style = eqhlsty,
                      width = eqhlwid)
@@ -1522,6 +1531,7 @@ drawEq(array<Piv> arr, string txt, color c) =>
                 v.ln.set_xy1(v.t, v.p)
                 v.ln.set_xy2(x, v.p)
                 v.lb.set_xy(x, v.p)
+                v.lb.set_text(txt)
     true
 // 3-candle swings (one candle on each side), kept until price takes them
 float ph3 = ta.pivothigh(high, 1, 1)
@@ -1563,6 +1573,8 @@ eq3(array<Piv> arr, array<float> ps, array<int> ts, float p, int t, bool isHigh)
                     float d = isHigh ? q - p : p - q
                     if qt < t and d >= 0 and d <= eq3pts
                         v.eq := true
+                        v.pl := q
+                        v.pr := v.p
                         v.p := q
                         v.t := qt
                         trimPivs(arr)
@@ -1704,11 +1716,11 @@ if finalBar and tfok
     if preOn and rthogs.size() > 0 and premarkets.size() > 0
         combinePo3(rthogs.last(), premarkets.last(), pmctol * nz(datr, 0.0))
     if doeqhl
-        drawEq(hpv, "EQH", eqhcol)
-        drawEq(lpv, "EQL", eqlcol)
+        drawEq(hpv, true, "", eqhcol)
+        drawEq(lpv, false, "", eqlcol)
         if doeqd
-            drawEq(hpvD, "EQH D", eqhcol)
-            drawEq(lpvD, "EQL D", eqlcol)
+            drawEq(hpvD, true, " D", eqhcol)
+            drawEq(lpvD, false, " D", eqlcol)
     if domonth
         drawMonth(0, mh1, ml1, mc1, mt1, mtc1)
         drawMonth(1, mh2, ml2, mc2, mt2, mtc2)

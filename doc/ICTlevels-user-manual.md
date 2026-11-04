@@ -235,7 +235,7 @@ When both the current RTHOG and the latest premarket range have deviation lines 
 
 **What you see**
 
-Bold labels **EQH** (green) and **EQL** (red) on lines at equal highs and equal lows that price has not traded through yet, and **EQH D** / **EQL D** for equal levels found on daily swings. The line starts at the first swing of the pair and extends to the right margin.
+Bold labels **EQH** (green) and **EQL** (red) on lines at equal highs and equal lows that price has not traded through yet, and **EQH D** / **EQL D** for equal levels found on daily swings. The line starts at the first swing of the pair and extends to the right margin. When the later (right) swing went beyond the earlier (left) one, higher for highs or lower for lows, the label is in lower case first: **eqH** / **eqL** (**eqH D** / **eqL D**); when it stopped at or short of it, **EQH** / **EQL**. With more than two swings, the latest is compared with the first.
 
 How a level is found:
 
@@ -302,6 +302,7 @@ Dates in labels are the day of the month followed by the month: one letter when 
 | RTHOG+0.5 PMKT+1 | An RTHOG deviation and a premarket deviation at the same price |
 | rthog.cl, rthog.ce, rthog.op | Ticks of older RTHOGs: settlement, midpoint, open |
 | EQH, EQL | Untaken equal highs or lows on the chart timeframe |
+| eqH, eqL | The same, when the later swing went beyond the earlier one (higher high, lower low) |
 | EQH D, EQL D | Untaken equal highs or lows on daily swings |
 
 ## 5. Settings reference
