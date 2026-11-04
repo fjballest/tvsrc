@@ -286,3 +286,11 @@ The design choices that keep it fast:
 - A new macro or silver bullet window: add its name and time to `mNames`, `mTimes` or `sbTimes`.
 - A new gap kind: create the `Gap` where `ndog` is built, push it to its own list, and add that list to `combineGaps`, the final-bar loop and the object budget.
 - A new level family: add a type, a `var` array and a budget term, update its state on every bar, and draw it only in the `finalBar` block.
+
+## Derived indicators
+
+`tools/mklevelsderiv.py` generates `ICTgaps.txt` ("ICTgaps") and `ICTday.txt` ("ICTday") from `ICTlevels.txt`; rerun it after every change to ICTlevels and never edit the outputs. Both keep the whole ICTlevels code: every feature is already gated by its switch, so a derivative only turns the inputs it does not show into constants (shared helper `derive()` of `tools/mkfvgderiv.py`).
+
+- ICTgaps shows Time & Settings, Gaps and Ranges and Premarket Range; the switches of the other features are constants off (`domonth`, `dolines`, `dodmaxmin`, `dodaylbl`, `doreh`, `doeq`, `doopen`, `dotgif`, `doses`, `dorect`, `doeqhl`, `doeqd`, `dozones`, `domacros`, `domacrobg`, `dosilver`). `dosmaxmin` / `doseslbl` keep their defaults (on) because the premarket zone uses them, with the session styles, `nses` and the day line style.
+- ICTday shows everything but Gaps and Ranges and Premarket Range; `dogaps` and `dopremarket` are constants off.
+
