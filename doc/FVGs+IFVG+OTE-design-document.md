@@ -360,3 +360,10 @@ Data symbol (`FVGS+IFVG+OTE+PL.txt` only, a TradingView copy of this script, sho
 - `barOfTime()` scans back up to 4,900 bars and `priorLeg()` up to 4,000 bars, on each new higher-timeframe pivot or IFVG start; the script declares `max_bars_back = 5000`.
 - Higher-timeframe OTE needs the two requested timeframes to be higher than the chart, so near the top of the ladder one or both trackers are absent.
 - Historic compute is off by default, so FVGs older than the last `maxfvgs` are not shown when scrolling back.
+
+## Derived indicators
+
+`tools/mkfvgderiv.py` generates `FVGS+IFVG+OTE4.txt` ("FVGs+IFVG+OTE4") and `ICTblocks.txt` ("ICTblocks") from `FVGS+IFVG+OTE.txt`; rerun it after every change to the source and never edit the outputs. The source carries comment markers: `//#cut T` ... `//#end` lines are removed in derivative `T` (`ote4`, `blk`, or `sw` for both), and a `//#T code` line is code only in `T`. Inputs a derivative does not show become constants with their default value, or the value in the script tables.
+
+- FVGs+IFVG+OTE4: cuts the Delivery Engine section (stubs: `deDispOK` false, no MSS bars, `deAp` false), `deKill` / `deRecolor`, the inversion rules, breakers, mitigation blocks and `ifvgInherit`, and the swing-mode IFVG code (`ifvgswings` false). Inputs `brk*`, `mb*`, `de*` (including `deConf`, `deInv`, `deMaxInv`, `deDead`), `ifvgswings`, `useSwingFilter`, `showSwing` and `lblAp` become constants (blocks off, A+ off).
+- ICTblocks: cuts the FVG drawing in `updfvgs` (a finished FVG is simply skipped) and the box in `adopt` (IFVG candidates have no box; the box setters on `na` do nothing), and the swing-mode IFVG code. Kept inputs: `brk*`, `mb*`, `deDisp`, `deDispType`, `deStdLen`, `deStdX`, `deDispBar`, `deDispCol`, `deConf`, `deInv`, `deMaxInv`, `plMode`, `minfvg`, `maxfvg`; block rectangles on by default. 1PFVGs, wicks, OTE (and its higher timeframe requests), filters, A+, the displacement flag, signals and alerts are constants off.

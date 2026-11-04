@@ -13,7 +13,7 @@
  *   BM↑/BM↓, inheritance of the tags by IFVGs) and LONG / SHORT / OTE signal markers.
  *
  *   Port of the TradingView Pine Script v6 indicator "FVGS+IFVG+OTE.txt"
- *   (md5 e965062dd49133c9e8cf4998c810288c, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
+ *   (md5 0e9bc8b426da848686e97d008fc2ed6e, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
  *   input variable names (camelCase). See the design document (d.md) and user manual (m.md) for the logic.
  *
  * How to install

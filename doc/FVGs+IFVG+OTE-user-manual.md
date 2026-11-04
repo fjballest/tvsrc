@@ -19,6 +19,11 @@ The indicator works on the chart timeframe. It finds fair value gaps (FVGs) on y
 | A+ tag | Delivery Engine setup: IFVG or FVG right after a liquidity sweep / MSS | `A+` in the label or on the FVG box |
 | Signals | Optional markers where the alerts fire | `LONG` / `SHORT` triangles and `OTE` diamonds |
 
+Two indicators are generated from this one and always stay in sync with it:
+
+- **FVGs+IFVG+OTE4** (`FVGS+IFVG+OTE4.txt`): this indicator without breakers, mitigation blocks, the Delivery Engine (sections 9 to 11, and the IFVG confirmation, inversion rules and A+ label part, which are Delivery Engine features) and without swing mode (IFVGs are always created on a close through the FVG). Everything else, and its defaults, is the same.
+- **ICTblocks** (`ICTblocks.txt`): only the breakers, mitigation blocks and the Delivery Engine. It finds the FVGs and close-mode IFVGs exactly as this indicator does (all FVGs, no filter, no 1PFVGs) because the blocks are drawn at their pullbacks, but it draws none of them, so the block **Rectangle** is on by default. Of the Delivery Engine it keeps what still shows without FVG boxes: the displacement filter of those FVGs, the colored displacement candles, and the IFVG confirmation and inversion rules; A+ and the displacement border are only marks on FVG / IFVG boxes and are left out. Use it next to FVGs+IFVG+OTE4 to get the full indicator split in two.
+
 The indicator raises alerts for IFVG signals, OTE IFVG signals and, optionally, bounces on FVG levels and wick C.E. levels. It does not place orders and does not compute stops or targets.
 
 ## 2. Quick start
