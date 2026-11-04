@@ -212,7 +212,7 @@ brkLen = input.int(5, "Swing length / keep", minval = 1, maxval = 20, group = G_
     tooltip = "Pivot length (left and right) of the lows and highs, and breakers kept per direction.")
 brkKeep = input.int(3, "", minval = 1, maxval = 10, group = G_BRK, inline = "bl")
 brkBox = input.bool(true, "Rectangle", group = G_BRK, inline = "bc",
-    tooltip = "Draw the breaker rectangle and its mid line. The bold IFVG labels and the B↑ / B↓ labels are "
+    tooltip = "Draw the breaker rectangle (semi-transparent fill, labeled B↑ / B↓) and its mid line. The bold IFVG labels and the B↑ / B↓ labels are "
     + "set either way.")
 brkCol = input.color(color.fuchsia, "", group = G_BRK, inline = "bc")
 brkSty = getstyle(input.string("dashed", "", options = ["solid", "dashed", "dotted"], group = G_BRK, inline = "bc"))
@@ -243,7 +243,7 @@ mbLen = input.int(5, "Swing length / keep", minval = 1, maxval = 20, group = G_M
     tooltip = "Pivot length (left and right) of the lows and highs, and mitigation blocks kept per direction.")
 mbKeep = input.int(3, "", minval = 1, maxval = 10, group = G_MB, inline = "ml")
 mbBox = input.bool(true, "Rectangle", group = G_MB, inline = "mc",
-    tooltip = "Draw the mitigation block rectangle and its mid line. The IFVG labels and the M↑ / M↓ labels are "
+    tooltip = "Draw the mitigation block rectangle (semi-transparent fill, labeled M↑ / M↓) and its mid line. The IFVG labels and the M↑ / M↓ labels are "
     + "set either way.")
 mbCol = input.color(color.orange, "", group = G_MB, inline = "mc")
 mbSty = getstyle(input.string("dashed", "", options = ["solid", "dashed", "dotted"], group = G_MB, inline = "mc"))
@@ -1703,7 +1703,9 @@ brkTag(FVG f, Breaker b, box ib) =>
             if brkBox or brkShd
                 b.bx := box.new(b.t, b.hi, time, b.lo, xloc = xloc.bar_time,
                     border_color = brkShd ? color.new(color.gray, 100) : brkCol, border_style = brkSty,
-                    border_width = brkShd ? 0 : brkW, bgcolor = color.new(brkShd ? color.gray : brkCol, brkShd ? 80 : 100))
+                    border_width = brkShd ? 0 : brkW, bgcolor = color.new(brkShd ? color.gray : brkCol, brkShd ? 80 : 85),
+                    text = b.dir == 1 ? "B↑" : "B↓", text_color = brkCol, text_size = size.small,
+                    text_halign = text.align_left, text_valign = text.align_top)
                 b.ml := line.new(b.t, mid, time, mid, xloc = xloc.bar_time, color = brkCol, style = brkSty,
                     width = brkW)
     true
@@ -1885,7 +1887,9 @@ mbTag(FVG f, MBlock b, box ib, int which) =>
             if mbBox or mbShd
                 b.bx := box.new(b.t, b.hi, time, b.lo, xloc = xloc.bar_time,
                     border_color = mbShd ? color.new(color.gray, 100) : mbCol, border_style = mbSty,
-                    border_width = mbShd ? 0 : mbW, bgcolor = color.new(mbShd ? color.gray : mbCol, mbShd ? 80 : 100))
+                    border_width = mbShd ? 0 : mbW, bgcolor = color.new(mbShd ? color.gray : mbCol, mbShd ? 80 : 85),
+                    text = b.dir == 1 ? "M↑" : "M↓", text_color = mbCol, text_size = size.small,
+                    text_halign = text.align_left, text_valign = text.align_top)
                 b.ml := line.new(b.t, mid, time, mid, xloc = xloc.bar_time, color = mbCol, style = mbSty,
                     width = mbW)
     true

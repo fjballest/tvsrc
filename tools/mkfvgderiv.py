@@ -33,6 +33,17 @@ BLK_SUBST = [  # (old, new): defaults of the inputs it keeps
     ('"Mitigation blocks at FVG / IFVG pullbacks"', '"Mitigation blocks"'),
     ('G_DE = "Delivery Engine (Nuno)"', 'G_DE = "Delivery Engine (Nuno): FVGs / IFVGs used"'),
 ]
+# ICTblocks draws no FVG boxes, so the block rectangles carry the B / M label and a semi-transparent fill
+for k, t, n in (("brk", "B", "breaker"), ("mb", "M", "mitigation block")):
+    BLK_SUBST += [
+        ("border_width = %sShd ? 0 : %sW, bgcolor = color.new(%sShd ? color.gray : %sCol, %sShd ? 80 : 100))"
+         % (k, k, k, k, k),
+         "border_width = %sShd ? 0 : %sW, bgcolor = color.new(%sShd ? color.gray : %sCol, %sShd ? 80 : 85),\n"
+         "                    text = b.dir == 1 ? \"%s↑\" : \"%s↓\", text_color = %sCol, text_size = size.small,\n"
+         "                    text_halign = text.align_left, text_valign = text.align_top)" % (k, k, k, k, k, t, t, k)),
+        ('"Draw the %s rectangle and its mid line.' % n,
+         '"Draw the %s rectangle (semi-transparent fill, labeled %s↑ / %s↓) and its mid line.' % (n, t, t)),
+    ]
 
 
 def calls(s):
