@@ -76,7 +76,7 @@ def constant(stmt, value):
     return out + stmt[last:]
 
 
-def derive(lines, tag, keep, setv, title, header):
+def derive(lines, tag, keep, setv, title, header, srctitle="FVGs+IFVG+OTE5"):
     # 1. cuts and derivative-only lines
     res = []
     cut = False
@@ -118,7 +118,9 @@ def derive(lines, tag, keep, setv, title, header):
         i = j
     txt = "\n".join(out)
     # 3. title and header
-    txt = txt.replace('indicator("FVGs+IFVG+OTE5",', 'indicator("%s",' % title, 1)
+    a = 'indicator("%s",' % srctitle
+    assert txt.count(a) == 1, a
+    txt = txt.replace(a, 'indicator("%s",' % title, 1)
     k = txt.index("//@version=6")
     txt = header + txt[k:]
     return txt
@@ -151,4 +153,5 @@ def main():
     print("FVGS+IFVG+OTE4.txt", ote4.count("\n"), "lines; ICTblocks.txt", s.count("\n"), "lines")
 
 
-main()
+if __name__ == "__main__":
+    main()

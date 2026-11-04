@@ -22,6 +22,13 @@ On a chart of 1 hour or lower, ICTlevels can draw:
 
 On 2h, 4h, daily or higher charts the indicator draws nothing.
 
+ICTlevels is also available split in two, generated from it and always in sync with it:
+
+- **ICTgaps** (`ICTgaps.txt`): only the gaps and ranges: NDOG / NWOG, RTHOG (with its settlement, quadrants, octants and standard deviations) and the premarket range. Its settings are **Time & Settings**, **Gaps and Ranges** and **Premarket Range**. The premarket high and low use the default session line style and labels (session max / min and labels on), as in ICTlevels.
+- **ICTday** (`ICTday.txt`): everything else: month, day and week levels, REH / REL, TGIF, sessions, EQH / EQL and the macros and events table. It has all the other settings groups.
+
+Both together draw what ICTlevels draws (each with its own 500 object budget). Use one of the two pairs: ICTlevels alone, or ICTgaps with ICTday.
+
 ## 2. Quick start
 
 1. Add **ICTlevels** to the chart.
