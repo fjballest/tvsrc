@@ -158,6 +158,60 @@ def noOteF(txt):
     return txt
 
 
+def noRel(txt):
+    """ICTblocks has fltRel as constant false: relSmall() is always false (its FVG argument would be unused)"""
+    txt, n = re.subn(r"(?m)^// \[REL\] \"relevant\" filter[^\n]*\nmethod relSmall\(FVG f\) =>\n(?: [^\n]*\n)+", "", txt)
+    assert n == 1, "relSmall"
+    txt = txt.replace("f.relSmall()", "false")
+    assert "relSmall" not in txt
+    return txt
+
+
+def noMidOte(txt):
+    """ICTblocks has fltMid and useOTE as constants false: drop the mid-arm FVG search of onSweep (armStart would be
+    unused) and oteStep (always 0, its tracker argument would be unused)"""
+    txt, n = re.subn(r"(?m)^        if fltMid and [^\n]*\n(?:            [^\n]*\n)+", "", txt)
+    assert n == 1, "fltMid"
+    txt = txt.replace("onSweep(int armStart) =>", "onSweep() =>")
+    txt, n = re.subn(r"onSweep\(fs\.st[LH]bar\)", "onSweep()", txt)
+    assert n == 2, "onSweep calls"
+    txt, n = re.subn(r"(?m)^// call once per bar\. Returns the direction[^\n]*\nmethod oteStep\(OteTrack t\) =>\n(?:(?: [^\n]*)?\n)+?(?=\S)", "", txt)
+    assert n == 1, "oteStep"
+    txt, n = re.subn(r"g\.t[012]\.oteStep\(\)", "0", txt)
+    assert n == 3 and "oteStep" not in txt, "oteStep calls"
+    return txt
+
+
+def noApLbl(txt):
+    """FVGS+IFVG+OTE4 has lblAp as constant false: drop the ap argument of ifvgTxt (it would be unused)"""
+    a = "ifvgTxt(int d, int inv, bool ote, string tags, bool ap, int mbd) =>"
+    assert txt.count(a) == 1, a
+    txt = txt.replace(a, "ifvgTxt(int d, int inv, bool ote, string tags, int mbd) =>")
+    txt, n = re.subn(r"(?m)^    if ap and lblAp\n        t \+= \" A\+\"\n", "", txt)
+    assert n == 1, "ap and lblAp"
+    out = ""
+    last = 0
+    for m in re.finditer(r"\bifvgTxt\(", txt):
+        if txt[m.start() - 1:m.start()] == "\n":
+            continue  # the definition
+        i = m.end()
+        depth = 1
+        commas = []
+        while depth:
+            c = txt[i]
+            if c in "([":
+                depth += 1
+            elif c in ")]":
+                depth -= 1
+            elif c == "," and depth == 1:
+                commas.append(i)
+            i += 1
+        assert len(commas) == 5, txt[m.start():i]
+        out += txt[last:commas[3]]  # drop ", ap"
+        last = commas[4]
+    return out + txt[last:]
+
+
 def main():
     os.chdir(os.path.dirname(os.path.abspath(__file__)) + "/..")
     src = open(SRC, newline="").read()
@@ -178,8 +232,8 @@ def main():
                "// close-mode IFVGs are computed as in FVGs+IFVG+OTE5 (they decide where the blocks are drawn) but not\n"
                "// drawn: use it next to FVGs+IFVG+OTE4. Delivery Engine: displacement filter of those FVGs, colored\n"
                "// displacement candles, IFVG confirmation and inversion rules.\n\n")
-    ote4 = fold(ote4)
-    s = noOteF(fold(s))
+    ote4 = noApLbl(fold(ote4))
+    s = noMidOte(noRel(noOteF(fold(s))))
     for a, b in BLK_SUBST:
         assert s.count(a) == 1, a
         s = s.replace(a, b)

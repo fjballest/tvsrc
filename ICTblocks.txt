@@ -547,9 +547,6 @@ method endsAt(FVG f) =>
 method isDone(FVG f, o, c) =>
     f.islong ? (c < f.lo or o < f.lo) : (c>f.hi or o > f.hi)
 
-// [REL] "relevant" filter: a plain FVG too small to draw its C.E.
-method relSmall(FVG f) =>
-    fltRel and not f.isfp and not f.isifp and f.hi - f.lo <= mince
 
 method bgColor(FVG f) =>
     c = f.islong ? lcol : scol
@@ -561,7 +558,7 @@ method bgColor(FVG f) =>
         c := ifpcol
     bool hid = hideReg and (ifvgOnly or (not f.isfp and not f.isifp))
     // [REL] too small for a C.E.: a little more transparent
-    if f.relSmall()
+    if false
         c := color.new(c, color.t(c) + (100 - color.t(c)) / 2)
     styNoFill ? color(na) : (hid ? color.new(c, 100) : c)
     
@@ -576,7 +573,7 @@ method lnColor(FVG f) =>
         c := ilnfpcol
     bool hid = hideReg and (ifvgOnly or (not f.isfp and not f.isifp))
     // [REL] too small for a C.E.: no border (boxes only; segments are the lines themselves)
-    hid or (f.relSmall() and not stySeg) ? color.new(c, 100) : c
+    hid or (false and not stySeg) ? color.new(c, 100) : c
 
 // IFVG boxes: the FVG box itself is turned into the IFVG box (no second box on the same place) ====
 var array<FVG> keptIf = array.new<FVG>()   // FVGs whose box is currently shown as IFVG
@@ -760,7 +757,7 @@ reveal(FVG f) =>
     true
 
 // a sweep happened: reveal the last FVG before it (and, optionally, the most significant one near the middle of the arm)
-onSweep(int armStart) =>
+onSweep() =>
     int n = pendF.size()
     if n > 0
         FVG lastF = pendF.get(n - 1)
@@ -769,16 +766,6 @@ onSweep(int armStart) =>
             lastF.swp := true
             lastF := na
         FVG midF = na
-        if fltMid and n > 1 and not na(armStart) and armStart < bar_index
-            int mb = math.round((armStart + bar_index) / 2.0)
-            int w = math.max(1, math.round((bar_index - armStart) * flWin / 100.0))
-            float best = 0.0
-            for i = 0 to n - 2
-                FVG g = pendF.get(i)
-                float sz = g.hi - g.lo
-                if g.sbar >= mb - w and g.sbar <= mb + w and sz > best
-                    best := sz
-                    midF := g
         if not na(lastF)
             reveal(lastF)
         if not na(midF)
@@ -1063,7 +1050,7 @@ updfvgs(array<FVG> fvgs) =>
             if not isdone and f.isDone(open,close)
                 f.end := f.endsAt()
                 // [REL] small FVG filled: hidden later unless it formed at a swing
-                if f.relSmall() and not f.swp and not f.ext and not f.kept and not f.cand
+                if false and not f.swp and not f.ext and not f.kept and not f.cand
                     f.dbar := bar_index
                     relS.push(f)
             if dofvgalert and na(f.end) and barstate.isconfirmed
@@ -1078,11 +1065,11 @@ float fPL = ta.pivotlow(low, flL, flR)
 if not fltOff
     // sweeps are tested against the levels known BEFORE this bar
     if not na(fs.stH) and high > fs.stH
-        onSweep(fs.stLbar)  // arm = from the last short-term low to the sweep
+        onSweep()  // arm = from the last short-term low to the sweep
         fs.post := 0
         fs.stH := na
     if not na(fs.stL) and low < fs.stL
-        onSweep(fs.stHbar)  // arm = from the last short-term high to the sweep
+        onSweep()  // arm = from the last short-term high to the sweep
         fs.post := 0
         fs.stL := na
     if not na(fPH)
@@ -1220,7 +1207,7 @@ if fltRel and relS.size() > 0
         FVG f = relS.get(i)
         if bar_index >= math.max(f.dbar, f.sbar + 3 + pivR)
             relS.remove(i)
-            bool keep = f.ext or f.kept or f.cand or not f.relSmall()
+            bool keep = f.ext or f.kept or f.cand or not false
                  or hasPiv(pv0.hb, f.sbar - 1, f.sbar + 3) or hasPiv(pv0.lb, f.sbar - 1, f.sbar + 3)
             if not keep
                 relHide(f)
@@ -1428,78 +1415,6 @@ method oteCancel(OteTrack t) =>
     else
         t.legHi := na
 
-// call once per bar. Returns the direction (-1 / 1) on the bar the OTE is matched, else 0
-method oteStep(OteTrack t) =>
-    int s = 0
-    if useOTE and t.dir != 0
-        if not t.armed
-            // before confirmation keep extending the origin of the leg
-            if t.dir == -1
-                t.legHi := math.max(t.legHi, high)
-                t.rext := math.max(t.rext, high)
-            else
-                t.legLo := math.min(t.legLo, low)
-                t.rext := math.min(t.rext, low)
-        else
-            if not na(t.rej)
-                t.rej.set_left(oteX0(t))
-                t.rej.set_right(oteX0(t) + oteWidth)
-            // rejection of the prior-leg OTE flagged on the confirming candle
-            if t.rejHit
-                s := t.dir
-                t.rejHit := false
-            float r = t.legHi - t.legLo
-            if r > 0
-                float bLo = na
-                float bHi = na
-                if t.dir == -1
-                    bLo := t.legLo + oteMin * r
-                    bHi := t.legLo + oteMax * r
-                else
-                    bLo := t.legHi - oteMax * r
-                    bHi := t.legHi - oteMin * r
-                float mid = math.avg(t.zlo, t.zhi)
-                bool m = false
-                if oteMode == "Overlap"
-                    m := t.zhi >= bLo and t.zlo <= bHi
-                else if oteMode == "Fully inside"
-                    m := t.zlo >= bLo and t.zhi <= bHi
-                else
-                    m := mid >= bLo and mid <= bHi
-                if showOTEband
-                    color bg = m ? oteBandCol : color.new(color.gray, 92)
-                    color bd = m ? oteHighlight : color.new(color.gray, 60)
-                    if na(t.band)
-                        t.band := box.new(oteX0(t), bHi, oteX0(t) + oteWidth, bLo,
-                            xloc = xloc.bar_index,
-                            bgcolor = bg,
-                            border_color = bd,
-                            border_style = line.style_dashed,
-                            border_width = 1,
-                            text = t.tag + (t.dir == 1 ? " ↑" : " ↓"),
-                            text_size = size.tiny,
-                            text_color = oteTextCol,
-                            text_halign = text.align_left)
-                    else
-                        t.band.set_top(bHi)
-                        t.band.set_bottom(bLo)
-                        t.band.set_left(oteX0(t))
-                        t.band.set_right(oteX0(t) + oteWidth)
-                        t.band.set_bgcolor(bg)
-                        t.band.set_border_color(bd)
-                        t.band.set_text(t.tag + (t.dir == 1 ? " ↑" : " ↓"))
-                // price retraces back into the IFVG while it matches the OTE band
-                bool tap = t.dir == -1 ? high >= t.zlo : low <= t.zhi
-                if m and tap and not t.fired and time != t.ctime and barstate.isconfirmed
-                    t.fired := true
-                    s := t.dir
-            // keep extending the leg AFTER evaluating this bar
-            if t.dir == -1
-                t.legLo := math.min(t.legLo, low)
-            else
-                t.legHi := math.max(t.legHi, high)
-    s
-
 // A group runs the three trackers (chart, next TF, second TF) on the same IFVG.
 // A confirmed OTE on ANY of them is enough to flag the IFVG as an OTE IFVG (once per IFVG).
 type OteGroup
@@ -1534,9 +1449,9 @@ method gCancel(OteGroup g) =>
     g.t2.oteCancel()
 
 method gStep(OteGroup g) =>
-    int s0 = g.t0.oteStep()
-    int s1 = g.t1.oteStep()
-    int s2 = g.t2.oteStep()
+    int s0 = 0
+    int s1 = 0
+    int s2 = 0
     int s = 0
     if not g.flagged and (s0 != 0 or s1 != 0 or s2 != 0)
         g.flagged := true

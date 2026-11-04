@@ -875,14 +875,12 @@ onSweep(int armStart) =>
 
 bool deDispOK = false
 // IFVG label: sign, inversion count, OTE (and its timeframes), A+
-ifvgTxt(int d, int inv, bool ote, string tags, bool ap, int mbd) =>
+ifvgTxt(int d, int inv, bool ote, string tags, int mbd) =>
     string t = "IFVG" + (lblSign ? (d < 0 ? "-" : "+") : "")
     if inv > 1
         t += " ×" + str.tostring(inv)
     if ote
         t += " OTE" + (lblTf and tags != "" ? " " + tags : "")
-    if ap and lblAp
-        t += " A+"
     if mbd != 0 and mbd == d
         t += mbd > 0 ? " ↑" : " ↓"
     t
@@ -1675,7 +1673,7 @@ if doifvg and not ifvgswings and not deInv
         bullconfirm := time
         gBull.gConfirm() // [OTE]
         bullAp := false
-        ifvgBox.set_text(ifvgTxt(1, 1, false, "", bullAp, mbOf(bullifvg)))
+        ifvgBox.set_text(ifvgTxt(1, 1, false, "", mbOf(bullifvg)))
         sig := 1
     if not na(bearifvg) and not na(bearconfirm) and barstate.isconfirmed and close > bearifvg.hi
         bearconfirm := na
@@ -1683,7 +1681,7 @@ if doifvg and not ifvgswings and not deInv
         ifvgBoxb.set_text(na)
     if not na(bearifvg) and barstate.isconfirmed and dnBreak(bearifvg.lo) and na(bearconfirm)
         bearAp := false
-        ifvgBoxb.set_text(ifvgTxt(-1, 1, false, "", bearAp, mbOf(bearifvg)))
+        ifvgBoxb.set_text(ifvgTxt(-1, 1, false, "", mbOf(bearifvg)))
         bearconfirm := time
         gBear.gConfirm() // [OTE]
         sig := -1
@@ -1711,7 +1709,7 @@ if doifvg and not ifvgswings and deInv and barstate.isconfirmed
                     gBull.gCancel() // [OTE] only the first inversion
                     deRecolor(ifvgBox, d, bullifvg)
                 bullAp := false
-                ifvgBox.set_text(ifvgTxt(d, bullInv, false, "", bullAp, mbOf(bullifvg)))
+                ifvgBox.set_text(ifvgTxt(d, bullInv, false, "", mbOf(bullifvg)))
                 sig := d
     if not na(bearifvg) and bearInv >= 0
         bool brk = bearInv % 2 == 0 ? dnBreak(bearifvg.lo) : upBreak(bearifvg.hi)
@@ -1733,7 +1731,7 @@ if doifvg and not ifvgswings and deInv and barstate.isconfirmed
                     gBear.gCancel() // [OTE] only the first inversion
                     deRecolor(ifvgBoxb, d, bearifvg)
                 bearAp := false
-                ifvgBoxb.set_text(ifvgTxt(d, bearInv, false, "", bearAp, mbOf(bearifvg)))
+                ifvgBoxb.set_text(ifvgTxt(d, bearInv, false, "", mbOf(bearifvg)))
                 sig := sig == 0 ? d : sig
 
 updKept()
@@ -1753,11 +1751,11 @@ else if swOteSig != 0
 
 if doifvg and useOTE
     if bearOteSig != 0 and not na(ifvgBoxb)
-        ifvgBoxb.set_text(ifvgTxt(-1, 1, true, gBear.tags, bearAp, mbOf(bearifvg)))
+        ifvgBoxb.set_text(ifvgTxt(-1, 1, true, gBear.tags, mbOf(bearifvg)))
         if not isFp(bearifvg)
             ifvgBoxb.set_border_color(oteHighlight)
     if bullOteSig != 0 and not na(ifvgBox)
-        ifvgBox.set_text(ifvgTxt(1, 1, true, gBull.tags, bullAp, mbOf(bullifvg)))
+        ifvgBox.set_text(ifvgTxt(1, 1, true, gBull.tags, mbOf(bullifvg)))
         if not isFp(bullifvg)
             ifvgBox.set_border_color(oteHighlight)
 
