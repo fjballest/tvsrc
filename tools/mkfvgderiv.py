@@ -40,7 +40,16 @@ for k, t, n in (("brk", "B", "breaker"), ("mb", "M", "mitigation block")):
          % (k, k, k, k, k),
          "border_width = %sShd ? 0 : %sW, bgcolor = color.new(%sShd ? color.gray : %sCol, %sShd ? 80 : 85),\n"
          "                    text = b.dir == 1 ? \"%s↑\" : \"%s↓\", text_color = %sCol, text_size = size.small,\n"
-         "                    text_halign = text.align_left, text_valign = text.align_top)" % (k, k, k, k, k, t, t, k)),
+         "                    text_halign = %sLblH, text_valign = %sLblV)" % (k, k, k, k, k, t, t, k, k, k)),
+        ("\n\n%s" % {"brk": "// Mitigation blocks =========", "mb": "// Delivery Engine (from Nuno's"}[k],
+         "\n%sLbl = input.string(\"right\", \"Label\", options = [\"right\", \"left\", \"center\", \"top left\", "
+         "\"top right\"], group = G_%s,\n    tooltip = \"Where the %s↑ / %s↓ label goes in the rectangle: centered "
+         "vertically on its right / left side, in the middle, or at a top corner.\")\n"
+         "%sLblH = %sLbl == \"left\" or %sLbl == \"top left\" ? text.align_left : %sLbl == \"center\" ? "
+         "text.align_center : text.align_right\n"
+         "%sLblV = %sLbl == \"top left\" or %sLbl == \"top right\" ? text.align_top : text.align_center\n\n%s"
+         % (k, {"brk": "BRK", "mb": "MB"}[k], t, t, k, k, k, k, k, k, k,
+            {"brk": "// Mitigation blocks =========", "mb": "// Delivery Engine (from Nuno's"}[k])),
         ('"Draw the %s rectangle and its mid line.' % n,
          '"Draw the %s rectangle (semi-transparent fill, labeled %s↑ / %s↓) and its mid line.' % (n, t, t)),
     ]

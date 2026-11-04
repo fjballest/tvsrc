@@ -223,6 +223,10 @@ brkShd = input.bool(false, "Shadow rectangle", group = G_BRK, inline = "bf",
     + "tagged at the pullback (with or without the rectangle); removed together with the rectangle. Shadow "
     + "rectangle: draw the breaker as a grey transparent rectangle (no border) instead of the dashed one, also "
     + "when Rectangle is off; the mid line is kept.")
+brkLbl = input.string("right", "Label", options = ["right", "left", "center", "top left", "top right"], group = G_BRK,
+    tooltip = "Where the B↑ / B↓ label goes in the rectangle: centered vertically on its right / left side, in the middle, or at a top corner.")
+brkLblH = brkLbl == "left" or brkLbl == "top left" ? text.align_left : brkLbl == "center" ? text.align_center : text.align_right
+brkLblV = brkLbl == "top left" or brkLbl == "top right" ? text.align_top : text.align_center
 
 // Mitigation blocks =========
 G_MB = "Mitigation blocks"
@@ -254,6 +258,10 @@ mbShd = input.bool(false, "Shadow rectangle", group = G_MB, inline = "mf",
     + "tagged at the pullback (with or without the rectangle); removed together with the rectangle. Shadow "
     + "rectangle: draw the mitigation block as a grey transparent rectangle (no border) instead of the dashed one, also "
     + "when Rectangle is off; the mid line is kept.")
+mbLbl = input.string("right", "Label", options = ["right", "left", "center", "top left", "top right"], group = G_MB,
+    tooltip = "Where the M↑ / M↓ label goes in the rectangle: centered vertically on its right / left side, in the middle, or at a top corner.")
+mbLblH = mbLbl == "left" or mbLbl == "top left" ? text.align_left : mbLbl == "center" ? text.align_center : text.align_right
+mbLblV = mbLbl == "top left" or mbLbl == "top right" ? text.align_top : text.align_center
 
 // Delivery Engine (from Nuno's Delivery Engine V20) =========
 G_DE = "Delivery Engine (Nuno): FVGs / IFVGs used"
@@ -1705,7 +1713,7 @@ brkTag(FVG f, Breaker b, box ib) =>
                     border_color = brkShd ? color.new(color.gray, 100) : brkCol, border_style = brkSty,
                     border_width = brkShd ? 0 : brkW, bgcolor = color.new(brkShd ? color.gray : brkCol, brkShd ? 80 : 85),
                     text = b.dir == 1 ? "B↑" : "B↓", text_color = brkCol, text_size = size.small,
-                    text_halign = text.align_left, text_valign = text.align_top)
+                    text_halign = brkLblH, text_valign = brkLblV)
                 b.ml := line.new(b.t, mid, time, mid, xloc = xloc.bar_time, color = brkCol, style = brkSty,
                     width = brkW)
     true
@@ -1889,7 +1897,7 @@ mbTag(FVG f, MBlock b, box ib, int which) =>
                     border_color = mbShd ? color.new(color.gray, 100) : mbCol, border_style = mbSty,
                     border_width = mbShd ? 0 : mbW, bgcolor = color.new(mbShd ? color.gray : mbCol, mbShd ? 80 : 85),
                     text = b.dir == 1 ? "M↑" : "M↓", text_color = mbCol, text_size = size.small,
-                    text_halign = text.align_left, text_valign = text.align_top)
+                    text_halign = mbLblH, text_valign = mbLblV)
                 b.ml := line.new(b.t, mid, time, mid, xloc = xloc.bar_time, color = mbCol, style = mbSty,
                     width = mbW)
     true
