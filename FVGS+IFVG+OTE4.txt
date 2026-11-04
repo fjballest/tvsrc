@@ -874,8 +874,6 @@ onSweep(int armStart) =>
     true
 
 bool deDispOK = false
-var int deMssUpBar = na
-var int deMssDnBar = na
 // IFVG label: sign, inversion count, OTE (and its timeframes), A+
 ifvgTxt(int d, int inv, bool ote, string tags, bool ap, int mbd) =>
     string t = "IFVG" + (lblSign ? (d < 0 ? "-" : "+") : "")
@@ -923,7 +921,7 @@ if true
         f = FVG.new(hi,lo,math.avg(hi,lo),true,timeat(-fk))
         f.sbar := bar_index - fk // [OTE]
         f.oteInit() // [OTEF]
-        f.aplus := deAplus and not na(deMssUpBar) and bar_index - deMssUpBar <= 3 // [DE]
+        f.aplus := false // [DE] A+ off
         f.disp := deDispOK // [DE]
         lastlongfvg := f
         if not hasifp and hasfp and doifp and not fpLow
@@ -957,7 +955,7 @@ if true
         f = FVG.new(hi,lo,math.avg(hi,lo),false,timeat(-fk))
         f.sbar := bar_index - fk // [OTE]
         f.oteInit() // [OTEF]
-        f.aplus := deAplus and not na(deMssDnBar) and bar_index - deMssDnBar <= 3 // [DE]
+        f.aplus := false // [DE] A+ off
         f.disp := deDispOK // [DE]
         lastshortfvg := f
         if not hasifp and hasfp and doifp and not fpLow

@@ -901,8 +901,6 @@ float deMPL = ta.pivotlow(low, deMssLen, deMssLen)
 var float deShP = na
 var float deSlP = na
 var int deDir = 0
-var int deMssUpBar = na    // bar of the last A+ MSS up
-var int deMssDnBar = na
 var int deChochUp = na     // bar of the last CHoCH up, while it can still be upgraded to an MSS
 var int deChochDn = na
 if not na(deShP) and close > deShP
@@ -914,14 +912,6 @@ if not na(deShP) and close > deShP
     else if isRev
         deChochUp := bar_index
     deChochDn := na
-    if isMss and false
-        deMssUpBar := bar_index
-        // FVGs born after the sweep become A+
-        for f in lfvgs
-            if f.sbar >= deLastSsl and not f.aplus
-                f.aplus := true
-                if not na(f.rect) and not f.kept and lblAp and not hideReg
-                    f.rect.set_text(fvgLbl(f))
     deDir := 1
     deShP := na
 if not na(deSlP) and close < deSlP
@@ -933,13 +923,6 @@ if not na(deSlP) and close < deSlP
     else if isRev
         deChochDn := bar_index
     deChochUp := na
-    if isMss and false
-        deMssDnBar := bar_index
-        for f in sfvgs
-            if f.sbar >= deLastBsl and not f.aplus
-                f.aplus := true
-                if not na(f.rect) and not f.kept and lblAp and not hideReg
-                    f.rect.set_text(fvgLbl(f))
     deDir := -1
     deSlP := na
 if not na(deMPH)
@@ -1002,7 +985,7 @@ if true
         f = FVG.new(hi,lo,math.avg(hi,lo),true,timeat(-fk))
         f.sbar := bar_index - fk // [OTE]
         f.oteInit() // [OTEF]
-        f.aplus := deAplus and not na(deMssUpBar) and bar_index - deMssUpBar <= 3 // [DE]
+        f.aplus := false // [DE] A+ off
         f.disp := deDispOK // [DE]
         lastlongfvg := f
         if not hasifp and hasfp and doifp and not fpLow
@@ -1036,7 +1019,7 @@ if true
         f = FVG.new(hi,lo,math.avg(hi,lo),false,timeat(-fk))
         f.sbar := bar_index - fk // [OTE]
         f.oteInit() // [OTEF]
-        f.aplus := deAplus and not na(deMssDnBar) and bar_index - deMssDnBar <= 3 // [DE]
+        f.aplus := false // [DE] A+ off
         f.disp := deDispOK // [DE]
         lastshortfvg := f
         if not hasifp and hasfp and doifp and not fpLow

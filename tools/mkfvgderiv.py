@@ -136,7 +136,11 @@ def fold(txt):
     txt, n = re.subn(r"(?m)^(?:// A\+ for an IFVG[^\n]*\n)?deAp\(int d\) =>\n(?: [^\n]*\n)+", "", txt)
     assert n == 1, "deAp"
     txt = re.sub(r"\bdeAp\([^()]*\)", "false", txt)
-    assert "bw(" not in txt and not re.search(r"\bdeAp\b", txt)
+    # A+ MSS: never true, so the MSS bars are never set (left in, the dead assignments confuse the compiler)
+    txt = re.sub(r"(?m)^    if isMss and false\n(?:        [^\n]*\n)+", "", txt)
+    txt = re.sub(r"f\.aplus := deAplus and not na\(deMss(?:Up|Dn)Bar\)[^\n]*", "f.aplus := false // [DE] A+ off", txt)
+    txt = re.sub(r"(?m)^var int deMss(?:Up|Dn)Bar = na[^\n]*\n", "", txt)
+    assert "bw(" not in txt and not re.search(r"\bdeAp\b|deMss(Up|Dn)Bar", txt)
     return txt
 
 
