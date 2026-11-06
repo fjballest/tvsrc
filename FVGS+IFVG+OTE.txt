@@ -2127,6 +2127,53 @@ if doifvg and not ifvgswings and deInv and barstate.isconfirmed
 updKept()
 
 //#cut ote4
+//#blk // ICTblocks: swings as an alternating high / low sequence of the last three pivots, two of a kind merged into
+//#blk // the more extreme (pr prices, br bars, ty 1 high / -1 low). True when the sequence changed.
+//#blk blkPivot(array<float> pr, array<int> br, array<int> ty, float price, int bar, int kind) =>
+//#blk     bool changed = false
+//#blk     int n = ty.size()
+//#blk     if n > 0 and ty.get(n - 1) == kind
+//#blk         if kind == 1 ? price > pr.get(n - 1) : price < pr.get(n - 1)
+//#blk             pr.set(n - 1, price)
+//#blk             br.set(n - 1, bar)
+//#blk             changed := true
+//#blk     else
+//#blk         pr.push(price)
+//#blk         br.push(bar)
+//#blk         ty.push(kind)
+//#blk         changed := true
+//#blk         while ty.size() > 3
+//#blk             pr.shift()
+//#blk             br.shift()
+//#blk             ty.shift()
+//#blk     changed
+//#blk
+//#blk // ICTblocks: block zone at the swing k0 bars back: the up-close (dir 1) / down-close (dir -1) candle there or among
+//#blk // the 3 before it, wick to wick (breaker) or its body (mitigation block), plus the consecutive ones before it in
+//#blk // "Whole sequence" mode
+//#blk blkZone(int dir, int k0, bool body, bool whole) =>
+//#blk     float zh = na
+//#blk     float zl = na
+//#blk     int zt = na
+//#blk     int zt1 = na
+//#blk     if k0 + 3 <= 300
+//#blk         int k = k0
+//#blk         while k <= k0 + 3 and na(zt)
+//#blk             if (close[k] - open[k]) * dir > 0
+//#blk                 zh := body ? math.max(open[k], close[k]) : high[k]
+//#blk                 zl := body ? math.min(open[k], close[k]) : low[k]
+//#blk                 zt := time[k]
+//#blk                 zt1 := time[k]
+//#blk             k += 1
+//#blk         if not na(zt) and whole
+//#blk             while k <= 300 and (close[k] - open[k]) * dir > 0
+//#blk                 zh := math.max(zh, body ? math.max(open[k], close[k]) : high[k])
+//#blk                 zl := math.min(zl, body ? math.min(open[k], close[k]) : low[k])
+//#blk                 zt := time[k]
+//#blk                 k += 1
+//#blk     [zh, zl, zt, zt1]
+//#blk
+
 // [BRK] Breakers =================================================
 type Breaker
     int dir         // 1 bullish (long after the pullback), -1 bearish
@@ -2154,6 +2201,15 @@ var float bLastL = na
 var int bLastLb = na
 var float bPrevL = na
 var int bPrevLb = na
+//#blk var array<float> bSqP = array.new<float>()  // swing sequence (ICTblocks)
+//#blk var array<int> bSqB = array.new<int>()
+//#blk var array<int> bSqT = array.new<int>()
+//#blk var float bUpLvl = na  // swing high waiting for a close above it (bullish), its bar, the last one used
+//#blk var int bUpBar = na
+//#blk var int bUpDone = na
+//#blk var float bDnLvl = na  // swing low waiting for a close below it (bearish)
+//#blk var int bDnBar = na
+//#blk var int bDnDone = na
 
 // zone from candle k bars back: the up-close (dir 1) / down-close (dir -1) candle there or the nearest one
 // before it (not before bar 'from'), plus the consecutive ones before it in "Whole sequence" mode
@@ -2272,6 +2328,7 @@ brkTag(FVG f, Breaker b, box ib) =>
     true
 
 if brkOn and barstate.isconfirmed
+//#cut blk
     if not na(bPL)
         bPrevL := bLastL
         bPrevLb := bLastLb
@@ -2292,6 +2349,42 @@ if brkOn and barstate.isconfirmed
             [zh, zl, zt, zt1] = brkZone(-1, bar_index - bLastLb, bPrevHb)
             if not na(zt)
                 brkAdd(-1, zh, zl, zt, zt1)
+//#end
+//#blk     // bearish: high, low, higher high (the second high raids the first); armed on the low between them
+//#blk     if not na(bPH) and blkPivot(bSqP, bSqB, bSqT, bPH, bar_index - brkLen, 1)
+//#blk         if bSqT.size() == 3 and bSqT.get(0) == 1 and bSqB.get(1) != nz(bDnDone, -1)
+//#blk             bDnLvl := bSqP.get(2) > bSqP.get(0) ? bSqP.get(1) : na
+//#blk             bDnBar := bSqB.get(1)
+//#blk     // bullish: low, high, lower low (the second low raids the first); armed on the high between them
+//#blk     if not na(bPL) and blkPivot(bSqP, bSqB, bSqT, bPL, bar_index - brkLen, -1)
+//#blk         if bSqT.size() == 3 and bSqT.get(0) == -1 and bSqB.get(1) != nz(bUpDone, -1)
+//#blk             bUpLvl := bSqP.get(2) < bSqP.get(0) ? bSqP.get(1) : na
+//#blk             bUpBar := bSqB.get(1)
+//#blk     if not na(bDnLvl) and bar_index - bDnBar > brkAge
+//#blk         bDnLvl := na
+//#blk     if not na(bUpLvl) and bar_index - bUpBar > brkAge
+//#blk         bUpLvl := na
+//#blk     // the block forms on the close through that swing; it is drawn from then on
+//#blk     if not na(bDnLvl) and close < bDnLvl
+//#blk         [zh, zl, zt, zt1] = blkZone(-1, bar_index - bDnBar, false, brkMode == "Whole sequence")
+//#blk         if not na(zt)
+//#blk             brkAdd(-1, zh, zl, zt, zt1)
+//#blk             Breaker nb = brks.last()
+//#blk             nb.broken := true
+//#blk             nb.bkBar := bar_index
+//#blk             brkWait(nb)
+//#blk         bDnDone := bDnBar
+//#blk         bDnLvl := na
+//#blk     if not na(bUpLvl) and close > bUpLvl
+//#blk         [zh, zl, zt, zt1] = blkZone(1, bar_index - bUpBar, false, brkMode == "Whole sequence")
+//#blk         if not na(zt)
+//#blk             brkAdd(1, zh, zl, zt, zt1)
+//#blk             Breaker nb = brks.last()
+//#blk             nb.broken := true
+//#blk             nb.bkBar := bar_index
+//#blk             brkWait(nb)
+//#blk         bUpDone := bUpBar
+//#blk         bUpLvl := na
     if brks.size() > 0
         for i = brks.size() - 1 to 0
             Breaker b = brks.get(i)
@@ -2390,6 +2483,15 @@ var float mLastL = na
 var int mLastLb = na
 var float mPrevL = na
 var int mPrevLb = na
+//#blk var array<float> mSqP = array.new<float>()  // swing sequence (ICTblocks)
+//#blk var array<int> mSqB = array.new<int>()
+//#blk var array<int> mSqT = array.new<int>()
+//#blk var float mUpLvl = na  // swing high waiting for a close above it (bullish), its bar, the last one used
+//#blk var int mUpBar = na
+//#blk var int mUpDone = na
+//#blk var float mDnLvl = na  // swing low waiting for a close below it (bearish)
+//#blk var int mDnBar = na
+//#blk var int mDnDone = na
 
 // zone from candle k bars back: the up-close (dir 1) / down-close (dir -1) candle there or the nearest one
 // before it (not before bar 'from'), plus the consecutive ones before it in "Whole sequence" mode
@@ -2508,6 +2610,7 @@ mbTag(FVG f, MBlock b, box ib, int which) =>
     true
 
 if mbOn and barstate.isconfirmed
+//#cut blk
     if not na(mPL)
         mPrevL := mLastL
         mPrevLb := mLastLb
@@ -2528,6 +2631,42 @@ if mbOn and barstate.isconfirmed
             [zh, zl, zt, zt1] = mbZone(-1, bar_index - mLastLb, mPrevHb)
             if not na(zt)
                 mbAdd(-1, zh, zl, zt, zt1)
+//#end
+//#blk     // bearish: high, low, lower high (the second high fails to reach the first); armed on the low between them
+//#blk     if not na(mPH) and blkPivot(mSqP, mSqB, mSqT, mPH, bar_index - mbLen, 1)
+//#blk         if mSqT.size() == 3 and mSqT.get(0) == 1 and mSqB.get(1) != nz(mDnDone, -1)
+//#blk             mDnLvl := mSqP.get(2) < mSqP.get(0) ? mSqP.get(1) : na
+//#blk             mDnBar := mSqB.get(1)
+//#blk     // bullish: low, high, higher low (the second low fails to reach the first); armed on the high between them
+//#blk     if not na(mPL) and blkPivot(mSqP, mSqB, mSqT, mPL, bar_index - mbLen, -1)
+//#blk         if mSqT.size() == 3 and mSqT.get(0) == -1 and mSqB.get(1) != nz(mUpDone, -1)
+//#blk             mUpLvl := mSqP.get(2) > mSqP.get(0) ? mSqP.get(1) : na
+//#blk             mUpBar := mSqB.get(1)
+//#blk     if not na(mDnLvl) and bar_index - mDnBar > mbAge
+//#blk         mDnLvl := na
+//#blk     if not na(mUpLvl) and bar_index - mUpBar > mbAge
+//#blk         mUpLvl := na
+//#blk     // the block forms on the close through that swing; it is drawn from then on
+//#blk     if not na(mDnLvl) and close < mDnLvl
+//#blk         [zh, zl, zt, zt1] = blkZone(-1, bar_index - mDnBar, true, mbMode == "Whole sequence")
+//#blk         if not na(zt)
+//#blk             mbAdd(-1, zh, zl, zt, zt1)
+//#blk             MBlock nb = mbs.last()
+//#blk             nb.broken := true
+//#blk             nb.bkBar := bar_index
+//#blk             mbWait(nb)
+//#blk         mDnDone := mDnBar
+//#blk         mDnLvl := na
+//#blk     if not na(mUpLvl) and close > mUpLvl
+//#blk         [zh, zl, zt, zt1] = blkZone(1, bar_index - mUpBar, true, mbMode == "Whole sequence")
+//#blk         if not na(zt)
+//#blk             mbAdd(1, zh, zl, zt, zt1)
+//#blk             MBlock nb = mbs.last()
+//#blk             nb.broken := true
+//#blk             nb.bkBar := bar_index
+//#blk             mbWait(nb)
+//#blk         mUpDone := mUpBar
+//#blk         mUpLvl := na
     if mbs.size() > 0
         for i = mbs.size() - 1 to 0
             MBlock b = mbs.get(i)

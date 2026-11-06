@@ -33,6 +33,10 @@ BLK_SUBST = [  # (old, new): defaults of the inputs it keeps
     ('"Mitigation blocks at FVG / IFVG pullbacks"', '"Mitigation blocks"'),
     ('G_DE = "Delivery Engine (Nuno)"', 'G_DE = "Delivery Engine (Nuno): FVGs / IFVGs used"'),
 ]
+BLK_SUBST += [  # ICTblocks: swings of 2 candles each side by default (alternating swing sequence)
+    ('brkLen = input.int(5, "Swing length / keep"', 'brkLen = input.int(2, "Swing length / keep"'),
+    ('mbLen = input.int(5, "Swing length / keep"', 'mbLen = input.int(2, "Swing length / keep"'),
+]
 # ICTblocks draws no FVG boxes, so the block rectangles carry the B / M label and a semi-transparent fill
 for k, t, n in (("brk", "B", "breaker"), ("mb", "M", "mitigation block")):
     BLK_SUBST += [
