@@ -236,6 +236,8 @@ brkLbl = input.string("right", "Label", options = ["right", "left", "center", "t
     tooltip = "Where the B↑ / B↓ label goes in the rectangle: centered vertically on its right / left side, in the middle, or at a top corner.")
 brkLblH = brkLbl == "left" or brkLbl == "top left" ? text.align_left : brkLbl == "center" ? text.align_center : text.align_right
 brkLblV = brkLbl == "top left" or brkLbl == "top right" ? text.align_top : text.align_center
+brkNoFill = input.bool(false, "Border only (no fill)", group = G_BRK,
+    tooltip = "Draw the breaker rectangle with its border and label only, without the semi-transparent fill (the shadow rectangle keeps its grey fill).")
 
 // Mitigation blocks =========
 G_MB = "Mitigation blocks"
@@ -278,6 +280,8 @@ mbLbl = input.string("right", "Label", options = ["right", "left", "center", "to
     tooltip = "Where the M↑ / M↓ label goes in the rectangle: centered vertically on its right / left side, in the middle, or at a top corner.")
 mbLblH = mbLbl == "left" or mbLbl == "top left" ? text.align_left : mbLbl == "center" ? text.align_center : text.align_right
 mbLblV = mbLbl == "top left" or mbLbl == "top right" ? text.align_top : text.align_center
+mbNoFill = input.bool(false, "Border only (no fill)", group = G_MB,
+    tooltip = "Draw the mitigation block rectangle with its border and label only, without the semi-transparent fill (the shadow rectangle keeps its grey fill).")
 
 // Delivery Engine (from Nuno's Delivery Engine V20) =========
 G_DE = "Delivery Engine (Nuno): FVGs / IFVGs used"
@@ -1705,7 +1709,7 @@ brkWait(Breaker b) =>
     if brkBox or brkShd
         b.bx := box.new(b.t, b.hi, time, b.lo, xloc = xloc.bar_time,
             border_color = brkShd ? color.new(color.gray, 100) : brkC(b.dir), border_style = brkSty,
-            border_width = brkShd ? 0 : brkW, bgcolor = color.new(brkShd ? color.gray : brkC(b.dir), brkShd ? 88 : 93),
+            border_width = brkShd ? 0 : brkW, bgcolor = color.new(brkShd ? color.gray : brkC(b.dir), brkShd ? 88 : (brkNoFill ? 100 : 93)),
             text = b.dir == 1 ? "B↑" : "B↓", text_color = brkC(b.dir), text_size = size.small,
             text_halign = brkLblH, text_valign = brkLblV)
         b.ml := line.new(b.t, (b.hi + b.lo) / 2, time, (b.hi + b.lo) / 2, xloc = xloc.bar_time, color = brkC(b.dir),
@@ -1775,12 +1779,12 @@ brkTag(FVG f, Breaker b, box ib) =>
                     kk += 1
             if not na(b.bx)  // drawn at the break: ends at the pullback, full fill
                 b.bx.set_right(time)
-                b.bx.set_bgcolor(color.new(brkShd ? color.gray : brkC(b.dir), brkShd ? 80 : 85))
+                b.bx.set_bgcolor(color.new(brkShd ? color.gray : brkC(b.dir), brkShd ? 80 : (brkNoFill ? 100 : 85)))
                 b.ml.set_x2(time)
             else if brkBox or brkShd
                 b.bx := box.new(b.t, b.hi, time, b.lo, xloc = xloc.bar_time,
                     border_color = brkShd ? color.new(color.gray, 100) : brkC(b.dir), border_style = brkSty,
-                    border_width = brkShd ? 0 : brkW, bgcolor = color.new(brkShd ? color.gray : brkC(b.dir), brkShd ? 80 : 85),
+                    border_width = brkShd ? 0 : brkW, bgcolor = color.new(brkShd ? color.gray : brkC(b.dir), brkShd ? 80 : (brkNoFill ? 100 : 85)),
                     text = b.dir == 1 ? "B↑" : "B↓", text_color = brkC(b.dir), text_size = size.small,
                     text_halign = brkLblH, text_valign = brkLblV)
                 b.ml := line.new(b.t, mid, time, mid, xloc = xloc.bar_time, color = brkC(b.dir), style = brkSty,
@@ -1927,7 +1931,7 @@ mbWait(MBlock b) =>
     if mbBox or mbShd
         b.bx := box.new(b.t, b.hi, time, b.lo, xloc = xloc.bar_time,
             border_color = mbShd ? color.new(color.gray, 100) : mbC(b.dir), border_style = mbSty,
-            border_width = mbShd ? 0 : mbW, bgcolor = color.new(mbShd ? color.gray : mbC(b.dir), mbShd ? 88 : 93),
+            border_width = mbShd ? 0 : mbW, bgcolor = color.new(mbShd ? color.gray : mbC(b.dir), mbShd ? 88 : (mbNoFill ? 100 : 93)),
             text = b.dir == 1 ? "M↑" : "M↓", text_color = mbC(b.dir), text_size = size.small,
             text_halign = mbLblH, text_valign = mbLblV)
         b.ml := line.new(b.t, (b.hi + b.lo) / 2, time, (b.hi + b.lo) / 2, xloc = xloc.bar_time, color = mbC(b.dir),
@@ -1996,12 +2000,12 @@ mbTag(FVG f, MBlock b, box ib, int which) =>
                     kk += 1
             if not na(b.bx)  // drawn at the break: ends at the pullback, full fill
                 b.bx.set_right(time)
-                b.bx.set_bgcolor(color.new(mbShd ? color.gray : mbC(b.dir), mbShd ? 80 : 85))
+                b.bx.set_bgcolor(color.new(mbShd ? color.gray : mbC(b.dir), mbShd ? 80 : (mbNoFill ? 100 : 85)))
                 b.ml.set_x2(time)
             else if mbBox or mbShd
                 b.bx := box.new(b.t, b.hi, time, b.lo, xloc = xloc.bar_time,
                     border_color = mbShd ? color.new(color.gray, 100) : mbC(b.dir), border_style = mbSty,
-                    border_width = mbShd ? 0 : mbW, bgcolor = color.new(mbShd ? color.gray : mbC(b.dir), mbShd ? 80 : 85),
+                    border_width = mbShd ? 0 : mbW, bgcolor = color.new(mbShd ? color.gray : mbC(b.dir), mbShd ? 80 : (mbNoFill ? 100 : 85)),
                     text = b.dir == 1 ? "M↑" : "M↓", text_color = mbC(b.dir), text_size = size.small,
                     text_halign = mbLblH, text_valign = mbLblV)
                 b.ml := line.new(b.t, mid, time, mid, xloc = xloc.bar_time, color = mbC(b.dir), style = mbSty,
