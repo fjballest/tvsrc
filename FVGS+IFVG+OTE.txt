@@ -2198,11 +2198,13 @@ brkZone(int dir, int k0, int from) =>
 //#blk     true
 
 brkAdd(int dir, float zh, float zl, int zt, int zt1) =>
+//#cut blk
     brks.push(Breaker.new(dir, zh, zl, zt, t1 = zt1))
+//#end
 //#blk     int zk = 0
 //#blk     while zk < 300 and time[zk] > zt1
 //#blk         zk += 1
-//#blk     brks.last().zb := bar_index - zk
+//#blk     brks.push(Breaker.new(dir, zh, zl, zt, t1 = zt1, zb = bar_index - zk))
     int cnt = 0
     for b in brks
         if b.dir == dir
@@ -2432,11 +2434,13 @@ mbZone(int dir, int k0, int from) =>
 //#blk     true
 
 mbAdd(int dir, float zh, float zl, int zt, int zt1) =>
+//#cut blk
     mbs.push(MBlock.new(dir, zh, zl, zt, t1 = zt1))
+//#end
 //#blk     int zk = 0
 //#blk     while zk < 300 and time[zk] > zt1
 //#blk         zk += 1
-//#blk     mbs.last().zb := bar_index - zk
+//#blk     mbs.push(MBlock.new(dir, zh, zl, zt, t1 = zt1, zb = bar_index - zk))
     int cnt = 0
     for b in mbs
         if b.dir == dir

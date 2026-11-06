@@ -1684,11 +1684,10 @@ brkDrop(Breaker b) =>
     true
 
 brkAdd(int dir, float zh, float zl, int zt, int zt1) =>
-    brks.push(Breaker.new(dir, zh, zl, zt, t1 = zt1))
     int zk = 0
     while zk < 300 and time[zk] > zt1
         zk += 1
-    brks.last().zb := bar_index - zk
+    brks.push(Breaker.new(dir, zh, zl, zt, t1 = zt1, zb = bar_index - zk))
     int cnt = 0
     for b in brks
         if b.dir == dir
@@ -1902,11 +1901,10 @@ mbDrop(MBlock b) =>
     true
 
 mbAdd(int dir, float zh, float zl, int zt, int zt1) =>
-    mbs.push(MBlock.new(dir, zh, zl, zt, t1 = zt1))
     int zk = 0
     while zk < 300 and time[zk] > zt1
         zk += 1
-    mbs.last().zb := bar_index - zk
+    mbs.push(MBlock.new(dir, zh, zl, zt, t1 = zt1, zb = bar_index - zk))
     int cnt = 0
     for b in mbs
         if b.dir == dir
