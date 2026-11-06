@@ -295,6 +295,10 @@ brkMode = input.string("Last candle", "Zone", options = ["Last candle", "Whole s
 brkLen = input.int(5, "Swing length / keep", minval = 1, maxval = 20, group = G_BRK, inline = "bl",
     tooltip = "Pivot length (left and right) of the lows and highs, and breakers kept per direction.")
 brkKeep = input.int(3, "", minval = 1, maxval = 10, group = G_BRK, inline = "bl")
+//#blk brkAge = input.int(40, "Max bars to the pullback", minval = 5, maxval = 1000, group = G_BRK,
+//#blk     tooltip = "Bars after the close beyond the zone within which the pullback has to come; later the breaker is dropped "
+//#blk     + "(of no interest at this timeframe, look at a higher one). Once tagged it ends at the pullback: it did its job "
+//#blk     + "when price leaves it in its direction, and failed (removed) when price trades through it.")
 brkBox = input.bool(false, "Rectangle", group = G_BRK, inline = "bc",
     tooltip = "Draw the breaker rectangle and its mid line. The bold IFVG labels and the B↑ / B↓ labels are "
     + "set either way.")
@@ -326,6 +330,10 @@ mbMode = input.string("Last candle", "Zone", options = ["Last candle", "Whole se
 mbLen = input.int(5, "Swing length / keep", minval = 1, maxval = 20, group = G_MB, inline = "ml",
     tooltip = "Pivot length (left and right) of the lows and highs, and mitigation blocks kept per direction.")
 mbKeep = input.int(3, "", minval = 1, maxval = 10, group = G_MB, inline = "ml")
+//#blk mbAge = input.int(40, "Max bars to the pullback", minval = 5, maxval = 1000, group = G_MB,
+//#blk     tooltip = "Bars after the close beyond the zone within which the pullback has to come; later the mitigation block is dropped "
+//#blk     + "(of no interest at this timeframe, look at a higher one). Once tagged it ends at the pullback: it did its job "
+//#blk     + "when price leaves it in its direction, and failed (removed) when price trades through it.")
 mbBox = input.bool(false, "Rectangle", group = G_MB, inline = "mc",
     tooltip = "Draw the mitigation block rectangle and its mid line. The IFVG labels and the M↑ / M↓ labels are "
     + "set either way.")
@@ -2276,6 +2284,8 @@ if brkOn and barstate.isconfirmed
                 if (b.dir == 1 and close > b.hi) or (b.dir == -1 and close < b.lo)
                     b.broken := true
                     b.bkBar := bar_index
+//#blk             else if bar_index - b.bkBar > brkAge
+//#blk                 brks.remove(i)  // no pullback in time: of no interest at this timeframe
             else if not b.swung
                 // after the break: wait for a swing high above the zone (bullish) / low below it (bearish)
                 if b.dir == 1 and not na(bPH) and bar_index - brkLen >= b.bkBar and bPH > b.hi
@@ -2472,6 +2482,8 @@ if mbOn and barstate.isconfirmed
                 if (b.dir == 1 and close > b.hi) or (b.dir == -1 and close < b.lo)
                     b.broken := true
                     b.bkBar := bar_index
+//#blk             else if bar_index - b.bkBar > mbAge
+//#blk                 mbs.remove(i)  // no pullback in time: of no interest at this timeframe
             else if not b.swung
                 // after the break: wait for a swing high above the zone (bullish) / low below it (bearish)
                 if b.dir == 1 and not na(mPH) and bar_index - mbLen >= b.bkBar and mPH > b.hi
