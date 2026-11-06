@@ -211,8 +211,8 @@ brkMode = input.string("Last candle", "Zone", options = ["Last candle", "Whole s
 brkLen = input.int(5, "Swing length / keep", minval = 1, maxval = 20, group = G_BRK, inline = "bl",
     tooltip = "Pivot length (left and right) of the lows and highs, and breakers kept per direction.")
 brkKeep = input.int(3, "", minval = 1, maxval = 10, group = G_BRK, inline = "bl")
-brkAge = input.int(40, "Max bars to the pullback", minval = 5, maxval = 1000, group = G_BRK,
-    tooltip = "Bars after the close beyond the zone within which the pullback has to come; later the breaker is dropped "
+brkAge = input.int(60, "Max bars to the pullback", minval = 5, maxval = 1000, group = G_BRK,
+    tooltip = "Bars from the zone (its last candle) within which the pullback has to come; later the breaker is dropped "
     + "(of no interest at this timeframe, look at a higher one). Once tagged it ends at the pullback: it did its job "
     + "when price leaves it in its direction, and failed (removed) when price trades through it.")
 brkBox = input.bool(true, "Rectangle", group = G_BRK, inline = "bc",
@@ -250,8 +250,8 @@ mbMode = input.string("Last candle", "Zone", options = ["Last candle", "Whole se
 mbLen = input.int(5, "Swing length / keep", minval = 1, maxval = 20, group = G_MB, inline = "ml",
     tooltip = "Pivot length (left and right) of the lows and highs, and mitigation blocks kept per direction.")
 mbKeep = input.int(3, "", minval = 1, maxval = 10, group = G_MB, inline = "ml")
-mbAge = input.int(40, "Max bars to the pullback", minval = 5, maxval = 1000, group = G_MB,
-    tooltip = "Bars after the close beyond the zone within which the pullback has to come; later the mitigation block is dropped "
+mbAge = input.int(60, "Max bars to the pullback", minval = 5, maxval = 1000, group = G_MB,
+    tooltip = "Bars from the zone (its last candle) within which the pullback has to come; later the mitigation block is dropped "
     + "(of no interest at this timeframe, look at a higher one). Once tagged it ends at the pullback: it did its job "
     + "when price leaves it in its direction, and failed (removed) when price trades through it.")
 mbBox = input.bool(true, "Rectangle", group = G_MB, inline = "mc",
@@ -1626,6 +1626,7 @@ type Breaker
     box bx = na     // drawn at that pullback (when the rectangle is on)
     line ml = na    // mid line
     int t1 = na     // time of the last candle of the zone
+    int zb = na     // bar of the last candle of the zone (age)
     array<line> fl = na // flagged candles (wick and body lines)
 
 var array<Breaker> brks = array.new<Breaker>()
@@ -1684,6 +1685,10 @@ brkDrop(Breaker b) =>
 
 brkAdd(int dir, float zh, float zl, int zt, int zt1) =>
     brks.push(Breaker.new(dir, zh, zl, zt, t1 = zt1))
+    int zk = 0
+    while zk < 300 and time[zk] > zt1
+        zk += 1
+    brks.last().zb := bar_index - zk
     int cnt = 0
     for b in brks
         if b.dir == dir
@@ -1788,13 +1793,13 @@ if brkOn and barstate.isconfirmed
                     brks.remove(i)
                 else if (b.dir == 1 and close > b.hi) or (b.dir == -1 and close < b.lo)
                     brks.remove(i)
+            else if bar_index - b.zb > brkAge
+                brkDrop(brks.remove(i))  // no pullback in time: of no interest at this timeframe
             else if not b.broken
                 if (b.dir == 1 and close > b.hi) or (b.dir == -1 and close < b.lo)
                     b.broken := true
                     b.bkBar := bar_index
                     brkWait(b)
-            else if bar_index - b.bkBar > brkAge
-                brkDrop(brks.remove(i))  // no pullback in time: of no interest at this timeframe
             else if not b.swung
                 // after the break: wait for a swing high above the zone (bullish) / low below it (bearish)
                 if b.dir == 1 and not na(bPH) and bar_index - brkLen >= b.bkBar and bPH > b.hi
@@ -1839,6 +1844,7 @@ type MBlock
     box bx = na     // drawn at that pullback (when the rectangle is on)
     line ml = na    // mid line
     int t1 = na     // time of the last candle of the zone
+    int zb = na     // bar of the last candle of the zone (age)
     array<line> fl = na // flagged candles (wick and body lines)
 
 var array<MBlock> mbs = array.new<MBlock>()
@@ -1897,6 +1903,10 @@ mbDrop(MBlock b) =>
 
 mbAdd(int dir, float zh, float zl, int zt, int zt1) =>
     mbs.push(MBlock.new(dir, zh, zl, zt, t1 = zt1))
+    int zk = 0
+    while zk < 300 and time[zk] > zt1
+        zk += 1
+    mbs.last().zb := bar_index - zk
     int cnt = 0
     for b in mbs
         if b.dir == dir
@@ -2000,13 +2010,13 @@ if mbOn and barstate.isconfirmed
                     mbs.remove(i)
                 else if (b.dir == 1 and close > b.hi) or (b.dir == -1 and close < b.lo)
                     mbs.remove(i)
+            else if bar_index - b.zb > mbAge
+                mbDrop(mbs.remove(i))  // no pullback in time: of no interest at this timeframe
             else if not b.broken
                 if (b.dir == 1 and close > b.hi) or (b.dir == -1 and close < b.lo)
                     b.broken := true
                     b.bkBar := bar_index
                     mbWait(b)
-            else if bar_index - b.bkBar > mbAge
-                mbDrop(mbs.remove(i))  // no pullback in time: of no interest at this timeframe
             else if not b.swung
                 // after the break: wait for a swing high above the zone (bullish) / low below it (bearish)
                 if b.dir == 1 and not na(mPH) and bar_index - mbLen >= b.bkBar and mPH > b.hi
