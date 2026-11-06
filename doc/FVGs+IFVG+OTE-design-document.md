@@ -314,7 +314,7 @@ Self-contained block after `updKept()`, marked `[BRK]` (it can be removed withou
 
 ## Mitigation blocks
 
-Block marked `[MB]`, a copy of the `[BRK]` block placed right after it, with its own names (`MBlock`, `mbs`, `mPH` / `mPL`, `mbZone`, `mbAdd`, `mbTag`) and inputs (**Mitigation blocks** group after **Breakers**: `mbOn`, `mbMode`, `mbLen`, `mbKeep`, `mbBox`, `mbCol` orange, `mbSty`, `mbW`).
+Block marked `[MB]`, a copy of the `[BRK]` block placed right after it, with its own names (`MBlock`, `mbs`, `mPH` / `mPL`, `mbZone`, `mbAdd`, `mbTag`) and inputs (**Mitigation blocks** group after **Breakers**: `mbOn`, `mbMode`, `mbLen`, `mbKeep`, `mbBox`, `mbCol` orange, `mbColDn` fuchsia, `mbSty`, `mbW`).
 
 - **Formation:** the only difference with breakers. Bullish: low, high, **higher** low arms the high (`mUpLvl`); bearish: high, low, **lower** high arms the low (`mDnLvl`), on its own sequence (`mSqP` / `mSqB` / `mSqT`, `mbLen`). The zone is the candle **body** (`blkZone(..., true, ...)`).
 - **Life cycle and drawing:** as for breakers (`mbAge`, `pb`, `won`, `mbC(dir)` with `mbColDn`).

@@ -2,7 +2,7 @@
 // FVGSIFVGOTE - Fair value gaps, 1st presented FVGs, inverse FVGs (IFVG) and ICT OTE, for NinjaTrader 8
 // ---------------------------------------------------------------------------------------------------------------------
 // Port of the TradingView Pine Script v6 indicator "FVGs+IFVG+OTE5" by franjballest
-// (source file FVGS+IFVG+OTE.txt, md5 26aea10309f97da08db5082de2cc9b19). Mozilla Public License 2.0, as the original.
+// (source file FVGS+IFVG+OTE.txt, md5 69af4331998af6295914f73eef40e8b7). Mozilla Public License 2.0, as the original.
 //
 // What it draws: FVG boxes (or no-fill boxes, or hi / lo / C.E. segments) with C.E. lines, the 1st presented FVG of the
 // session open (New York 09:30, or Madrid 09:00 for DAX) and its optional inverse, wick C.E. segments, IFVG candidates
@@ -429,7 +429,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                 BreakersKept = 3;
                 BreakerMaxAge = 60;
                 BreakerRectangle = false;
-                BreakerColor = MkBrush(0xE040FB, 0);
+                BreakerColor = MkBrush(0xFF9800, 0);
                 BreakerColorDown = MkBrush(0xE040FB, 0);
                 BreakerLineStyle = DashStyleHelper.Dash;
                 BreakerLineWidth = 1;
@@ -442,7 +442,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                 MitigationMaxAge = 60;
                 MitigationRectangle = false;
                 MitigationColor = MkBrush(0xFF9800, 0);
-                MitigationColorDown = MkBrush(0xFF9800, 0);
+                MitigationColorDown = MkBrush(0xE040FB, 0);
                 MitigationLineStyle = DashStyleHelper.Dash;
                 MitigationLineWidth = 1;
                 MitigationFlagCandles = false;

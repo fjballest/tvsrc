@@ -13,7 +13,7 @@
  *   BM↑/BM↓, inheritance of the tags by IFVGs) and LONG / SHORT / OTE signal markers.
  *
  *   Port of the TradingView Pine Script v6 indicator "FVGS+IFVG+OTE.txt"
- *   (md5 26aea10309f97da08db5082de2cc9b19, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
+ *   (md5 69af4331998af6295914f73eef40e8b7, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
  *   input variable names (camelCase). See the design document (d.md) and user manual (m.md) for the logic.
  *
  * How to install
@@ -133,12 +133,12 @@ const PARAMS = [
     // Breakers
     ["brkOn", "b", true], ["brkMode", "e", "last", { last: "Last candle", sequence: "Whole sequence" }],
     ["brkLen", "n", 2, [1, 1]], ["brkKeep", "n", 3, [1, 1]], ["brkAge", "n", 60, [5, 1]], ["brkBox", "b", false],
-    ["brkCol", "c", TV.fuchsia], ["brkColDn", "c", TV.fuchsia],
+    ["brkCol", "c", TV.orange], ["brkColDn", "c", TV.fuchsia],
     ["brkSty", "e", "dashed", STYLE_OPTS], ["brkW", "n", 1, [1, 1]], ["brkFlag", "b", false], ["brkShd", "b", false],
     // Mitigation blocks
     ["mbOn", "b", true], ["mbMode", "e", "last", { last: "Last candle", sequence: "Whole sequence" }],
     ["mbLen", "n", 2, [1, 1]], ["mbKeep", "n", 3, [1, 1]], ["mbAge", "n", 60, [5, 1]], ["mbBox", "b", false],
-    ["mbCol", "c", TV.orange], ["mbColDn", "c", TV.orange],
+    ["mbCol", "c", TV.orange], ["mbColDn", "c", TV.fuchsia],
     ["mbSty", "e", "dashed", STYLE_OPTS], ["mbW", "n", 1, [1, 1]], ["mbFlag", "b", false], ["mbShd", "b", false],
     // Delivery Engine
     ["deDisp", "b", false], ["deDispType", "e", "oc", { oc: "Open to Close", hl: "High to Low" }],

@@ -221,7 +221,7 @@ brkAge = input.int(60, "Max bars to the pullback", minval = 5, maxval = 1000, gr
 brkBox = input.bool(true, "Rectangle", group = G_BRK, inline = "bc",
     tooltip = "Draw the breaker rectangle (semi-transparent fill, labeled B↑ / B↓) and its mid line. The bold IFVG labels and the B↑ / B↓ labels are "
     + "set either way.")
-brkCol = input.color(color.fuchsia, "↑", group = G_BRK, inline = "bc")
+brkCol = input.color(color.orange, "↑", group = G_BRK, inline = "bc")
 brkColDn = input.color(color.fuchsia, "↓", group = G_BRK, inline = "bc")
 brkC(int d) => d == 1 ? brkCol : brkColDn  // color of a bullish / bearish block
 brkSty = getstyle(input.string("dashed", "", options = ["solid", "dashed", "dotted"], group = G_BRK, inline = "bc"))
@@ -264,7 +264,7 @@ mbBox = input.bool(true, "Rectangle", group = G_MB, inline = "mc",
     tooltip = "Draw the mitigation block rectangle (semi-transparent fill, labeled M↑ / M↓) and its mid line. The IFVG labels and the M↑ / M↓ labels are "
     + "set either way.")
 mbCol = input.color(color.orange, "↑", group = G_MB, inline = "mc")
-mbColDn = input.color(color.orange, "↓", group = G_MB, inline = "mc")
+mbColDn = input.color(color.fuchsia, "↓", group = G_MB, inline = "mc")
 mbC(int d) => d == 1 ? mbCol : mbColDn  // color of a bullish / bearish block
 mbSty = getstyle(input.string("dashed", "", options = ["solid", "dashed", "dotted"], group = G_MB, inline = "mc"))
 mbW = input.int(1, "width", minval = 1, maxval = 4, group = G_MB, inline = "mc")

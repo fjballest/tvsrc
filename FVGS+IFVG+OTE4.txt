@@ -262,7 +262,7 @@ brkLen = 2
 brkKeep = 3
 brkAge = 60
 brkBox = false
-brkCol = color.fuchsia
+brkCol = color.orange
 brkColDn = color.fuchsia
 brkC(int d) => d == 1 ? brkCol : brkColDn  // color of a bullish / bearish block
 brkSty = getstyle("dashed")
@@ -279,7 +279,7 @@ mbKeep = 3
 mbAge = 60
 mbBox = false
 mbCol = color.orange
-mbColDn = color.orange
+mbColDn = color.fuchsia
 mbC(int d) => d == 1 ? mbCol : mbColDn  // color of a bullish / bearish block
 mbSty = getstyle("dashed")
 mbW = 1

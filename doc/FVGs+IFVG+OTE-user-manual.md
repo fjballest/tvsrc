@@ -362,7 +362,7 @@ An FVG or IFVG inside a breaker rectangle sits on a breaker that price has just 
 
 ## 11. Mitigation blocks
 
-Mitigation blocks work like breakers (section 10), with the opposite third swing: the structure failed instead of sweeping. They have their own **Mitigation blocks** group, on by default, and an orange rectangle.
+Mitigation blocks work like breakers (section 10), with the opposite third swing: the structure failed instead of sweeping. They have their own **Mitigation blocks** group, on by default, with the same colors as breakers (orange bullish, fuchsia bearish).
 
 ### What it is
 
@@ -491,7 +491,7 @@ Inputs on one line in the settings dialog are listed together; a field without i
 | Zone | Last candle | *Last candle*: the last up-close (bullish) / down-close (bearish) candle making the high / low. *Whole sequence*: that candle and the consecutive ones of the same color before it |
 | Swing length / keep | 2 / 3 | Pivot length (left and right) of the swings, and breakers followed per direction |
 | Max bars to the pullback | 60 | Bars from the zone within which the pullback has to come; once drawn, it ends when no pullback comes for that many bars |
-| Rectangle, ↑ (color), ↓ (color), (style), width | off / fuchsia / fuchsia / dashed / 1 | Draw the breaker rectangle and its mid line, with this color, line style and width. Off: nothing is drawn, but the bold IFVG labels and the B↑ / B↓ labels are still set |
+| Rectangle, ↑ (color), ↓ (color), (style), width | off / orange / fuchsia / dashed / 1 | Draw the breaker rectangle and its mid line, with this color, line style and width. Off: nothing is drawn, but the bold IFVG labels and the B↑ / B↓ labels are still set |
 | Flag candles | off | Color the breaker candle(s) with the rectangle color when it is tagged at the pullback, with or without the rectangle; removed together with the rectangle |
 | Shadow rectangle (same line as Flag candles) | off | Draw the breaker as a grey transparent rectangle without border instead of the dashed one, also when Rectangle is off; the mid line stays |
 
@@ -503,7 +503,7 @@ Inputs on one line in the settings dialog are listed together; a field without i
 | Zone | Last candle | *Last candle*: the last up-close (bullish) / down-close (bearish) candle making the high / low. *Whole sequence*: that candle and the consecutive ones of the same color before it |
 | Swing length / keep | 2 / 3 | Pivot length (left and right) of the swings, and blocks followed per direction |
 | Max bars to the pullback | 60 | As for breakers |
-| Rectangle, ↑ (color), ↓ (color), (style), width | off / orange / orange / dashed / 1 | Draw the rectangle and its mid line. Off: nothing is drawn, but the bold IFVG labels with arrows and the M↑ / M↓ labels are still set |
+| Rectangle, ↑ (color), ↓ (color), (style), width | off / orange / fuchsia / dashed / 1 | Draw the rectangle and its mid line. Off: nothing is drawn, but the bold IFVG labels with arrows and the M↑ / M↓ labels are still set |
 | Flag candles | off | Color the mitigation block candle(s) with the rectangle color when it is tagged at the pullback, with or without the rectangle; removed together with the rectangle |
 | Shadow rectangle (same line as Flag candles) | off | Draw the mitigation block as a grey transparent rectangle without border instead of the dashed one, also when Rectangle is off; the mid line stays |
 
