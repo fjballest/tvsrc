@@ -196,14 +196,16 @@ oteTextCol = color.black
 // Breakers =========
 G_BRK = "Breakers"
 brkOn = input.bool(true, "Breakers", group = G_BRK,
-    tooltip = "Bullish breaker: a low, a high and a lower low; after a close above the zone, price pulls back to "
-    + "it (long). Bearish breaker: a high, a low and a higher high; after a close below the zone, price pulls "
+    tooltip = "Bullish breaker: a low, a high and a lower low (the second low raids the first); after a close above "
+    + "that high, price pulls back to the zone (long). Bearish breaker: a high, a low and a higher high; after a "
+    + "close below that low, price pulls "
     + "back to it (short). Before the pullback, price has to make a swing high above the zone (bullish) / a "
     + "swing low below it (bearish), with the swing length below. When, on the pullback, a live bullish FVG or confirmed IFVG+ (long) or bearish FVG "
     + "or IFVG- (short) overlaps the zone, the breaker is drawn as a dashed rectangle with its mid line, from "
     + "its candle(s) to that pullback. The label of an overlapping IFVG+ / IFVG- turns bold and an "
-    + "overlapping unlabeled, unmitigated bullish / bearish FVG gets B↑ / B↓. The rectangle is removed if the pullback itself trades below the breaker low "
-    + "(bullish) / above its high (bearish) before price closes out of the zone again; otherwise it stays.")
+    + "overlapping unlabeled, unmitigated bullish / bearish FVG gets B↑ / B↓. Each later pullback extends the "
+    + "rectangle; it fails when a candle closes below the breaker low (bullish) / above its high (bearish), and "
+    + "is erased then if no pullback had worked yet.")
 brkMode = input.string("Last candle", "Zone", options = ["Last candle", "Whole sequence"], group = G_BRK,
     inline = "bm", tooltip = "Last candle: the last up-close candle making the high (bullish) / down-close "
     + "candle making the low (bearish). Whole sequence: that candle and the consecutive up-close / down-close "
@@ -213,12 +215,15 @@ brkLen = input.int(2, "Swing length / keep", minval = 1, maxval = 20, group = G_
 brkKeep = input.int(3, "", minval = 1, maxval = 10, group = G_BRK, inline = "bl")
 brkAge = input.int(60, "Max bars to the pullback", minval = 5, maxval = 1000, group = G_BRK,
     tooltip = "Bars from the zone (its last candle) within which the pullback has to come; later the breaker is dropped "
-    + "(of no interest at this timeframe, look at a higher one). Once tagged it ends at the pullback: it did its job "
-    + "when price leaves it in its direction, and failed (removed) when price trades through it.")
+    + "(of no interest at this timeframe, look at a higher one). Once tagged it is extended to each later pullback "
+    + "into it, until a candle closes through its far side (failed; erased if no pullback had worked yet) or no "
+    + "pullback comes for that many bars.")
 brkBox = input.bool(true, "Rectangle", group = G_BRK, inline = "bc",
     tooltip = "Draw the breaker rectangle (semi-transparent fill, labeled B↑ / B↓) and its mid line. The bold IFVG labels and the B↑ / B↓ labels are "
     + "set either way.")
-brkCol = input.color(color.fuchsia, "", group = G_BRK, inline = "bc")
+brkCol = input.color(color.fuchsia, "↑", group = G_BRK, inline = "bc")
+brkColDn = input.color(color.fuchsia, "↓", group = G_BRK, inline = "bc")
+brkC(int d) => d == 1 ? brkCol : brkColDn  // color of a bullish / bearish block
 brkSty = getstyle(input.string("dashed", "", options = ["solid", "dashed", "dotted"], group = G_BRK, inline = "bc"))
 brkW = input.int(1, "width", minval = 1, maxval = 4, group = G_BRK, inline = "bc")
 brkFlag = input.bool(false, "Flag candles", group = G_BRK, inline = "bf")
@@ -235,14 +240,14 @@ brkLblV = brkLbl == "top left" or brkLbl == "top right" ? text.align_top : text.
 // Mitigation blocks =========
 G_MB = "Mitigation blocks"
 mbOn = input.bool(true, "Mitigation blocks", group = G_MB,
-    tooltip = "Bullish mitigation block: a low, a high and a higher low; after a close above the zone (at the "
-    + "high), price pulls back to it (long). Bearish: a high, a low and a lower high; after a close below the "
-    + "zone (at the low), price pulls back to it (short). As for breakers, price has to make a swing beyond the "
+    tooltip = "Bullish mitigation block: a low, a high and a higher low; after a close above that high, price "
+    + "pulls back to the zone (the body of its candle; long). Bearish: a high, a low and a lower high; after a "
+    + "close below that low, price pulls back to the zone (short). As for breakers, price has to make a swing beyond the "
     + "zone before the pullback. When, on the pullback, a live bullish FVG or confirmed IFVG+ (long) or bearish "
     + "FVG or IFVG- (short) overlaps the zone, the block is drawn as a rectangle with its mid line, the label of "
     + "the IFVG turns bold with an up (IFVG+) / down (IFVG-) arrow, and an overlapping unlabeled, unmitigated "
-    + "FVG gets M↑ / M↓ (BM↑ / BM↓ when a breaker tagged it too). The rectangle is removed if the pullback itself trades beyond the far side of the zone "
-    + "before price closes out of it again; otherwise it stays.")
+    + "FVG gets M↑ / M↓ (BM↑ / BM↓ when a breaker tagged it too). Each later pullback extends the rectangle; it fails "
+    + "when a candle closes beyond the far side of the zone, and is erased then if no pullback had worked yet.")
 mbMode = input.string("Last candle", "Zone", options = ["Last candle", "Whole sequence"], group = G_MB,
     inline = "mm", tooltip = "Last candle: the last up-close candle making the high (bullish) / down-close "
     + "candle making the low (bearish). Whole sequence: that candle and the consecutive up-close / down-close "
@@ -252,12 +257,15 @@ mbLen = input.int(2, "Swing length / keep", minval = 1, maxval = 20, group = G_M
 mbKeep = input.int(3, "", minval = 1, maxval = 10, group = G_MB, inline = "ml")
 mbAge = input.int(60, "Max bars to the pullback", minval = 5, maxval = 1000, group = G_MB,
     tooltip = "Bars from the zone (its last candle) within which the pullback has to come; later the mitigation block is dropped "
-    + "(of no interest at this timeframe, look at a higher one). Once tagged it ends at the pullback: it did its job "
-    + "when price leaves it in its direction, and failed (removed) when price trades through it.")
+    + "(of no interest at this timeframe, look at a higher one). Once tagged it is extended to each later pullback "
+    + "into it, until a candle closes through its far side (failed; erased if no pullback had worked yet) or no "
+    + "pullback comes for that many bars.")
 mbBox = input.bool(true, "Rectangle", group = G_MB, inline = "mc",
     tooltip = "Draw the mitigation block rectangle (semi-transparent fill, labeled M↑ / M↓) and its mid line. The IFVG labels and the M↑ / M↓ labels are "
     + "set either way.")
-mbCol = input.color(color.orange, "", group = G_MB, inline = "mc")
+mbCol = input.color(color.orange, "↑", group = G_MB, inline = "mc")
+mbColDn = input.color(color.orange, "↓", group = G_MB, inline = "mc")
+mbC(int d) => d == 1 ? mbCol : mbColDn  // color of a bullish / bearish block
 mbSty = getstyle(input.string("dashed", "", options = ["solid", "dashed", "dotted"], group = G_MB, inline = "mc"))
 mbW = input.int(1, "width", minval = 1, maxval = 4, group = G_MB, inline = "mc")
 mbFlag = input.bool(false, "Flag candles", group = G_MB, inline = "mf")
@@ -1613,7 +1621,7 @@ if doifvg and not ifvgswings and deInv and barstate.isconfirmed
 
 updKept()
 
-// ICTblocks: swings as an alternating high / low sequence of the last three pivots, two of a kind merged into
+// swings as an alternating high / low sequence of the last three pivots, two of a kind merged into
 // the more extreme (pr prices, br bars, ty 1 high / -1 low). True when the sequence changed.
 blkPivot(array<float> pr, array<int> br, array<int> ty, float price, int bar, int kind) =>
     bool changed = false
@@ -1634,7 +1642,7 @@ blkPivot(array<float> pr, array<int> br, array<int> ty, float price, int bar, in
             ty.shift()
     changed
 
-// ICTblocks: block zone at the swing k0 bars back: the up-close (dir 1) / down-close (dir -1) candle there or among
+// block zone at the swing k0 bars back: the up-close (dir 1) / down-close (dir -1) candle there or among
 // the 3 before it, wick to wick (breaker) or its body (mitigation block), plus the consecutive ones before it in
 // "Whole sequence" mode
 blkZone(int dir, int k0, bool body, bool whole) =>
@@ -1674,19 +1682,13 @@ type Breaker
     line ml = na    // mid line
     int t1 = na     // time of the last candle of the zone
     int zb = na     // bar of the last candle of the zone (age)
+    int pb = na     // bar of the last pullback into the zone (age once tagged)
+    bool won = false // price left the zone in its direction after a pullback
     array<line> fl = na // flagged candles (wick and body lines)
 
 var array<Breaker> brks = array.new<Breaker>()
 float bPH = ta.pivothigh(high, brkLen, brkLen)
 float bPL = ta.pivotlow(low, brkLen, brkLen)
-var float bLastH = na   // last two pivot highs / lows (price, bar)
-var int bLastHb = na
-var float bPrevH = na
-var int bPrevHb = na
-var float bLastL = na
-var int bLastLb = na
-var float bPrevL = na
-var int bPrevLb = na
 var array<float> bSqP = array.new<float>()  // swing sequence (ICTblocks)
 var array<int> bSqB = array.new<int>()
 var array<int> bSqT = array.new<int>()
@@ -1697,40 +1699,16 @@ var float bDnLvl = na  // swing low waiting for a close below it (bearish)
 var int bDnBar = na
 var int bDnDone = na
 
-// zone from candle k bars back: the up-close (dir 1) / down-close (dir -1) candle there or the nearest one
-// before it (not before bar 'from'), plus the consecutive ones before it in "Whole sequence" mode
-brkZone(int dir, int k0, int from) =>
-    float zh = na
-    float zl = na
-    int zt = na
-    int zt1 = na
-    int kmax = math.min(bar_index - from, 300)
-    int k = k0
-    while k <= kmax and na(zt)
-        if (close[k] - open[k]) * dir > 0
-            zh := high[k]
-            zl := low[k]
-            zt := time[k]
-            zt1 := time[k]
-        k += 1
-    if not na(zt) and brkMode == "Whole sequence"
-        while k <= kmax and (close[k] - open[k]) * dir > 0
-            zh := math.max(zh, high[k])
-            zl := math.min(zl, low[k])
-            zt := time[k]
-            k += 1
-    [zh, zl, zt, zt1]
-
 // ICTblocks: the breaker is drawn from its break on, lighter, growing while it waits for the pullback;
 // erased when it is dropped before the pullback (failed, too old or one too many)
 brkWait(Breaker b) =>
     if brkBox or brkShd
         b.bx := box.new(b.t, b.hi, time, b.lo, xloc = xloc.bar_time,
-            border_color = brkShd ? color.new(color.gray, 100) : brkCol, border_style = brkSty,
-            border_width = brkShd ? 0 : brkW, bgcolor = color.new(brkShd ? color.gray : brkCol, brkShd ? 88 : 93),
-            text = b.dir == 1 ? "B↑" : "B↓", text_color = brkCol, text_size = size.small,
+            border_color = brkShd ? color.new(color.gray, 100) : brkC(b.dir), border_style = brkSty,
+            border_width = brkShd ? 0 : brkW, bgcolor = color.new(brkShd ? color.gray : brkC(b.dir), brkShd ? 88 : 93),
+            text = b.dir == 1 ? "B↑" : "B↓", text_color = brkC(b.dir), text_size = size.small,
             text_halign = brkLblH, text_valign = brkLblV)
-        b.ml := line.new(b.t, (b.hi + b.lo) / 2, time, (b.hi + b.lo) / 2, xloc = xloc.bar_time, color = brkCol,
+        b.ml := line.new(b.t, (b.hi + b.lo) / 2, time, (b.hi + b.lo) / 2, xloc = xloc.bar_time, color = brkC(b.dir),
             style = brkSty, width = brkW)
     true
 brkDrop(Breaker b) =>
@@ -1784,27 +1762,28 @@ brkTag(FVG f, Breaker b, box ib) =>
         float mid = (b.hi + b.lo) / 2
         if not b.tagged
             b.tagged := true
+            b.pb := bar_index
             if brkFlag
                 b.fl := array.new<line>()
                 int kk = 0
                 while kk <= 300 and time[kk] >= b.t
                     if time[kk] <= b.t1
                         b.fl.push(line.new(time[kk], high[kk], time[kk], low[kk], xloc = xloc.bar_time,
-                             color = brkCol, width = 1))
+                             color = brkC(b.dir), width = 1))
                         b.fl.push(line.new(time[kk], open[kk], time[kk], close[kk], xloc = xloc.bar_time,
-                             color = brkCol, width = 5))
+                             color = brkC(b.dir), width = 5))
                     kk += 1
             if not na(b.bx)  // drawn at the break: ends at the pullback, full fill
                 b.bx.set_right(time)
-                b.bx.set_bgcolor(color.new(brkShd ? color.gray : brkCol, brkShd ? 80 : 85))
+                b.bx.set_bgcolor(color.new(brkShd ? color.gray : brkC(b.dir), brkShd ? 80 : 85))
                 b.ml.set_x2(time)
             else if brkBox or brkShd
                 b.bx := box.new(b.t, b.hi, time, b.lo, xloc = xloc.bar_time,
-                    border_color = brkShd ? color.new(color.gray, 100) : brkCol, border_style = brkSty,
-                    border_width = brkShd ? 0 : brkW, bgcolor = color.new(brkShd ? color.gray : brkCol, brkShd ? 80 : 85),
-                    text = b.dir == 1 ? "B↑" : "B↓", text_color = brkCol, text_size = size.small,
+                    border_color = brkShd ? color.new(color.gray, 100) : brkC(b.dir), border_style = brkSty,
+                    border_width = brkShd ? 0 : brkW, bgcolor = color.new(brkShd ? color.gray : brkC(b.dir), brkShd ? 80 : 85),
+                    text = b.dir == 1 ? "B↑" : "B↓", text_color = brkC(b.dir), text_size = size.small,
                     text_halign = brkLblH, text_valign = brkLblV)
-                b.ml := line.new(b.t, mid, time, mid, xloc = xloc.bar_time, color = brkCol, style = brkSty,
+                b.ml := line.new(b.t, mid, time, mid, xloc = xloc.bar_time, color = brkC(b.dir), style = brkSty,
                     width = brkW)
     true
 
@@ -1851,18 +1830,28 @@ if brkOn and barstate.isconfirmed
                 b.bx.set_right(time)
                 b.ml.set_x2(time)
             if b.tagged
-                // drawn, pullback still going on: removed when it trades beyond the far side; once price closes
-                // out of the zone in the breaker direction the rectangle stays for reference
-                if (b.dir == 1 and low < b.lo) or (b.dir == -1 and high > b.hi)
-                    if not na(b.bx)
-                        b.bx.delete()
-                        b.ml.delete()
-                    if not na(b.fl)
-                        for ln in b.fl
-                            ln.delete()
+                // drawn: each pullback into the zone extends it (also a later one, after price left it in its
+                // direction); it fails on a close through its far side (erased if no pullback worked yet) and
+                // ends when no pullback came for the age limit
+                if (b.dir == 1 and close < b.lo) or (b.dir == -1 and close > b.hi)
+                    if not b.won
+                        if not na(b.bx)
+                            b.bx.delete()
+                            b.ml.delete()
+                        if not na(b.fl)
+                            for ln in b.fl
+                                ln.delete()
                     brks.remove(i)
-                else if (b.dir == 1 and close > b.hi) or (b.dir == -1 and close < b.lo)
+                else if bar_index - b.pb > brkAge
                     brks.remove(i)
+                else
+                    if (b.dir == 1 and low <= b.hi) or (b.dir == -1 and high >= b.lo)
+                        b.pb := bar_index
+                        if not na(b.bx)
+                            b.bx.set_right(time)
+                            b.ml.set_x2(time)
+                    if (b.dir == 1 and close > b.hi) or (b.dir == -1 and close < b.lo)
+                        b.won := true
             else if bar_index - b.zb > brkAge
                 brkDrop(brks.remove(i))  // no pullback in time: of no interest at this timeframe
             else if not b.broken
@@ -1892,7 +1881,7 @@ if brkOn and barstate.isconfirmed
                 else
                     if not ifvgswings and not na(bearconfirm)
                         brkTag(bearifvg, b, ifvgBoxb)
-                if b.tagged and ((b.dir == 1 and low < b.lo) or (b.dir == -1 and high > b.hi))
+                if b.tagged and ((b.dir == 1 and close < b.lo) or (b.dir == -1 and close > b.hi))
                     if not na(b.bx)
                         b.bx.delete()
                         b.ml.delete()
@@ -1915,19 +1904,13 @@ type MBlock
     line ml = na    // mid line
     int t1 = na     // time of the last candle of the zone
     int zb = na     // bar of the last candle of the zone (age)
+    int pb = na     // bar of the last pullback into the zone (age once tagged)
+    bool won = false // price left the zone in its direction after a pullback
     array<line> fl = na // flagged candles (wick and body lines)
 
 var array<MBlock> mbs = array.new<MBlock>()
 float mPH = ta.pivothigh(high, mbLen, mbLen)
 float mPL = ta.pivotlow(low, mbLen, mbLen)
-var float mLastH = na   // last two pivot highs / lows (price, bar)
-var int mLastHb = na
-var float mPrevH = na
-var int mPrevHb = na
-var float mLastL = na
-var int mLastLb = na
-var float mPrevL = na
-var int mPrevLb = na
 var array<float> mSqP = array.new<float>()  // swing sequence (ICTblocks)
 var array<int> mSqB = array.new<int>()
 var array<int> mSqT = array.new<int>()
@@ -1938,40 +1921,16 @@ var float mDnLvl = na  // swing low waiting for a close below it (bearish)
 var int mDnBar = na
 var int mDnDone = na
 
-// zone from candle k bars back: the up-close (dir 1) / down-close (dir -1) candle there or the nearest one
-// before it (not before bar 'from'), plus the consecutive ones before it in "Whole sequence" mode
-mbZone(int dir, int k0, int from) =>
-    float zh = na
-    float zl = na
-    int zt = na
-    int zt1 = na
-    int kmax = math.min(bar_index - from, 300)
-    int k = k0
-    while k <= kmax and na(zt)
-        if (close[k] - open[k]) * dir > 0
-            zh := high[k]
-            zl := low[k]
-            zt := time[k]
-            zt1 := time[k]
-        k += 1
-    if not na(zt) and mbMode == "Whole sequence"
-        while k <= kmax and (close[k] - open[k]) * dir > 0
-            zh := math.max(zh, high[k])
-            zl := math.min(zl, low[k])
-            zt := time[k]
-            k += 1
-    [zh, zl, zt, zt1]
-
 // ICTblocks: the mitigation block is drawn from its break on, lighter, growing while it waits for the pullback;
 // erased when it is dropped before the pullback (failed, too old or one too many)
 mbWait(MBlock b) =>
     if mbBox or mbShd
         b.bx := box.new(b.t, b.hi, time, b.lo, xloc = xloc.bar_time,
-            border_color = mbShd ? color.new(color.gray, 100) : mbCol, border_style = mbSty,
-            border_width = mbShd ? 0 : mbW, bgcolor = color.new(mbShd ? color.gray : mbCol, mbShd ? 88 : 93),
-            text = b.dir == 1 ? "M↑" : "M↓", text_color = mbCol, text_size = size.small,
+            border_color = mbShd ? color.new(color.gray, 100) : mbC(b.dir), border_style = mbSty,
+            border_width = mbShd ? 0 : mbW, bgcolor = color.new(mbShd ? color.gray : mbC(b.dir), mbShd ? 88 : 93),
+            text = b.dir == 1 ? "M↑" : "M↓", text_color = mbC(b.dir), text_size = size.small,
             text_halign = mbLblH, text_valign = mbLblV)
-        b.ml := line.new(b.t, (b.hi + b.lo) / 2, time, (b.hi + b.lo) / 2, xloc = xloc.bar_time, color = mbCol,
+        b.ml := line.new(b.t, (b.hi + b.lo) / 2, time, (b.hi + b.lo) / 2, xloc = xloc.bar_time, color = mbC(b.dir),
             style = mbSty, width = mbW)
     true
 mbDrop(MBlock b) =>
@@ -2024,27 +1983,28 @@ mbTag(FVG f, MBlock b, box ib, int which) =>
         float mid = (b.hi + b.lo) / 2
         if not b.tagged
             b.tagged := true
+            b.pb := bar_index
             if mbFlag
                 b.fl := array.new<line>()
                 int kk = 0
                 while kk <= 300 and time[kk] >= b.t
                     if time[kk] <= b.t1
                         b.fl.push(line.new(time[kk], high[kk], time[kk], low[kk], xloc = xloc.bar_time,
-                             color = mbCol, width = 1))
+                             color = mbC(b.dir), width = 1))
                         b.fl.push(line.new(time[kk], open[kk], time[kk], close[kk], xloc = xloc.bar_time,
-                             color = mbCol, width = 5))
+                             color = mbC(b.dir), width = 5))
                     kk += 1
             if not na(b.bx)  // drawn at the break: ends at the pullback, full fill
                 b.bx.set_right(time)
-                b.bx.set_bgcolor(color.new(mbShd ? color.gray : mbCol, mbShd ? 80 : 85))
+                b.bx.set_bgcolor(color.new(mbShd ? color.gray : mbC(b.dir), mbShd ? 80 : 85))
                 b.ml.set_x2(time)
             else if mbBox or mbShd
                 b.bx := box.new(b.t, b.hi, time, b.lo, xloc = xloc.bar_time,
-                    border_color = mbShd ? color.new(color.gray, 100) : mbCol, border_style = mbSty,
-                    border_width = mbShd ? 0 : mbW, bgcolor = color.new(mbShd ? color.gray : mbCol, mbShd ? 80 : 85),
-                    text = b.dir == 1 ? "M↑" : "M↓", text_color = mbCol, text_size = size.small,
+                    border_color = mbShd ? color.new(color.gray, 100) : mbC(b.dir), border_style = mbSty,
+                    border_width = mbShd ? 0 : mbW, bgcolor = color.new(mbShd ? color.gray : mbC(b.dir), mbShd ? 80 : 85),
+                    text = b.dir == 1 ? "M↑" : "M↓", text_color = mbC(b.dir), text_size = size.small,
                     text_halign = mbLblH, text_valign = mbLblV)
-                b.ml := line.new(b.t, mid, time, mid, xloc = xloc.bar_time, color = mbCol, style = mbSty,
+                b.ml := line.new(b.t, mid, time, mid, xloc = xloc.bar_time, color = mbC(b.dir), style = mbSty,
                     width = mbW)
     true
 
@@ -2091,18 +2051,28 @@ if mbOn and barstate.isconfirmed
                 b.bx.set_right(time)
                 b.ml.set_x2(time)
             if b.tagged
-                // drawn, pullback still going on: removed when it trades beyond the far side; once price closes
-                // out of the zone in the mitigation block direction the rectangle stays for reference
-                if (b.dir == 1 and low < b.lo) or (b.dir == -1 and high > b.hi)
-                    if not na(b.bx)
-                        b.bx.delete()
-                        b.ml.delete()
-                    if not na(b.fl)
-                        for ln in b.fl
-                            ln.delete()
+                // drawn: each pullback into the zone extends it (also a later one, after price left it in its
+                // direction); it fails on a close through its far side (erased if no pullback worked yet) and
+                // ends when no pullback came for the age limit
+                if (b.dir == 1 and close < b.lo) or (b.dir == -1 and close > b.hi)
+                    if not b.won
+                        if not na(b.bx)
+                            b.bx.delete()
+                            b.ml.delete()
+                        if not na(b.fl)
+                            for ln in b.fl
+                                ln.delete()
                     mbs.remove(i)
-                else if (b.dir == 1 and close > b.hi) or (b.dir == -1 and close < b.lo)
+                else if bar_index - b.pb > mbAge
                     mbs.remove(i)
+                else
+                    if (b.dir == 1 and low <= b.hi) or (b.dir == -1 and high >= b.lo)
+                        b.pb := bar_index
+                        if not na(b.bx)
+                            b.bx.set_right(time)
+                            b.ml.set_x2(time)
+                    if (b.dir == 1 and close > b.hi) or (b.dir == -1 and close < b.lo)
+                        b.won := true
             else if bar_index - b.zb > mbAge
                 mbDrop(mbs.remove(i))  // no pullback in time: of no interest at this timeframe
             else if not b.broken
@@ -2132,7 +2102,7 @@ if mbOn and barstate.isconfirmed
                 else
                     if not ifvgswings and not na(bearconfirm)
                         mbTag(bearifvg, b, ifvgBoxb, -1)
-                if b.tagged and ((b.dir == 1 and low < b.lo) or (b.dir == -1 and high > b.hi))
+                if b.tagged and ((b.dir == 1 and close < b.lo) or (b.dir == -1 and close > b.hi))
                     if not na(b.bx)
                         b.bx.delete()
                         b.ml.delete()

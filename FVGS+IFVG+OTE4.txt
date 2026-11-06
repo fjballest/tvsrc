@@ -258,10 +258,13 @@ oteTextCol = input.color(color.black, "text", group = G_OTE, inline = "oc")
 G_BRK = "Breakers"
 brkOn = false
 brkMode = "Last candle"
-brkLen = 5
+brkLen = 2
 brkKeep = 3
+brkAge = 60
 brkBox = false
 brkCol = color.fuchsia
+brkColDn = color.fuchsia
+brkC(int d) => d == 1 ? brkCol : brkColDn  // color of a bullish / bearish block
 brkSty = getstyle("dashed")
 brkW = 1
 brkFlag = false
@@ -271,10 +274,13 @@ brkShd = false
 G_MB = "Mitigation blocks"
 mbOn = false
 mbMode = "Last candle"
-mbLen = 5
+mbLen = 2
 mbKeep = 3
+mbAge = 60
 mbBox = false
 mbCol = color.orange
+mbColDn = color.orange
+mbC(int d) => d == 1 ? mbCol : mbColDn  // color of a bullish / bearish block
 mbSty = getstyle("dashed")
 mbW = 1
 mbFlag = false

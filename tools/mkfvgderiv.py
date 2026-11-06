@@ -33,17 +33,13 @@ BLK_SUBST = [  # (old, new): defaults of the inputs it keeps
     ('"Mitigation blocks at FVG / IFVG pullbacks"', '"Mitigation blocks"'),
     ('G_DE = "Delivery Engine (Nuno)"', 'G_DE = "Delivery Engine (Nuno): FVGs / IFVGs used"'),
 ]
-BLK_SUBST += [  # ICTblocks: swings of 2 candles each side by default (alternating swing sequence)
-    ('brkLen = input.int(5, "Swing length / keep"', 'brkLen = input.int(2, "Swing length / keep"'),
-    ('mbLen = input.int(5, "Swing length / keep"', 'mbLen = input.int(2, "Swing length / keep"'),
-]
 # ICTblocks draws no FVG boxes, so the block rectangles carry the B / M label and a semi-transparent fill
 for k, t, n in (("brk", "B", "breaker"), ("mb", "M", "mitigation block")):
     BLK_SUBST += [
-        ("border_width = %sShd ? 0 : %sW, bgcolor = color.new(%sShd ? color.gray : %sCol, %sShd ? 80 : 100))"
+        ("border_width = %sShd ? 0 : %sW, bgcolor = color.new(%sShd ? color.gray : %sC(b.dir), %sShd ? 80 : 100))"
          % (k, k, k, k, k),
-         "border_width = %sShd ? 0 : %sW, bgcolor = color.new(%sShd ? color.gray : %sCol, %sShd ? 80 : 85),\n"
-         "                    text = b.dir == 1 ? \"%s↑\" : \"%s↓\", text_color = %sCol, text_size = size.small,\n"
+         "border_width = %sShd ? 0 : %sW, bgcolor = color.new(%sShd ? color.gray : %sC(b.dir), %sShd ? 80 : 85),\n"
+         "                    text = b.dir == 1 ? \"%s↑\" : \"%s↓\", text_color = %sC(b.dir), text_size = size.small,\n"
          "                    text_halign = %sLblH, text_valign = %sLblV)" % (k, k, k, k, k, t, t, k, k, k)),
         ("\n\n%s" % {"brk": "// Mitigation blocks =========", "mb": "// Delivery Engine (from Nuno's"}[k],
          "\n%sLbl = input.string(\"right\", \"Label\", options = [\"right\", \"left\", \"center\", \"top left\", "
@@ -57,7 +53,7 @@ for k, t, n in (("brk", "B", "breaker"), ("mb", "M", "mitigation block")):
         ("            if %sBox or %sShd\n                b.bx := box.new(" % (k, k),
          "            if not na(b.bx)  // drawn at the break: ends at the pullback, full fill\n"
          "                b.bx.set_right(time)\n"
-         "                b.bx.set_bgcolor(color.new(%sShd ? color.gray : %sCol, %sShd ? 80 : 85))\n"
+         "                b.bx.set_bgcolor(color.new(%sShd ? color.gray : %sC(b.dir), %sShd ? 80 : 85))\n"
          "                b.ml.set_x2(time)\n"
          "            else if %sBox or %sShd\n                b.bx := box.new(" % (k, k, k, k, k)),
         ('"Draw the %s rectangle and its mid line.' % n,

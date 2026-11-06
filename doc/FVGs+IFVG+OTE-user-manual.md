@@ -22,7 +22,7 @@ The indicator works on the chart timeframe. It finds fair value gaps (FVGs) on y
 Two indicators are generated from this one and always stay in sync with it:
 
 - **FVGs+IFVG+OTE4** (`FVGS+IFVG+OTE4.txt`): this indicator without breakers, mitigation blocks, the Delivery Engine (sections 9 to 11, and the A+ label part) and without swing mode. The IFVG confirmation (close or full body) and the inversion rules of the IFVG Settings stay (IFVGs are always created on a close through the FVG). Everything else, and its defaults, is the same.
-- **ICTblocks** (`ICTblocks.txt`): only the breakers, mitigation blocks and the Delivery Engine. It finds the FVGs and close-mode IFVGs exactly as this indicator does (all FVGs, no filter, no 1PFVGs) because the blocks are drawn at their pullbacks, but it draws none of them, so the block **Rectangle** is on by default, filled semi-transparent in the block color and labeled B↑ / B↓ or M↑ / M↓, by default centered on the right side (its **Label** input moves it to the left, the middle or a top corner) (the **Shadow rectangle** keeps its grey fill, with the same label). ICTblocks finds the blocks on the swing structure: the pivot highs and lows (2 candles each side by default) form an alternating high / low sequence, two of a kind merged into the more extreme. A low, a high and a lower low (the second low raids the first) arm a bullish breaker on that high; a higher low arms a bullish mitigation block instead (bearish: mirrored). The block forms on the first close through the armed swing: its zone is the last up-close (bullish) / down-close (bearish) candle at the swing or among the 3 before it, wick to wick for a breaker and its body for a mitigation block. A block whose pullback does not come within **Max bars to the pullback** (60 by default) bars from the zone (its last candle) is dropped: it is of no interest at this timeframe (look at a higher one). The rectangle is drawn from the close beyond the zone on, lighter, and grows while the block waits for its pullback; a block dropped before it (failed, too old, or beyond the number kept) is erased. Once tagged, its rectangle gets the full fill and ends at the pullback candle: the block did its job when price leaves it in its direction, and failed (removed) when price trades through it. Of the Delivery Engine it keeps what still shows without FVG boxes: the displacement filter of those FVGs, the colored displacement candles, and the IFVG confirmation and inversion rules; A+ and the displacement border are only marks on FVG / IFVG boxes and are left out. Use it next to FVGs+IFVG+OTE4 to get the full indicator split in two.
+- **ICTblocks** (`ICTblocks.txt`): only the breakers, mitigation blocks and the Delivery Engine. It finds the FVGs and close-mode IFVGs exactly as this indicator does (all FVGs, no filter, no 1PFVGs) because the blocks are drawn at their pullbacks, but it draws none of them, so the block **Rectangle** is on by default, filled semi-transparent in the block color and labeled B↑ / B↓ or M↑ / M↓, by default centered on the right side (its **Label** input moves it to the left, the middle or a top corner) (the **Shadow rectangle** keeps its grey fill, with the same label). The rectangle is drawn from the close beyond the zone on, lighter, and grows while the block waits for its pullback; a block dropped before it (failed, too old, or beyond the number kept) is erased. Once tagged, its rectangle gets the full fill and ends at the pullback candle: the block did its job when price leaves it in its direction, and failed (removed) when price trades through it. Of the Delivery Engine it keeps what still shows without FVG boxes: the displacement filter of those FVGs, the colored displacement candles, and the IFVG confirmation and inversion rules; A+ and the displacement border are only marks on FVG / IFVG boxes and are left out. Use it next to FVGs+IFVG+OTE4 to get the full indicator split in two.
 
 The indicator raises alerts for IFVG signals, OTE IFVG signals and, optionally, bounces on FVG levels and wick C.E. levels. It does not place orders and does not compute stops or targets.
 
@@ -339,20 +339,22 @@ This feature is on by default. It may be removed in a future version.
 
 ### What it is
 
-- **Bullish breaker:** a swing low, a swing high, then a lower swing low. The breaker zone is the last up-close candle making the high (searched from the swing high back towards the first low). With **Zone** set to *Whole sequence*, it also includes the consecutive up-close candles before that one.
-- **Bearish breaker:** a swing high, a swing low, then a higher swing high. The zone is the last down-close candle making the low, or the whole sequence of down-close candles there.
-- Swings are pivots with **Swing length** (5) candles on each side, so a breaker is known 5 candles after its second low / high.
+- **Swings:** pivots with **Swing length** (2) candles on each side, kept as an alternating high / low sequence: two highs (or lows) in a row are merged into the more extreme one, so the swing between them is the real one.
+- **Bullish breaker:** a swing low, a swing high, then a lower swing low (the second low raids the first). It forms on the first candle closing above that swing high. The zone is the last up-close candle at the swing high or among the 3 candles before it, wick to wick. With **Zone** set to *Whole sequence*, it also includes the consecutive up-close candles before that one.
+- **Bearish breaker:** a swing high, a swing low, then a higher swing high; it forms on the first close below that swing low, with the last down-close candle(s) there as the zone.
+- A swing is used once, and it is dropped if no close goes through it within **Max bars to the pullback**.
 
 ### Entries and the breaker rectangle
 
-- **Long:** price closes above a bullish breaker zone, makes a swing high above it (a pivot of **Swing length** candles, formed after the break), and then pulls back into the zone (a low at or below the zone high).
-- **Short:** price closes below a bearish breaker zone, makes a swing low below it, and then pulls back into the zone (a high at or above the zone low).
+- **Long:** after the close above the swing (the break), price makes a swing high above the zone (a pivot of **Swing length** candles, formed after the break), and then pulls back into the zone (a low at or below the zone high).
+- **Short:** after the close below the swing, price makes a swing low below the zone, and then pulls back into the zone (a high at or above the zone low).
 - A small move beyond the zone and straight back is not a pullback: without that swing the breaker keeps waiting.
-- When, on a pullback candle, a live bullish FVG or the confirmed `IFVG+` (long), or a live bearish FVG or the confirmed `IFVG-` (short), overlaps the zone, the breaker is drawn: a dashed rectangle over the zone, with its mid line, from the breaker candle(s) to that pullback candle. It is drawn once and not extended.
+- When, on a pullback candle, a live bullish FVG or the confirmed `IFVG+` (long), or a live bearish FVG or the confirmed `IFVG-` (short), overlaps the zone, the breaker is drawn: a dashed rectangle over the zone, with its mid line, from the breaker candle(s) to that pullback candle. Every later candle trading back into the zone extends it to that candle, also on a second pullback after price left the zone.
 - On that pullback, the label of an overlapping confirmed `IFVG+` (bullish breaker) or `IFVG-` (bearish breaker) turns **bold**, and an overlapping unmitigated FVG of the same direction that has no label (not an IFVG, no `A+`) gets the label `B↑` (bullish) or `B↓` (bearish).
-- A drawn breaker is removed (rectangle and mid line deleted) only if the pullback itself trades below its low (bullish) or above its high (bearish), before a candle closes out of the zone again in the breaker direction. Otherwise the rectangle stays on the chart for reference.
+- A drawn breaker fails when a candle **closes** below its low (bullish) or above its high (bearish); a wick through it is not enough. If no pullback had worked yet (price never closed out of the zone in the breaker direction after a pullback), the rectangle is erased; otherwise it stays, ending at its last pullback. It also ends when no pullback comes for **Max bars to the pullback** bars.
 - An IFVG confirmed later in the same place as an FVG of its direction that a breaker already tagged (the FVG overlaps the IFVG and is still live, or was mitigated after the IFVG's FVG started) gets the breaker too: its label turns bold.
-- A breaker not drawn yet is dropped when, after the break, a candle closes through the other side of its zone. Only the last **keep** (3) breakers of each direction are followed.
+- A breaker not drawn yet is dropped when, after the break, a candle closes through the other side of its zone, or when its pullback has not come within **Max bars to the pullback** (60) bars from the zone. Only the last **keep** (3) breakers of each direction are followed.
+- **Colors:** the rectangle has a color for bullish (↑) and one for bearish (↓) breakers.
 
 ### How to use it
 
@@ -364,9 +366,9 @@ Mitigation blocks work like breakers (section 10), with the opposite third swing
 
 ### What it is
 
-- **Bullish mitigation block:** a swing low, a swing high, then a **higher** swing low. The zone is at the high: the last up-close candle making it, or with **Zone** *Whole sequence* also the consecutive up-close candles before it.
-- **Bearish mitigation block:** a swing high, a swing low, then a **lower** swing high. The zone is at the low: the last down-close candle making it, or the whole down-close sequence there.
-- Swings are pivots with **Swing length** (5) candles on each side.
+- **Bullish mitigation block:** a swing low, a swing high, then a **higher** swing low (the second low fails to reach the first); it forms on the first close above that high. The zone is the **body** of the last up-close candle at the high or among the 3 before it, or with **Zone** *Whole sequence* also the consecutive up-close candles before it.
+- **Bearish mitigation block:** a swing high, a swing low, then a **lower** swing high; it forms on the first close below that low. The zone is the body of the last down-close candle(s) there.
+- Swings as for breakers: **Swing length** (2) candles on each side, alternating sequence.
 
 ### Entries and labels
 
@@ -487,8 +489,9 @@ Inputs on one line in the settings dialog are listed together; a field without i
 | --- | --- | --- |
 | Breakers at FVG / IFVG pullbacks | on | Finds breakers and draws those that an FVG / IFVG overlaps on the pullback (section 10) |
 | Zone | Last candle | *Last candle*: the last up-close (bullish) / down-close (bearish) candle making the high / low. *Whole sequence*: that candle and the consecutive ones of the same color before it |
-| Swing length / keep | 5 / 3 | Pivot length (left and right) of the swings, and breakers followed per direction |
-| Rectangle, (color), (style), width | off / fuchsia / dashed / 1 | Draw the breaker rectangle and its mid line, with this color, line style and width. Off: nothing is drawn, but the bold IFVG labels and the B↑ / B↓ labels are still set |
+| Swing length / keep | 2 / 3 | Pivot length (left and right) of the swings, and breakers followed per direction |
+| Max bars to the pullback | 60 | Bars from the zone within which the pullback has to come; once drawn, it ends when no pullback comes for that many bars |
+| Rectangle, ↑ (color), ↓ (color), (style), width | off / fuchsia / fuchsia / dashed / 1 | Draw the breaker rectangle and its mid line, with this color, line style and width. Off: nothing is drawn, but the bold IFVG labels and the B↑ / B↓ labels are still set |
 | Flag candles | off | Color the breaker candle(s) with the rectangle color when it is tagged at the pullback, with or without the rectangle; removed together with the rectangle |
 | Shadow rectangle (same line as Flag candles) | off | Draw the breaker as a grey transparent rectangle without border instead of the dashed one, also when Rectangle is off; the mid line stays |
 
@@ -498,8 +501,9 @@ Inputs on one line in the settings dialog are listed together; a field without i
 | --- | --- | --- |
 | Mitigation blocks at FVG / IFVG pullbacks | on | Finds mitigation blocks and draws those that an FVG / IFVG overlaps on the pullback (section 11) |
 | Zone | Last candle | *Last candle*: the last up-close (bullish) / down-close (bearish) candle making the high / low. *Whole sequence*: that candle and the consecutive ones of the same color before it |
-| Swing length / keep | 5 / 3 | Pivot length (left and right) of the swings, and blocks followed per direction |
-| Rectangle, (color), (style), width | off / orange / dashed / 1 | Draw the rectangle and its mid line. Off: nothing is drawn, but the bold IFVG labels with arrows and the M↑ / M↓ labels are still set |
+| Swing length / keep | 2 / 3 | Pivot length (left and right) of the swings, and blocks followed per direction |
+| Max bars to the pullback | 60 | As for breakers |
+| Rectangle, ↑ (color), ↓ (color), (style), width | off / orange / orange / dashed / 1 | Draw the rectangle and its mid line. Off: nothing is drawn, but the bold IFVG labels with arrows and the M↑ / M↓ labels are still set |
 | Flag candles | off | Color the mitigation block candle(s) with the rectangle color when it is tagged at the pullback, with or without the rectangle; removed together with the rectangle |
 | Shadow rectangle (same line as Flag candles) | off | Draw the mitigation block as a grey transparent rectangle without border instead of the dashed one, also when Rectangle is off; the mid line stays |
 

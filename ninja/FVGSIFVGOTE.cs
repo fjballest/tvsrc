@@ -2,7 +2,7 @@
 // FVGSIFVGOTE - Fair value gaps, 1st presented FVGs, inverse FVGs (IFVG) and ICT OTE, for NinjaTrader 8
 // ---------------------------------------------------------------------------------------------------------------------
 // Port of the TradingView Pine Script v6 indicator "FVGs+IFVG+OTE5" by franjballest
-// (source file FVGS+IFVG+OTE.txt, md5 2408b3383f1919ec1d7095978ab21f65). Mozilla Public License 2.0, as the original.
+// (source file FVGS+IFVG+OTE.txt, md5 26aea10309f97da08db5082de2cc9b19). Mozilla Public License 2.0, as the original.
 //
 // What it draws: FVG boxes (or no-fill boxes, or hi / lo / C.E. segments) with C.E. lines, the 1st presented FVG of the
 // session open (New York 09:30, or Madrid 09:00 for DAX) and its optional inverse, wick C.E. segments, IFVG candidates
@@ -185,9 +185,24 @@ namespace NinjaTrader.NinjaScript.Indicators
             public bool broken;
             public int? bkBar;
             public bool swung, tagged;
+            public int zb;       // bar of the last candle of the zone (age)
+            public int pb;       // bar of the last pullback into the zone (age once tagged)
+            public bool won;     // price left the zone in its direction after a pullback
             public GBox bx;
             public GLine ml;
             public List<GLine> fl;
+        }
+
+        // swings as an alternating high / low sequence of the last three pivots (pr prices, br bars, ty 1 high /
+        // -1 low) and the swings armed for a close through them
+        private sealed class BlkSeq
+        {
+            public List<double> pr = new List<double>();
+            public List<int> br = new List<int>();
+            public List<int> ty = new List<int>();
+            public double upLvl = double.NaN, dnLvl = double.NaN;
+            public int upBar, dnBar;
+            public int? upDone, dnDone;
         }
 
         private sealed class HtfPiv
@@ -227,7 +242,7 @@ namespace NinjaTrader.NinjaScript.Indicators
         private bool fponly, ifvgOnly, hideReg, fltOff, fltMid, fltRel, fltRecent, styNoFill, stySeg;
         private const int RelMaxAge = 1000;   // RecentRelevant: hidden FVGs older than this (bars) are dropped
         private Color cL, cLn, cS, cSn, cFp, cFpn, cWfp, cWfpn, cIfp, cIfpn, cWick, cDead, cBullIf, cBearIf;
-        private Color cOteBand, cOteHi, cOteTxt, cBrk, cMb, cIfvgTxt;
+        private Color cOteBand, cOteHi, cOteTxt, cBrk, cMb, cBrkDn, cMbDn, cIfvgTxt;
         private Brush dispBrush;
         private int ifvgTs, ifvgHa, ifvgVa;
         private int tfsecs;
@@ -302,10 +317,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 
         // breakers / mitigation blocks
         private List<Blk> brks, mbs;
-        private double bLastH, bPrevH, bLastL, bPrevL;
-        private int? bLastHb, bPrevHb, bLastLb, bPrevLb;
-        private double mLastH, mPrevH, mLastL, mPrevL;
-        private int? mLastHb, mPrevHb, mLastLb, mPrevLb;
+        private BlkSeq bz, mz;
         private List<List<Gfx>> blkGroups;
 
         // alerts
@@ -413,20 +425,24 @@ namespace NinjaTrader.NinjaScript.Indicators
                 OteTextColor = MkBrush(0x363A45, 0);
                 BreakersOn = true;
                 BreakerZone = FioZoneMode.LastCandle;
-                BreakerSwingLength = 5;
+                BreakerSwingLength = 2;
                 BreakersKept = 3;
+                BreakerMaxAge = 60;
                 BreakerRectangle = false;
                 BreakerColor = MkBrush(0xE040FB, 0);
+                BreakerColorDown = MkBrush(0xE040FB, 0);
                 BreakerLineStyle = DashStyleHelper.Dash;
                 BreakerLineWidth = 1;
                 BreakerFlagCandles = false;
                 BreakerShadow = false;
                 MitigationOn = true;
                 MitigationZone = FioZoneMode.LastCandle;
-                MitigationSwingLength = 5;
+                MitigationSwingLength = 2;
                 MitigationKept = 3;
+                MitigationMaxAge = 60;
                 MitigationRectangle = false;
                 MitigationColor = MkBrush(0xFF9800, 0);
+                MitigationColorDown = MkBrush(0xFF9800, 0);
                 MitigationLineStyle = DashStyleHelper.Dash;
                 MitigationLineWidth = 1;
                 MitigationFlagCandles = false;
@@ -575,6 +591,8 @@ namespace NinjaTrader.NinjaScript.Indicators
             cOteTxt = ColorOf(OteTextColor, CBlack);
             cBrk = ColorOf(BreakerColor, CBlack);
             cMb = ColorOf(MitigationColor, CBlack);
+            cBrkDn = ColorOf(BreakerColorDown, CBlack);
+            cMbDn = ColorOf(MitigationColorDown, CBlack);
             cIfvgTxt = IfvgLabels ? CBlack : Tr(CBlack, 100);
             dispBrush = DispCandleColor;
             ifvgTs = FontPx(IfvgTextSize);
@@ -750,10 +768,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 
             brks = new List<Blk>();
             mbs = new List<Blk>();
-            bLastH = bPrevH = bLastL = bPrevL = double.NaN;
-            bLastHb = bPrevHb = bLastLb = bPrevLb = null;
-            mLastH = mPrevH = mLastL = mPrevL = double.NaN;
-            mLastHb = mPrevHb = mLastLb = mPrevLb = null;
+            bz = new BlkSeq();
+            mz = new BlkSeq();
             blkGroups = new List<List<Gfx>>();
 
             alertBar = new Dictionary<string, int>();
@@ -2320,25 +2336,56 @@ namespace NinjaTrader.NinjaScript.Indicators
         #endregion
 
         #region Breakers / mitigation blocks
-        // zone from candle k0 bars back: the up-close (dir 1) / down-close (dir -1) candle there or the nearest one
-        // before it (not before bar 'from'), plus the consecutive ones before it in "Whole sequence" mode
-        private bool BlkZone(int dir, int k0, int from, bool whole, out double zh, out double zl, out DateTime zt, out DateTime zt1)
+        // true when the sequence changed (two pivots of a kind merged into the more extreme)
+        private static bool BlkPivot(BlkSeq z, double price, int bar, int kind)
+        {
+            int n = z.ty.Count;
+            if (n > 0 && z.ty[n - 1] == kind)
+            {
+                if (kind == 1 ? price > z.pr[n - 1] : price < z.pr[n - 1])
+                {
+                    z.pr[n - 1] = price;
+                    z.br[n - 1] = bar;
+                    return true;
+                }
+                return false;
+            }
+            z.pr.Add(price);
+            z.br.Add(bar);
+            z.ty.Add(kind);
+            while (z.ty.Count > 3)
+            {
+                z.pr.RemoveAt(0);
+                z.br.RemoveAt(0);
+                z.ty.RemoveAt(0);
+            }
+            return true;
+        }
+
+        // zone at the swing k0 bars back: the up-close (dir 1) / down-close (dir -1) candle there or among the 3
+        // before it, wick to wick (breaker) or its body (mitigation block), plus the consecutive ones before it in
+        // "Whole sequence" mode
+        private bool BlkZone(int dir, int k0, bool body, bool whole, out double zh, out double zl, out DateTime zt, out DateTime zt1, out int zk)
         {
             zh = double.NaN;
             zl = double.NaN;
             zt = default(DateTime);
             zt1 = default(DateTime);
+            zk = 0;
             bool found = false;
-            int kmax = Math.Min(Math.Min(bi - from, 300), bi);
+            if (k0 + 3 > 300)
+                return false;
+            int kmax = Math.Min(300, bi);
             int k = k0;
-            while (k <= kmax && !found)
+            while (k <= k0 + 3 && k <= kmax && !found)
             {
                 if ((Cp(k) - Op(k)) * dir > 0)
                 {
-                    zh = Hp(k);
-                    zl = Lp(k);
+                    zh = body ? Math.Max(Op(k), Cp(k)) : Hp(k);
+                    zl = body ? Math.Min(Op(k), Cp(k)) : Lp(k);
                     zt = Tm(k);
                     zt1 = Tm(k);
+                    zk = k;
                     found = true;
                 }
                 k++;
@@ -2347,8 +2394,8 @@ namespace NinjaTrader.NinjaScript.Indicators
             {
                 while (k <= kmax && (Cp(k) - Op(k)) * dir > 0)
                 {
-                    zh = Math.Max(zh, Hp(k));
-                    zl = Math.Min(zl, Lp(k));
+                    zh = Math.Max(zh, body ? Math.Max(Op(k), Cp(k)) : Hp(k));
+                    zl = Math.Min(zl, body ? Math.Min(Op(k), Cp(k)) : Lp(k));
                     zt = Tm(k);
                     k++;
                 }
@@ -2356,7 +2403,62 @@ namespace NinjaTrader.NinjaScript.Indicators
             return found;
         }
 
-        private static void BlkAdd(List<Blk> list, int dir, double zh, double zl, DateTime zt, DateTime zt1, int keep)
+        // detection on a closed bar: the pattern on the swing sequence arms the middle swing (once); the block forms
+        // on the close through it, already broken. isMb: higher low / lower high instead of lower low / higher high
+        private void BlkDetect(BlkSeq z, List<Blk> list, bool isMb, double pH, double pL, int len, int age, bool whole, int keep)
+        {
+            // bearish: high, low, higher high (breaker) / lower high (mitigation block); armed on the low between
+            if (!double.IsNaN(pH) && BlkPivot(z, pH, bi - len, 1))
+            {
+                if (z.ty.Count == 3 && z.ty[0] == 1 && (!z.dnDone.HasValue || z.br[1] != z.dnDone.Value))
+                {
+                    z.dnLvl = (isMb ? z.pr[2] < z.pr[0] : z.pr[2] > z.pr[0]) ? z.pr[1] : double.NaN;
+                    z.dnBar = z.br[1];
+                }
+            }
+            // bullish: low, high, lower low (breaker) / higher low (mitigation block); armed on the high between
+            if (!double.IsNaN(pL) && BlkPivot(z, pL, bi - len, -1))
+            {
+                if (z.ty.Count == 3 && z.ty[0] == -1 && (!z.upDone.HasValue || z.br[1] != z.upDone.Value))
+                {
+                    z.upLvl = (isMb ? z.pr[2] > z.pr[0] : z.pr[2] < z.pr[0]) ? z.pr[1] : double.NaN;
+                    z.upBar = z.br[1];
+                }
+            }
+            if (!double.IsNaN(z.dnLvl) && bi - z.dnBar > age)
+                z.dnLvl = double.NaN;
+            if (!double.IsNaN(z.upLvl) && bi - z.upBar > age)
+                z.upLvl = double.NaN;
+            for (int d = -1; d <= 1; d += 2)
+            {
+                double lvl = d == 1 ? z.upLvl : z.dnLvl;
+                if (double.IsNaN(lvl) || (d == 1 ? !(bc > lvl) : !(bc < lvl)))
+                    continue;
+                int sb = d == 1 ? z.upBar : z.dnBar;
+                double zh, zl;
+                DateTime zt, zt1;
+                int zk;
+                if (BlkZone(d, bi - sb, isMb, whole, out zh, out zl, out zt, out zt1, out zk))
+                {
+                    Blk b = BlkAdd(list, d, zh, zl, zt, zt1, keep);
+                    b.zb = bi - zk;
+                    b.broken = true;
+                    b.bkBar = bi;
+                }
+                if (d == 1)
+                {
+                    z.upDone = sb;
+                    z.upLvl = double.NaN;
+                }
+                else
+                {
+                    z.dnDone = sb;
+                    z.dnLvl = double.NaN;
+                }
+            }
+        }
+
+        private static Blk BlkAdd(List<Blk> list, int dir, double zh, double zl, DateTime zt, DateTime zt1, int keep)
         {
             Blk b = new Blk();
             b.dir = dir;
@@ -2379,6 +2481,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                     }
                 }
             }
+            return b;
         }
 
         private void DelBlk(Blk b)
@@ -2398,6 +2501,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             double mid = (b.hi + b.lo) / 2.0;
             if (b.tagged) return;
             b.tagged = true;
+            b.pb = bi;
             List<Gfx> grp = new List<Gfx>();
             if (flag)
             {
@@ -2473,7 +2577,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                         Touch(f.rect);
                     }
                 }
-                BlkDraw(b, BreakerFlagCandles, BreakerRectangle, BreakerShadow, cBrk, BreakerLineStyle, BreakerLineWidth);
+                BlkDraw(b, BreakerFlagCandles, BreakerRectangle, BreakerShadow, b.dir == 1 ? cBrk : cBrkDn, BreakerLineStyle, BreakerLineWidth);
             }
         }
 
@@ -2512,28 +2616,54 @@ namespace NinjaTrader.NinjaScript.Indicators
                         Touch(f.rect);
                     }
                 }
-                BlkDraw(b, MitigationFlagCandles, MitigationRectangle, MitigationShadow, cMb, MitigationLineStyle, MitigationLineWidth);
+                BlkDraw(b, MitigationFlagCandles, MitigationRectangle, MitigationShadow, b.dir == 1 ? cMb : cMbDn, MitigationLineStyle, MitigationLineWidth);
             }
         }
 
         // life cycle of breakers (isMb false) or mitigation blocks (isMb true) on a closed bar
         private void BlkUpdate(List<Blk> list, bool isMb, double pH, double pL, int len)
         {
+            int age = isMb ? MitigationMaxAge : BreakerMaxAge;
+            BlkUpdate2(list, isMb, pH, pL, len, age);
+        }
+
+        private void BlkUpdate2(List<Blk> list, bool isMb, double pH, double pL, int len, int age)
+        {
             for (int i = list.Count - 1; i >= 0; i--)
             {
                 Blk b = list[i];
                 if (b.tagged)
                 {
-                    // drawn, pullback still going on: removed when it trades beyond the far side; once price closes
-                    // out of the zone in the block direction the rectangle stays for reference
-                    if ((b.dir == 1 && bl < b.lo) || (b.dir == -1 && bh > b.hi))
+                    // drawn: each pullback into the zone extends it (also a later one, after price left it in its
+                    // direction); it fails on a close through its far side (erased if no pullback worked yet) and
+                    // ends when no pullback came for the age limit
+                    if ((b.dir == 1 && bc < b.lo) || (b.dir == -1 && bc > b.hi))
                     {
-                        DelBlk(b);
+                        if (!b.won)
+                            DelBlk(b);
                         list.RemoveAt(i);
                     }
-                    else if ((b.dir == 1 && bc > b.hi) || (b.dir == -1 && bc < b.lo))
+                    else if (bi - b.pb > age)
                         list.RemoveAt(i);
+                    else
+                    {
+                        if ((b.dir == 1 && bl <= b.hi) || (b.dir == -1 && bh >= b.lo))
+                        {
+                            b.pb = bi;
+                            if (b.bx != null)
+                            {
+                                b.bx.T2 = curTime;
+                                b.ml.T2 = curTime;
+                                Touch(b.bx);
+                                Touch(b.ml);
+                            }
+                        }
+                        if ((b.dir == 1 && bc > b.hi) || (b.dir == -1 && bc < b.lo))
+                            b.won = true;
+                    }
                 }
+                else if (bi - b.zb > age)
+                    list.RemoveAt(i); // no pullback in time: of no interest at this timeframe
                 else if (!b.broken)
                 {
                     if ((b.dir == 1 && bc > b.hi) || (b.dir == -1 && bc < b.lo))
@@ -2592,7 +2722,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                             else BrkTag(swFvg, b, ifvgBox);
                         }
                     }
-                    if (b.tagged && ((b.dir == 1 && bl < b.lo) || (b.dir == -1 && bh > b.hi)))
+                    if (b.tagged && ((b.dir == 1 && bc < b.lo) || (b.dir == -1 && bc > b.hi)))
                     {
                         DelBlk(b);
                         list.RemoveAt(i);
@@ -3233,39 +3363,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             double bPL = PivLo(b0, bi, BreakerSwingLength, BreakerSwingLength);
             if (BreakersOn)
             {
-                bool whole = BreakerZone == FioZoneMode.WholeSequence;
-                if (!double.IsNaN(bPL))
-                {
-                    bPrevL = bLastL;
-                    bPrevLb = bLastLb;
-                    bLastL = bPL;
-                    bLastLb = bi - BreakerSwingLength;
-                    // bullish: low, high, lower low (the high between the two lows)
-                    if (!double.IsNaN(bPrevL) && bLastL < bPrevL && bLastHb.HasValue && bPrevLb.HasValue
-                        && bLastHb.Value > bPrevLb.Value && bLastHb.Value < bLastLb.Value)
-                    {
-                        double zh, zl;
-                        DateTime zt, zt1;
-                        if (BlkZone(1, bi - bLastHb.Value, bPrevLb.Value, whole, out zh, out zl, out zt, out zt1))
-                            BlkAdd(brks, 1, zh, zl, zt, zt1, BreakersKept);
-                    }
-                }
-                if (!double.IsNaN(bPH))
-                {
-                    bPrevH = bLastH;
-                    bPrevHb = bLastHb;
-                    bLastH = bPH;
-                    bLastHb = bi - BreakerSwingLength;
-                    // bearish: high, low, higher high (the low between the two highs)
-                    if (!double.IsNaN(bPrevH) && bLastH > bPrevH && bLastLb.HasValue && bPrevHb.HasValue
-                        && bLastLb.Value > bPrevHb.Value && bLastLb.Value < bLastHb.Value)
-                    {
-                        double zh, zl;
-                        DateTime zt, zt1;
-                        if (BlkZone(-1, bi - bLastLb.Value, bPrevHb.Value, whole, out zh, out zl, out zt, out zt1))
-                            BlkAdd(brks, -1, zh, zl, zt, zt1, BreakersKept);
-                    }
-                }
+                BlkDetect(bz, brks, false, bPH, bPL, BreakerSwingLength, BreakerMaxAge, BreakerZone == FioZoneMode.WholeSequence, BreakersKept);
                 BlkUpdate(brks, false, bPH, bPL, BreakerSwingLength);
             }
 
@@ -3274,39 +3372,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             double mPL = PivLo(b0, bi, MitigationSwingLength, MitigationSwingLength);
             if (MitigationOn)
             {
-                bool whole = MitigationZone == FioZoneMode.WholeSequence;
-                if (!double.IsNaN(mPL))
-                {
-                    mPrevL = mLastL;
-                    mPrevLb = mLastLb;
-                    mLastL = mPL;
-                    mLastLb = bi - MitigationSwingLength;
-                    // bullish: low, high, higher low (the high between the two lows)
-                    if (!double.IsNaN(mPrevL) && mLastL > mPrevL && mLastHb.HasValue && mPrevLb.HasValue
-                        && mLastHb.Value > mPrevLb.Value && mLastHb.Value < mLastLb.Value)
-                    {
-                        double zh, zl;
-                        DateTime zt, zt1;
-                        if (BlkZone(1, bi - mLastHb.Value, mPrevLb.Value, whole, out zh, out zl, out zt, out zt1))
-                            BlkAdd(mbs, 1, zh, zl, zt, zt1, MitigationKept);
-                    }
-                }
-                if (!double.IsNaN(mPH))
-                {
-                    mPrevH = mLastH;
-                    mPrevHb = mLastHb;
-                    mLastH = mPH;
-                    mLastHb = bi - MitigationSwingLength;
-                    // bearish: high, low, lower high (the low between the two highs)
-                    if (!double.IsNaN(mPrevH) && mLastH < mPrevH && mLastLb.HasValue && mPrevHb.HasValue
-                        && mLastLb.Value > mPrevHb.Value && mLastLb.Value < mLastHb.Value)
-                    {
-                        double zh, zl;
-                        DateTime zt, zt1;
-                        if (BlkZone(-1, bi - mLastLb.Value, mPrevHb.Value, whole, out zh, out zl, out zt, out zt1))
-                            BlkAdd(mbs, -1, zh, zl, zt, zt1, MitigationKept);
-                    }
-                }
+                BlkDetect(mz, mbs, true, mPH, mPL, MitigationSwingLength, MitigationMaxAge, MitigationZone == FioZoneMode.WholeSequence, MitigationKept);
                 BlkUpdate(mbs, true, mPH, mPL, MitigationSwingLength);
             }
 
@@ -3907,6 +3973,23 @@ namespace NinjaTrader.NinjaScript.Indicators
         public int BreakersKept { get; set; }
 
         [NinjaScriptProperty]
+        [Range(5, 1000)]
+        [Display(Name = "Max bars to the pullback", GroupName = "Breakers", Order = 711, Description = "Bars from the zone within which the pullback has to come; later the breaker is dropped. Once tagged, it ends when no pullback comes for that many bars.")]
+        public int BreakerMaxAge { get; set; }
+
+        [NinjaScriptProperty]
+        [XmlIgnore]
+        [Display(Name = "Rectangle color (bearish)", GroupName = "Breakers", Order = 712)]
+        public Brush BreakerColorDown { get; set; }
+
+        [Browsable(false)]
+        public string BreakerColorDownSerializable
+        {
+            get { return Serialize.BrushToString(BreakerColorDown); }
+            set { BreakerColorDown = Serialize.StringToBrush(value); }
+        }
+
+        [NinjaScriptProperty]
         [Display(Name = "Rectangle", GroupName = "Breakers", Order = 705, Description = "Draw the breaker rectangle and its mid line.")]
         public bool BreakerRectangle { get; set; }
 
@@ -3956,6 +4039,23 @@ namespace NinjaTrader.NinjaScript.Indicators
         [Range(1, 10)]
         [Display(Name = "Keep", GroupName = "Mitigation blocks", Order = 804)]
         public int MitigationKept { get; set; }
+
+        [NinjaScriptProperty]
+        [Range(5, 1000)]
+        [Display(Name = "Max bars to the pullback", GroupName = "Mitigation blocks", Order = 811, Description = "Bars from the zone within which the pullback has to come; later the mitigation block is dropped. Once tagged, it ends when no pullback comes for that many bars.")]
+        public int MitigationMaxAge { get; set; }
+
+        [NinjaScriptProperty]
+        [XmlIgnore]
+        [Display(Name = "Rectangle color (bearish)", GroupName = "Mitigation blocks", Order = 812)]
+        public Brush MitigationColorDown { get; set; }
+
+        [Browsable(false)]
+        public string MitigationColorDownSerializable
+        {
+            get { return Serialize.BrushToString(MitigationColorDown); }
+            set { MitigationColorDown = Serialize.StringToBrush(value); }
+        }
 
         [NinjaScriptProperty]
         [Display(Name = "Rectangle", GroupName = "Mitigation blocks", Order = 805)]
