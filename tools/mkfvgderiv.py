@@ -50,6 +50,12 @@ for k, t, n in (("brk", "B", "breaker"), ("mb", "M", "mitigation block")):
          "%sLblV = %sLbl == \"top left\" or %sLbl == \"top right\" ? text.align_top : text.align_center\n\n%s"
          % (k, {"brk": "BRK", "mb": "MB"}[k], t, t, k, k, k, k, k, k, k,
             {"brk": "// Mitigation blocks =========", "mb": "// Delivery Engine (from Nuno's"}[k])),
+        ("            if %sBox or %sShd\n                b.bx := box.new(" % (k, k),
+         "            if not na(b.bx)  // drawn at the break: ends at the pullback, full fill\n"
+         "                b.bx.set_right(time)\n"
+         "                b.bx.set_bgcolor(color.new(%sShd ? color.gray : %sCol, %sShd ? 80 : 85))\n"
+         "                b.ml.set_x2(time)\n"
+         "            else if %sBox or %sShd\n                b.bx := box.new(" % (k, k, k, k, k)),
         ('"Draw the %s rectangle and its mid line.' % n,
          '"Draw the %s rectangle (semi-transparent fill, labeled %s↑ / %s↓) and its mid line.' % (n, t, t)),
     ]

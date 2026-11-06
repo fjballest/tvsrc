@@ -1664,6 +1664,24 @@ brkZone(int dir, int k0, int from) =>
             k += 1
     [zh, zl, zt, zt1]
 
+// ICTblocks: the breaker is drawn from its break on, lighter, growing while it waits for the pullback;
+// erased when it is dropped before the pullback (failed, too old or one too many)
+brkWait(Breaker b) =>
+    if brkBox or brkShd
+        b.bx := box.new(b.t, b.hi, time, b.lo, xloc = xloc.bar_time,
+            border_color = brkShd ? color.new(color.gray, 100) : brkCol, border_style = brkSty,
+            border_width = brkShd ? 0 : brkW, bgcolor = color.new(brkShd ? color.gray : brkCol, brkShd ? 88 : 93),
+            text = b.dir == 1 ? "B↑" : "B↓", text_color = brkCol, text_size = size.small,
+            text_halign = brkLblH, text_valign = brkLblV)
+        b.ml := line.new(b.t, (b.hi + b.lo) / 2, time, (b.hi + b.lo) / 2, xloc = xloc.bar_time, color = brkCol,
+            style = brkSty, width = brkW)
+    true
+brkDrop(Breaker b) =>
+    if not b.tagged and not na(b.bx)
+        b.bx.delete()
+        b.ml.delete()
+    true
+
 brkAdd(int dir, float zh, float zl, int zt, int zt1) =>
     brks.push(Breaker.new(dir, zh, zl, zt, t1 = zt1))
     int cnt = 0
@@ -1673,7 +1691,7 @@ brkAdd(int dir, float zh, float zl, int zt, int zt1) =>
     if cnt > brkKeep
         for i = 0 to brks.size() - 1
             if brks.get(i).dir == dir
-                brks.remove(i)
+                brkDrop(brks.remove(i))
                 break
     true
 
@@ -1716,7 +1734,11 @@ brkTag(FVG f, Breaker b, box ib) =>
                         b.fl.push(line.new(time[kk], open[kk], time[kk], close[kk], xloc = xloc.bar_time,
                              color = brkCol, width = 5))
                     kk += 1
-            if brkBox or brkShd
+            if not na(b.bx)  // drawn at the break: ends at the pullback, full fill
+                b.bx.set_right(time)
+                b.bx.set_bgcolor(color.new(brkShd ? color.gray : brkCol, brkShd ? 80 : 85))
+                b.ml.set_x2(time)
+            else if brkBox or brkShd
                 b.bx := box.new(b.t, b.hi, time, b.lo, xloc = xloc.bar_time,
                     border_color = brkShd ? color.new(color.gray, 100) : brkCol, border_style = brkSty,
                     border_width = brkShd ? 0 : brkW, bgcolor = color.new(brkShd ? color.gray : brkCol, brkShd ? 80 : 85),
@@ -1750,6 +1772,9 @@ if brkOn and barstate.isconfirmed
     if brks.size() > 0
         for i = brks.size() - 1 to 0
             Breaker b = brks.get(i)
+            if not b.tagged and not na(b.bx)
+                b.bx.set_right(time)
+                b.ml.set_x2(time)
             if b.tagged
                 // drawn, pullback still going on: removed when it trades beyond the far side; once price closes
                 // out of the zone in the breaker direction the rectangle stays for reference
@@ -1767,8 +1792,9 @@ if brkOn and barstate.isconfirmed
                 if (b.dir == 1 and close > b.hi) or (b.dir == -1 and close < b.lo)
                     b.broken := true
                     b.bkBar := bar_index
+                    brkWait(b)
             else if bar_index - b.bkBar > brkAge
-                brks.remove(i)  // no pullback in time: of no interest at this timeframe
+                brkDrop(brks.remove(i))  // no pullback in time: of no interest at this timeframe
             else if not b.swung
                 // after the break: wait for a swing high above the zone (bullish) / low below it (bearish)
                 if b.dir == 1 and not na(bPH) and bar_index - brkLen >= b.bkBar and bPH > b.hi
@@ -1776,9 +1802,9 @@ if brkOn and barstate.isconfirmed
                 else if b.dir == -1 and not na(bPL) and bar_index - brkLen >= b.bkBar and bPL < b.lo
                     b.swung := true
                 else if (b.dir == 1 and close < b.lo) or (b.dir == -1 and close > b.hi)
-                    brks.remove(i)  // closed through the other side before the swing: invalidated
+                    brkDrop(brks.remove(i))  // closed through the other side before the swing: invalidated
             else if (b.dir == 1 and close < b.lo) or (b.dir == -1 and close > b.hi)
-                brks.remove(i)  // closed through the other side: invalidated
+                brkDrop(brks.remove(i))  // closed through the other side: invalidated
             else if (b.dir == 1 and low <= b.hi) or (b.dir == -1 and high >= b.lo)
                 // pullback into the zone: tag the FVGs / IFVGs of the trade direction that overlap it
                 array<FVG> fs0 = b.dir == 1 ? lfvgs : sfvgs
@@ -1851,6 +1877,24 @@ mbZone(int dir, int k0, int from) =>
             k += 1
     [zh, zl, zt, zt1]
 
+// ICTblocks: the mitigation block is drawn from its break on, lighter, growing while it waits for the pullback;
+// erased when it is dropped before the pullback (failed, too old or one too many)
+mbWait(MBlock b) =>
+    if mbBox or mbShd
+        b.bx := box.new(b.t, b.hi, time, b.lo, xloc = xloc.bar_time,
+            border_color = mbShd ? color.new(color.gray, 100) : mbCol, border_style = mbSty,
+            border_width = mbShd ? 0 : mbW, bgcolor = color.new(mbShd ? color.gray : mbCol, mbShd ? 88 : 93),
+            text = b.dir == 1 ? "M↑" : "M↓", text_color = mbCol, text_size = size.small,
+            text_halign = mbLblH, text_valign = mbLblV)
+        b.ml := line.new(b.t, (b.hi + b.lo) / 2, time, (b.hi + b.lo) / 2, xloc = xloc.bar_time, color = mbCol,
+            style = mbSty, width = mbW)
+    true
+mbDrop(MBlock b) =>
+    if not b.tagged and not na(b.bx)
+        b.bx.delete()
+        b.ml.delete()
+    true
+
 mbAdd(int dir, float zh, float zl, int zt, int zt1) =>
     mbs.push(MBlock.new(dir, zh, zl, zt, t1 = zt1))
     int cnt = 0
@@ -1860,7 +1904,7 @@ mbAdd(int dir, float zh, float zl, int zt, int zt1) =>
     if cnt > mbKeep
         for i = 0 to mbs.size() - 1
             if mbs.get(i).dir == dir
-                mbs.remove(i)
+                mbDrop(mbs.remove(i))
                 break
     true
 
@@ -1902,7 +1946,11 @@ mbTag(FVG f, MBlock b, box ib, int which) =>
                         b.fl.push(line.new(time[kk], open[kk], time[kk], close[kk], xloc = xloc.bar_time,
                              color = mbCol, width = 5))
                     kk += 1
-            if mbBox or mbShd
+            if not na(b.bx)  // drawn at the break: ends at the pullback, full fill
+                b.bx.set_right(time)
+                b.bx.set_bgcolor(color.new(mbShd ? color.gray : mbCol, mbShd ? 80 : 85))
+                b.ml.set_x2(time)
+            else if mbBox or mbShd
                 b.bx := box.new(b.t, b.hi, time, b.lo, xloc = xloc.bar_time,
                     border_color = mbShd ? color.new(color.gray, 100) : mbCol, border_style = mbSty,
                     border_width = mbShd ? 0 : mbW, bgcolor = color.new(mbShd ? color.gray : mbCol, mbShd ? 80 : 85),
@@ -1936,6 +1984,9 @@ if mbOn and barstate.isconfirmed
     if mbs.size() > 0
         for i = mbs.size() - 1 to 0
             MBlock b = mbs.get(i)
+            if not b.tagged and not na(b.bx)
+                b.bx.set_right(time)
+                b.ml.set_x2(time)
             if b.tagged
                 // drawn, pullback still going on: removed when it trades beyond the far side; once price closes
                 // out of the zone in the mitigation block direction the rectangle stays for reference
@@ -1953,8 +2004,9 @@ if mbOn and barstate.isconfirmed
                 if (b.dir == 1 and close > b.hi) or (b.dir == -1 and close < b.lo)
                     b.broken := true
                     b.bkBar := bar_index
+                    mbWait(b)
             else if bar_index - b.bkBar > mbAge
-                mbs.remove(i)  // no pullback in time: of no interest at this timeframe
+                mbDrop(mbs.remove(i))  // no pullback in time: of no interest at this timeframe
             else if not b.swung
                 // after the break: wait for a swing high above the zone (bullish) / low below it (bearish)
                 if b.dir == 1 and not na(mPH) and bar_index - mbLen >= b.bkBar and mPH > b.hi
@@ -1962,9 +2014,9 @@ if mbOn and barstate.isconfirmed
                 else if b.dir == -1 and not na(mPL) and bar_index - mbLen >= b.bkBar and mPL < b.lo
                     b.swung := true
                 else if (b.dir == 1 and close < b.lo) or (b.dir == -1 and close > b.hi)
-                    mbs.remove(i)  // closed through the other side before the swing: invalidated
+                    mbDrop(mbs.remove(i))  // closed through the other side before the swing: invalidated
             else if (b.dir == 1 and close < b.lo) or (b.dir == -1 and close > b.hi)
-                mbs.remove(i)  // closed through the other side: invalidated
+                mbDrop(mbs.remove(i))  // closed through the other side: invalidated
             else if (b.dir == 1 and low <= b.hi) or (b.dir == -1 and high >= b.lo)
                 // pullback into the zone: tag the FVGs / IFVGs of the trade direction that overlap it
                 array<FVG> fs0 = b.dir == 1 ? lfvgs : sfvgs
