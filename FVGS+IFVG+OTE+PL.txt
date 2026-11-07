@@ -108,7 +108,10 @@ attLvl = input.int(0, "Attenuation", minval = 0, maxval = 4, group = GRP_EN, inl
         "Segments, signals and breaker / mitigation block fills keep their look apart from the colors.")
 // [ATT] attenuation: fills (F), borders / lines / text (B), box borders (gone from 3, C.E. lines at 4),
 // transparencies (T) and widths; attE is the strength (levels 1, 2, 3 and 4 -> 2, 3, 4 and 4)
-int attE = attLvl == 0 ? 0 : attLvl == 1 ? 2 : attLvl == 2 ? 3 : 4
+attEof(int l) =>
+    l == 0 ? 0 : l == 1 ? 2 : l == 2 ? 3 : 4
+int attE = attEof(attLvl)
+int attEc = attEof(math.max(attLvl - 1, 0)) // C.E. lines: one level less
 attF(color c) =>
     attE == 0 or na(c) ? c : color.new(c, color.t(c) + (100 - color.t(c)) * attE * 0.15)
 attB(color c) =>
@@ -119,6 +122,11 @@ attTB(int t) =>
     attLvl >= 3 ? 100 : int(math.round(t + (100 - t) * attE * 0.18))
 attW(int w) =>
     math.max(1, w - int(attE / 2))
+// a border color (already attB) as for one level less: the C.E. lines
+attCE(color c) =>
+    attE == 0 or na(c) ? c : color.new(c, 100 - (100 - color.t(c)) * (1 - attEc * 0.18) / (1 - attE * 0.18))
+attWc(int w) =>
+    math.max(1, w - int(attEc / 2))
 bool fponly = drawMode == "1PFVGs"            // regular FVGs are discarded
 // [1PF] the 1PFVG of a day of the week d (dayofweek.*) is kept as a 1PFVG
 fpPass(int d) =>
@@ -168,7 +176,7 @@ bool stySeg = drawStyle == "Segments (hi / lo / C.E.)"
 
 var mince = input.int(20, "C.E.: min height", minval = 10, maxval = 1000, group = GRP_MAIN, inline = "ce",
     tooltip = "Min FVG height to draw the C.E.")
-var celnwid = attW(input.int(2, "width", minval = 1, maxval = 3, group = GRP_MAIN, inline = "ce"))
+var celnwid = input.int(2, "width", minval = 1, maxval = 3, group = GRP_MAIN, inline = "ce")
 var cesty = getstyle(input.string("dotted", "style", options = ["solid", "dashed", "dotted"], group = GRP_MAIN, inline = "ce"))
 
 var lcol = attF(input.color( color.new(#FF6D00, 90), "Long FVG color", group = GRP_MAIN, inline = "lfvg"))
@@ -829,7 +837,7 @@ method lnColor(FVG f, bool ce = false) =>
         c := ilnfpcol
     bool hid = hideReg and (ifvgOnly or (not f.isfp and not f.isifp))
     // [REL] too small for a C.E.: no border (boxes only; segments are the lines themselves)
-    hid or (f.relSmall() and not stySeg) or (attLvl >= (ce ? 4 : 3) and not stySeg) ? color.new(c, 100) : c
+    hid or (f.relSmall() and not stySeg) or (attLvl >= (ce ? 4 : 3) and not stySeg) ? color.new(c, 100) : ce ? attCE(c) : c
 
 // IFVG boxes: the FVG box itself is turned into the IFVG box (no second box on the same place) ====
 var array<FVG> keptIf = array.new<FVG>()   // FVGs whose box is currently shown as IFVG
@@ -1452,7 +1460,7 @@ updfvgs(array<FVG> fvgs) =>
                     color = f.lnColor(true),
                     style = cesty,
                     xloc = xloc.bar_time,
-                    width = celnwid)
+                    width = attWc(celnwid))
                 if f.isfp
                     f.celine.set_extend(extend.right)
             // always follow the end: an FVG extended by a merged duplicate (end reset) has to grow again.

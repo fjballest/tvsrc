@@ -13,7 +13,7 @@
  *   BM↑/BM↓, inheritance of the tags by IFVGs) and LONG / SHORT / OTE signal markers.
  *
  *   Port of the TradingView Pine Script v6 indicator "FVGS+IFVG+OTE.txt"
- *   (md5 85f5b42dc212a2d41f49e73bd8aa9f1b, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
+ *   (md5 55d3eba960fda89aa14ad188eb941792, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
  *   input variable names (camelCase). See the design document (d.md) and user manual (m.md) for the logic.
  *
  * How to install
@@ -1266,7 +1266,9 @@ class FVGSIFVGOTE {
     }
     // [ATT] attenuation: fills (cF), borders / lines / text (cB), box borders (cBx: gone at 4), widths (attW)
     // (box borders gone from level 3, C.E. lines at 4; attE is the strength: levels 1, 2, 3, 4 -> 2, 3, 4, 4)
-    attE() { const L = this.P.attLvl; return L === 0 ? 0 : L === 1 ? 2 : L === 2 ? 3 : 4; }
+    attE(l = this.P.attLvl) { return l === 0 ? 0 : l === 1 ? 2 : l === 2 ? 3 : 4; }
+    cBc(c, t) { return col(c, t + (100 - t) * this.attE(Math.max(this.P.attLvl - 1, 0)) * 0.18); } // C.E.: one level less
+    attWc(w) { return Math.max(1, w - Math.floor(this.attE(Math.max(this.P.attLvl - 1, 0)) / 2)); }
     cF(c, t) { return col(c, t + (100 - t) * this.attE() * 0.15); }
     cB(c, t) { return col(c, t + (100 - t) * this.attE() * 0.18); }
     cBx(c, t) { return this.P.attLvl >= 3 ? col(c, 100) : this.cB(c, t); }
@@ -1298,7 +1300,7 @@ class FVGSIFVGOTE {
         if (f.isifp) c = P.ilnfpcol;
         const hid = this.hideReg && (this.ifvgOnly || (!f.isfp && !f.isifp));
         // [REL] too small for a C.E.: no border (boxes only; segments are the lines themselves)
-        return hid || (this.relSmall(f) && !this.stySeg) ? col(c, 100) : (this.stySeg || (ce && this.P.attLvl === 3) ? this.cB(c, 20) : this.cBx(c, 20));
+        return hid || (this.relSmall(f) && !this.stySeg) ? col(c, 100) : (ce ? (this.P.attLvl >= 4 && !this.stySeg ? col(c, 100) : this.cBc(c, 20)) : (this.stySeg ? this.cB(c, 20) : this.cBx(c, 20)));
     }
     clearlastfp() {
         while (this.fpfvgs.length > this.P.nfp) {
@@ -1603,7 +1605,7 @@ class FVGSIFVGOTE {
                     }
                 }
                 if (!f.celine && f.hi - f.lo > P.mince) {
-                    f.celine = this.g.line({ x1: f.start, y1: f.ce, x2: et, y2: f.ce, color: this.lnColor(f, true), style: P.cesty, width: this.attW(P.celnwid) });
+                    f.celine = this.g.line({ x1: f.start, y1: f.ce, x2: et, y2: f.ce, color: this.lnColor(f, true), style: P.cesty, width: this.attWc(P.celnwid) });
                     if (f.isfp) f.celine.extend = "right";
                 }
                 if (f.rect && !f.kept) f.rect.right = et;

@@ -272,7 +272,7 @@ def main():
         s = s.replace(a, b)
     # no C.E. lines here: lnColor needs no ce argument (it would be reported as unused)
     for a, b in [("method lnColor(FVG f, bool ce = false) =>", "method lnColor(FVG f) =>"),
-                 ("(attLvl >= (ce ? 4 : 3) and not stySeg)", "(attLvl >= 3 and not stySeg)")]:
+                 ("(attLvl >= (ce ? 4 : 3) and not stySeg) ? color.new(c, 100) : ce ? attCE(c) : c", "(attLvl >= 3 and not stySeg) ? color.new(c, 100) : c")]:
         assert s.count(a) == 1, a
         s = s.replace(a, b)
     # Border only: no fill for the block rectangles (the shadow rectangle keeps its own)

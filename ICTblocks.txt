@@ -63,7 +63,10 @@ fpMode = "all"
 attLvl = 0
 // [ATT] attenuation: fills (F), borders / lines / text (B), box borders (gone from 3, C.E. lines at 4),
 // transparencies (T) and widths; attE is the strength (levels 1, 2, 3 and 4 -> 2, 3, 4 and 4)
-int attE = attLvl == 0 ? 0 : attLvl == 1 ? 2 : attLvl == 2 ? 3 : 4
+attEof(int l) =>
+    l == 0 ? 0 : l == 1 ? 2 : l == 2 ? 3 : 4
+int attE = attEof(attLvl)
+int attEc = attEof(math.max(attLvl - 1, 0)) // C.E. lines: one level less
 attF(color c) =>
     attE == 0 or na(c) ? c : color.new(c, color.t(c) + (100 - color.t(c)) * attE * 0.15)
 attB(color c) =>
@@ -74,6 +77,11 @@ attTB(int t) =>
     attLvl >= 3 ? 100 : int(math.round(t + (100 - t) * attE * 0.18))
 attW(int w) =>
     math.max(1, w - int(attE / 2))
+// a border color (already attB) as for one level less: the C.E. lines
+attCE(color c) =>
+    attE == 0 or na(c) ? c : color.new(c, 100 - (100 - color.t(c)) * (1 - attEc * 0.18) / (1 - attE * 0.18))
+attWc(int w) =>
+    math.max(1, w - int(attEc / 2))
 bool fponly = drawMode == "1PFVGs"            // regular FVGs are discarded
 // [1PF] the 1PFVG of a day of the week d (dayofweek.*) is kept as a 1PFVG
 fpPass(int d) =>
@@ -114,7 +122,7 @@ bool styNoFill = drawStyle == "Box, no fill"
 bool stySeg = drawStyle == "Segments (hi / lo / C.E.)"
 
 var mince = 20
-var celnwid = attW(2)
+var celnwid = 2
 var cesty = getstyle("dotted")
 
 var lcol = attF(color.new(#FF6D00, 90))
