@@ -2380,7 +2380,7 @@ if brkOn and barstate.isconfirmed
                 if (b.dir == 1 and dC > b.hi) or (b.dir == -1 and dC < b.lo)
                     b.broken := true
                     b.bkBar := bar_index
-                    brkWait(b)
+//#blk                     brkWait(b)
             else if not b.swung
                 // after the break: wait for a swing high above the zone (bullish) / low below it (bearish)
                 if b.dir == 1 and not na(bPH) and bar_index - brkLen >= b.bkBar and bPH > b.hi
@@ -2586,7 +2586,7 @@ if mbOn and barstate.isconfirmed
                 if (b.dir == 1 and dC > b.hi) or (b.dir == -1 and dC < b.lo)
                     b.broken := true
                     b.bkBar := bar_index
-                    mbWait(b)
+//#blk                     mbWait(b)
             else if not b.swung
                 // after the break: wait for a swing high above the zone (bullish) / low below it (bearish)
                 if b.dir == 1 and not na(mPH) and bar_index - mbLen >= b.bkBar and mPH > b.hi
