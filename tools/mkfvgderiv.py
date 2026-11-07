@@ -25,7 +25,8 @@ BLK_KEEP = re.compile(r"^(brk\w*|mb\w*|deDisp|deDispType|deStdLen|deStdX|deDispB
 BLK_SET = {"dofp": "false", "dowick": "false", "useOTE": "false", "oteFvg": "false", "showOTEband": "false",
            "showSignals": "false", "showOTEsig": "false", "doifvgalert": "false", "dofvgalert": "false",
            "dowickalert": "false", "fp1m": "false", "oteHtf1": "false", "oteHtf2": "false",
-           "deAplus": "false", "deFlag": "false", "showSwing": "false", "ifvgswings": "false"}
+           "deAplus": "false", "deFlag": "false", "showSwing": "false", "ifvgswings": "false",
+           "attLvl": "0"}  # no attenuation of the block drawings
 BLK_SUBST = [  # (old, new): defaults of the inputs it keeps
     ('brkBox = input.bool(false, "Rectangle"', 'brkBox = input.bool(true, "Rectangle"'),
     ('mbBox = input.bool(false, "Rectangle"', 'mbBox = input.bool(true, "Rectangle"'),

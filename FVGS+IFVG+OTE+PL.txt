@@ -101,8 +101,8 @@ fpMode = input.string("all", "1PFVG filter", options = ["all", "week", "week+fri
         "(Mondays).\nweek+fridays: the Monday and the Friday 1PFVGs.\nweek+fridays+last: also the latest 1PFVG, whatever "+
         "the day (it goes away when the next one forms). The others are plain FVGs (and no inverse 1PFVG "+
         "follows them). Keep counts the kept ones, so with week it holds that many weeks.")
-attLvl = input.int(0, "Attenuation", minval = 0, maxval = 4, group = GRP_EN, inline = "att",
-    tooltip = "Tones down the drawings for a cleaner chart. 0: as configured. 1 and 2: fills, borders, lines and "+
+attLvl = input.int(2, "Attenuation", minval = 0, maxval = 4, group = GRP_EN, inline = "att",
+    tooltip = "Tones down the drawings for a cleaner chart. 0: as configured (2 by default). 1 and 2: fills, borders, lines and "+
         "texts more transparent, and thinner. 3: as 2 and more, boxes without border (fills only) but with their C.E. "+
         "line. 4: as 3, without the C.E. lines either. Applied on top of the colors and widths chosen below. "+
         "Segments, signals and breaker / mitigation block fills keep their look apart from the colors.")
