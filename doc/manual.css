@@ -1,0 +1,11 @@
+body{font-family:"DejaVu Sans",Arial,sans-serif;font-size:10.5pt;line-height:1.45;max-width:none;margin:0;color:#222}
+h1{font-size:20pt;border-bottom:2px solid #333;padding-bottom:4px}
+h2{font-size:15pt;margin-top:22px;border-bottom:1px solid #aaa;padding-bottom:2px}
+h3{font-size:12.5pt;margin-top:16px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:9.5pt}
+th,td{border:1px solid #bbb;padding:4px 6px;vertical-align:top;text-align:left}
+th{background:#eee}
+code{font-family:"DejaVu Sans Mono",monospace;font-size:9pt;background:#f3f3f3;padding:0 2px}
+pre{background:#f3f3f3;padding:6px;font-size:8.5pt;white-space:pre-wrap}
+tr{page-break-inside:avoid}
+h2,h3{page-break-after:avoid}
