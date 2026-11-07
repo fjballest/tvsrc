@@ -13,7 +13,7 @@
  *   BM↑/BM↓, inheritance of the tags by IFVGs) and LONG / SHORT / OTE signal markers.
  *
  *   Port of the TradingView Pine Script v6 indicator "FVGS+IFVG+OTE.txt"
- *   (md5 689f83ff161c906f5ad1b19a076a6609, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
+ *   (md5 4ef6a160ae13bc79f50a0bda4a2becbc, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
  *   input variable names (camelCase). See the design document (d.md) and user manual (m.md) for the logic.
  *
  * How to install
@@ -874,6 +874,7 @@ class FVGSIFVGOTE {
         const l4 = Math.min(this.loB(0), j >= 1 ? this.loB(1) : Infinity, j >= 2 ? this.loB(2) : Infinity, j >= 3 ? this.loB(3) : Infinity);
         if (P.doifvg && !P.ifvgswings && lastlongfvg) {
             if (this.bearifvg && this.bearconfirm === null && this.bearInv === 0) this.ifoPush(this.bearOld, this.bearifvg);
+            if (this.bearifvg) (this.bearifvg.dup || this.bearifvg).khold = this.bearHold; // a hold in progress goes on
             if (this.bearifvg) this.release(this.bearifvg, this.bearconfirm !== null, this.bearconfirm);
             this.bearifvg = lastlongfvg;
             this.bearconfirm = null;
@@ -885,6 +886,7 @@ class FVGSIFVGOTE {
         }
         if (P.doifvg && !P.ifvgswings && lastshortfvg) {
             if (this.bullifvg && this.bullconfirm === null && this.bullInv === 0) this.ifoPush(this.bullOld, this.bullifvg);
+            if (this.bullifvg) (this.bullifvg.dup || this.bullifvg).khold = this.bullHold; // a hold in progress goes on
             if (this.bullifvg) this.release(this.bullifvg, this.bullconfirm !== null, this.bullconfirm);
             this.bullifvg = lastshortfvg;
             this.bullconfirm = null;
@@ -1153,7 +1155,7 @@ class FVGSIFVGOTE {
     newFVG(hi, lo, ce, islong, start) {
         return {
             hi, lo, ce, islong, start, end: null, rect: null, celine: null, isfp: false, iswfp: false, isffp: false, isifp: false,
-            sbar: null, hiln: null, loln: null, kept: false, kdir: 0, dup: null, cand: false, own: false,
+            sbar: null, hiln: null, loln: null, kept: false, kdir: 0, khold: null, dup: null, cand: false, own: false,
             shown: false, aplus: false, disp: false, brk: false, brkD: 0, mbD: 0,
             lblD: 0, ote: false, oLo: null, oHi: null,
             swp: false, ext: false, dbar: null   // [REL] last FVG before a sweep, extended by a merge, bar filled
@@ -1389,7 +1391,7 @@ class FVGSIFVGOTE {
                 f.kept = false;
                 f.cand = false;
                 this.keptIf.splice(k, 1);
-            } else if (!f.cand && (f.kdir < 0 ? this.c > f.hi : this.c < f.lo)) {
+            } else if (!f.cand && this.ifvgOutK(f)) {
                 this.restore(f);
                 this.keptIf.splice(k, 1);
             } else {
@@ -1624,6 +1626,12 @@ class FVGSIFVGOTE {
         }
         this[hk] = nh;
         return cancel;
+    }
+    ifvgOutK(f) {
+        this._k = f.khold;
+        const r = this.ifvgOut(f.kdir, f.lo, f.hi, "_k");
+        f.khold = this._k;
+        return r;
     }
     dnBreak(lo) { return this.P.deConf === "fullBody" ? Math.max(this.o, this.c) < lo : this.c < lo; }
     ifvgTxt(d, inv, ote, tags, ap, mbd) {

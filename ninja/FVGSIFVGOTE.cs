@@ -2,7 +2,7 @@
 // FVGSIFVGOTE - Fair value gaps, 1st presented FVGs, inverse FVGs (IFVG) and ICT OTE, for NinjaTrader 8
 // ---------------------------------------------------------------------------------------------------------------------
 // Port of the TradingView Pine Script v6 indicator "FVGs+IFVG+OTE5" by franjballest
-// (source file FVGS+IFVG+OTE.txt, md5 689f83ff161c906f5ad1b19a076a6609). Mozilla Public License 2.0, as the original.
+// (source file FVGS+IFVG+OTE.txt, md5 4ef6a160ae13bc79f50a0bda4a2becbc). Mozilla Public License 2.0, as the original.
 //
 // What it draws: FVG boxes (or no-fill boxes, or hi / lo / C.E. segments) with C.E. lines, the 1st presented FVG of the
 // session open (New York 09:30, or Madrid 09:00 for DAX) and its optional inverse, wick C.E. segments, IFVG candidates
@@ -134,6 +134,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             public int sbar;
             public bool kept;
             public int kdir;
+            public int khold = -1; // [HOLD] kept IFVG: bar of the first close back through
             public Fvg dup;
             public bool cand, own, shown, aplus, disp, brk;
             public int brkD, mbD;
@@ -1521,7 +1522,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                     f.cand = false;
                     keptIf.RemoveAt(i);
                 }
-                else if (!f.cand && (f.kdir < 0 ? bc > f.hi : bc < f.lo))
+                else if (!f.cand && IfvgOut(f.kdir, f.lo, f.hi, ref f.khold))
                 {
                     Restore(f);
                     keptIf.RemoveAt(i);
@@ -3182,6 +3183,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             if (ShowIFVGs && !SwingMode && lastlongfvg != null)
             {
                 if (bearifvg != null && !bearconfirm.HasValue && bearInv == 0) IfoPush(bearOld, bearifvg);
+                if (bearifvg != null) (bearifvg.dup ?? bearifvg).khold = bearHold; // a hold in progress goes on
                 if (bearifvg != null) Release(bearifvg, bearconfirm.HasValue, bearconfirm);
                 bearifvg = lastlongfvg;
                 bearconfirm = null;
@@ -3194,6 +3196,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             if (ShowIFVGs && !SwingMode && lastshortfvg != null)
             {
                 if (bullifvg != null && !bullconfirm.HasValue && bullInv == 0) IfoPush(bullOld, bullifvg);
+                if (bullifvg != null) (bullifvg.dup ?? bullifvg).khold = bullHold; // a hold in progress goes on
                 if (bullifvg != null) Release(bullifvg, bullconfirm.HasValue, bullconfirm);
                 bullifvg = lastshortfvg;
                 bullconfirm = null;

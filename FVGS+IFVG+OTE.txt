@@ -509,6 +509,7 @@ type FVG
     line loln = na // segments style: low line
     bool kept = false // kept confirmed IFVG (box shown as IFVG)
     int kdir = 0 // -1 bearish IFVG, 1 bullish IFVG
+    int khold = na // [HOLD] kept IFVG: bar of the first close back through
     FVG dup = na // older almost identical FVG that absorbed this one
     bool cand = false // current IFVG candidate (its box is shown as IFVG)
     bool own = false // the box exists only because of the IFVG (the FVG itself is not drawn)
@@ -840,6 +841,33 @@ method release(FVG fv, bool confirmed, int ctime) =>
     true
 
 // extend the IFVG boxes; restore kept ones when invalidated (close back through them)
+// [HOLD] closed bar check of a confirmed IFVG of direction d (zone lo..hi) with hold h (bar of the first close
+// through, na: none). Returns [cancel, new hold]: a close past the zone by at most ifvgTolT ticks with a wick
+// beyond it starts / keeps a hold of up to ifvgHold bars; back inside ends it; beyond the margin cancels.
+ifvgOut(int d, float lo, float hi, int h) =>
+    float tol = ifvgTolT * syminfo.mintick
+    bool past = d < 0 ? close > hi : close < lo
+    bool far = d < 0 ? close > hi + tol : close < lo - tol
+    bool cancel = false
+    int nh = na
+    if past
+        if far
+            cancel := true
+        else if not na(h)
+            cancel := bar_index - h >= ifvgHold
+            nh := cancel ? na : h
+        else if d < 0 ? high > close : low < close
+            nh := bar_index
+        else
+            cancel := true
+    [cancel, nh]
+
+// [HOLD] the same for a kept IFVG (no longer the candidate), with its own hold
+keptOut(FVG f) =>
+    [kc, kh] = ifvgOut(f.kdir, f.lo, f.hi, f.khold)
+    f.khold := kh
+    kc
+
 updKept() =>
     int n = keptIf.size()
     if n > 0
@@ -849,7 +877,7 @@ updKept() =>
                 f.kept := false
                 f.cand := false
                 keptIf.remove(i)
-            else if not f.cand and barstate.isconfirmed and (f.kdir < 0 ? close > f.hi : close < f.lo)
+            else if not f.cand and barstate.isconfirmed and keptOut(f)
                 f.restore()
                 keptIf.remove(i)
             else
@@ -1156,26 +1184,6 @@ upBreak(float hi) =>
     deConf == "Full body" ? math.min(open, close) > hi : close > hi
 dnBreak(float lo) =>
     deConf == "Full body" ? math.max(open, close) < lo : close < lo
-// [HOLD] closed bar check of a confirmed IFVG of direction d (zone lo..hi) with hold h (bar of the first close
-// through, na: none). Returns [cancel, new hold]: a close past the zone by at most ifvgTolT ticks with a wick
-// beyond it starts / keeps a hold of up to ifvgHold bars; back inside ends it; beyond the margin cancels.
-ifvgOut(int d, float lo, float hi, int h) =>
-    float tol = ifvgTolT * syminfo.mintick
-    bool past = d < 0 ? close > hi : close < lo
-    bool far = d < 0 ? close > hi + tol : close < lo - tol
-    bool cancel = false
-    int nh = na
-    if past
-        if far
-            cancel := true
-        else if not na(h)
-            cancel := bar_index - h >= ifvgHold
-            nh := cancel ? na : h
-        else if d < 0 ? high > close : low < close
-            nh := bar_index
-        else
-            cancel := true
-    [cancel, nh]
 
 var hasfp = false
 var hasifp = false
@@ -1943,6 +1951,8 @@ if doifvg and not ifvgswings and not na(lastlongfvg)
     if not na(bearifvg)
         if na(bearconfirm) and bearInv == 0
             ifoPush(bearOld, bearifvg)
+        FVG bearRf = na(bearifvg.dup) ? bearifvg : bearifvg.dup
+        bearRf.khold := bearHold // a hold in progress goes on
         bearifvg.release(not na(bearconfirm), bearconfirm)
     bearifvg := lastlongfvg
     bearconfirm := na
@@ -1955,6 +1965,8 @@ if doifvg and not ifvgswings and not na(lastshortfvg)
     if not na(bullifvg)
         if na(bullconfirm) and bullInv == 0
             ifoPush(bullOld, bullifvg)
+        FVG bullRf = na(bullifvg.dup) ? bullifvg : bullifvg.dup
+        bullRf.khold := bullHold // a hold in progress goes on
         bullifvg.release(not na(bullconfirm), bullconfirm)
     bullifvg := lastshortfvg
     bullconfirm := na
