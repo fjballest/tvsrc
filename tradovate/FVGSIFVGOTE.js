@@ -13,7 +13,7 @@
  *   BM↑/BM↓, inheritance of the tags by IFVGs) and LONG / SHORT / OTE signal markers.
  *
  *   Port of the TradingView Pine Script v6 indicator "FVGS+IFVG+OTE.txt"
- *   (md5 d5508337f99b753ce1666b604a42ed27, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
+ *   (md5 0cd97213e255d32cd76378c1cf910b90, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
  *   input variable names (camelCase). See the design document (d.md) and user manual (m.md) for the logic.
  *
  * How to install
@@ -93,6 +93,7 @@ const PARAMS = [
     ["drawMode", "e", "all", { all: "all", PFVG: "1PFVGs", IFVG: "IFVGs", PFVG_IFVG: "1PFVGs+IFVGs" }],
     ["fltMode", "e", "none", { none: "none", sweeps: "sweeps", sweepsMid: "sweeps&mid", relevant: "relevant", recentRelevant: "recent relevant" }],
     ["fpMode", "e", "all", { all: "all", week: "week", weekFridays: "week+fridays", weekFridaysLast: "week+fridays+last" }],
+    ["attLvl", "n", 0, [1, 0]],
     // FVG Settings
     ["visible", "b", false], ["dofvgalert", "b", false], ["diag", "b", false],
     ["minfvg", "n", 3, [0.25, 1]], ["maxfvg", "n", 10000, [1, 100]], ["maxfvgs", "n", 200, [1, 2]],
@@ -156,7 +157,7 @@ const PARAMS = [
 ];
 
 // integer parameters (Pine input.int)
-const INT_PARAMS = new Set(["maxfvgs", "ifvgTolT", "ifvgHold", "flL", "flR", "mince", "celnwid", "fpfvgtime", "nfp", "nwicks", "wickdx",
+const INT_PARAMS = new Set(["maxfvgs", "attLvl", "ifvgTolT", "ifvgHold", "flL", "flR", "mince", "celnwid", "fpfvgtime", "nfp", "nwicks", "wickdx",
     "keepMax", "deMaxInv", "pivL", "pivR", "atrLen", "ifvgTrans", "borderTrans", "oteHtfL", "oteHtfR", "oteOffset",
     "oteWidth", "brkLen", "brkKeep", "brkAge", "brkW", "mbLen", "mbKeep", "mbAge", "mbW", "deStdLen", "deFlagW", "deLiqLen", "deSeqWin",
     "deMssLen", "deMssWin"]);
@@ -408,7 +409,7 @@ class FVGSIFVGOTE {
         this.flWin = 25;
         this.styNoFill = P.drawStyle === "boxNoFill";
         this.stySeg = P.drawStyle === "segments";
-        this.ifvgTxtCol = P.showIfvgLbl ? col(TV.black, 0) : col(TV.black, 100);
+        this.ifvgTxtCol = P.showIfvgLbl ? this.cB(TV.black, 0) : col(TV.black, 100);
 
         this.g = new Gfx();
         // closed bars
@@ -659,7 +660,7 @@ class FVGSIFVGOTE {
             const bodyl = Math.min(this.opB(1), this.clB(1));
             const wh = this.hiB(1) - bodyh;
             const wl = bodyl - this.loB(1);
-            const wcol = this.hideReg ? col(P.wickcol, 100) : col(P.wickcol, 0);
+            const wcol = this.hideReg ? col(P.wickcol, 100) : this.cB(P.wickcol, 0);
             const wdx = this.wdx();
             if (wh > P.minwick) {
                 const ce = avg(this.hiB(1), bodyh);
@@ -1102,7 +1103,7 @@ class FVGSIFVGOTE {
         else if (bullOteSig !== 0) oteSig = 1;
         else if (swOteSig !== 0) oteSig = swOteSig;
         if (P.doifvg && P.useOTE) {
-            const hl = col(P.oteHighlight, 0);
+            const hl = this.cB(P.oteHighlight, 0);
             if (bearOteSig !== 0 && this.ifvgBoxb) {
                 this.setText(this.ifvgBoxb, this.ifvgTxt(-1, 1, true, this.gBear.tags, this.bearAp, this.mbOf(this.bearifvg)));
                 if (!this.isFp(this.bearifvg)) this.ifvgBoxb.border = hl;
@@ -1263,7 +1264,12 @@ class FVGSIFVGOTE {
         }
         return r;
     }
-    bw(f) { return this.P.deFlag && f.disp && !f.isfp && !f.isifp ? this.P.deFlagW : 1; } // 1PFVGs keep their look
+    // [ATT] attenuation: fills (cF), borders / lines / text (cB), box borders (cBx: gone at 4), widths (attW)
+    cF(c, t) { const L = this.P.attLvl; return col(c, t + (100 - t) * L * 0.15); }
+    cB(c, t) { const L = this.P.attLvl; return col(c, t + (100 - t) * L * 0.18); }
+    cBx(c, t) { return this.P.attLvl >= 4 ? col(c, 100) : this.cB(c, t); }
+    attW(w) { return Math.max(1, w - Math.floor(this.P.attLvl / 2)); }
+    bw(f) { return this.P.deFlag && f.disp && !f.isfp && !f.isifp ? this.attW(this.P.deFlagW) : 1; } // 1PFVGs keep their look
     kill(f) {
         if (!f) return;
         this.g.del(f.rect); this.g.del(f.celine); this.g.del(f.hiln); this.g.del(f.loln);
@@ -1281,7 +1287,7 @@ class FVGSIFVGOTE {
         // [REL] too small for a C.E.: a little more transparent
         if (this.relSmall(f)) t = t + (100 - t) / 2;
         const hid = this.hideReg && (this.ifvgOnly || (!f.isfp && !f.isifp));
-        return this.styNoFill ? null : (hid ? col(c, 100) : col(c, t));
+        return this.styNoFill ? null : (hid ? col(c, 100) : this.cF(c, t));
     }
     lnColor(f) {
         const P = this.P;
@@ -1290,7 +1296,7 @@ class FVGSIFVGOTE {
         if (f.isifp) c = P.ilnfpcol;
         const hid = this.hideReg && (this.ifvgOnly || (!f.isfp && !f.isifp));
         // [REL] too small for a C.E.: no border (boxes only; segments are the lines themselves)
-        return hid || (this.relSmall(f) && !this.stySeg) ? col(c, 100) : col(c, 20);
+        return hid || (this.relSmall(f) && !this.stySeg) ? col(c, 100) : (this.stySeg ? this.cB(c, 20) : this.cBx(c, 20));
     }
     clearlastfp() {
         while (this.fpfvgs.length > this.P.nfp) {
@@ -1336,16 +1342,16 @@ class FVGSIFVGOTE {
             f.own = !(f.shown || f.isfp || f.isifp);
         }
         if (f.isfp || f.isifp) {
-            const fc = f.isifp ? col(P.ifpcol, 80) : (f.iswfp ? col(P.wfpcol, 90) : f.isffp ? col(P.ffpcol, 90) : col(P.fpcol, 90));
-            const lc = f.isifp ? col(P.ilnfpcol, 20) : (f.iswfp ? col(P.lnwfpcol, 20) : f.isffp ? col(P.lnffpcol, 20) : col(P.lnfpcol, 20));
+            const fc = f.isifp ? this.cF(P.ifpcol, 80) : (f.iswfp ? this.cF(P.wfpcol, 90) : f.isffp ? this.cF(P.ffpcol, 90) : this.cF(P.fpcol, 90));
+            const lc = f.isifp ? this.cBx(P.ilnfpcol, 20) : (f.iswfp ? this.cBx(P.lnwfpcol, 20) : f.isffp ? this.cBx(P.lnffpcol, 20) : this.cBx(P.lnfpcol, 20));
             f.rect.bg = this.styNoFill ? null : fc;
             f.rect.border = lc;
             f.rect.bw = 1;
             f.rect.extend = "right";
         } else {
-            f.rect.bg = col(cc, P.ifvgTrans);
-            f.rect.border = col(cc, P.borderTrans);
-            f.rect.bw = 2;
+            f.rect.bg = this.cF(cc, P.ifvgTrans);
+            f.rect.border = this.cBx(cc, P.borderTrans);
+            f.rect.bw = this.attW(2);
             f.rect.extend = "none";
         }
         f.rect.right = this.j;
@@ -1595,7 +1601,7 @@ class FVGSIFVGOTE {
                     }
                 }
                 if (!f.celine && f.hi - f.lo > P.mince) {
-                    f.celine = this.g.line({ x1: f.start, y1: f.ce, x2: et, y2: f.ce, color: this.lnColor(f), style: P.cesty, width: P.celnwid });
+                    f.celine = this.g.line({ x1: f.start, y1: f.ce, x2: et, y2: f.ce, color: this.lnColor(f), style: P.cesty, width: this.attW(P.celnwid) });
                     if (f.isfp) f.celine.extend = "right";
                 }
                 if (f.rect && !f.kept) f.rect.right = et;
@@ -1660,7 +1666,7 @@ class FVGSIFVGOTE {
             f.kept = false;
             f.cand = false;
             if (f.rect) {
-                const dc = col(this.P.deDeadCol, 85);
+                const dc = this.cF(this.P.deDeadCol, 85);
                 f.rect.bg = dc;
                 f.rect.border = dc;
                 f.rect.bw = 1;
@@ -1679,8 +1685,8 @@ class FVGSIFVGOTE {
     deRecolor(b, d, fv) {
         if (b && !this.isFp(fv)) {
             const cc = d < 0 ? this.P.bearIFVGColor : this.P.bullIFVGColor;
-            b.bg = col(cc, this.P.ifvgTrans);
-            b.border = col(cc, this.P.borderTrans);
+            b.bg = this.cF(cc, this.P.ifvgTrans);
+            b.border = this.cBx(cc, this.P.borderTrans);
         }
     }
 
@@ -1776,9 +1782,9 @@ class FVGSIFVGOTE {
                     if (P.showOTEband) {
                         t.rej = this.g.box({ rel: true, relL: this.oteOff(t), relR: this.oteOff(t) + P.oteWidth,
                             left: j + this.oteOff(t), right: j + this.oteOff(t) + P.oteWidth, top: rHi, bottom: rLo,
-                            bg: col(P.oteBandCol, 85), border: col(P.oteHighlight, 0), bstyle: "dashed", bw: 1,
+                            bg: this.cF(P.oteBandCol, 85), border: this.cB(P.oteHighlight, 0), bstyle: "dashed", bw: 1,
                             text: t.tag + " OTE" + (t.dir === 1 ? " ↑" : " ↓"), tsize: "small",
-                            textCol: col(P.oteTextCol, 0), halign: "center" });
+                            textCol: this.cB(P.oteTextCol, 0), halign: "center" });
                     }
                 }
             }
@@ -1821,14 +1827,14 @@ class FVGSIFVGOTE {
                         else if (P.oteMode === "fullyInside") m = t.zlo >= bLo && t.zhi <= bHi;
                         else m = mid >= bLo && mid <= bHi;
                         if (P.showOTEband) {
-                            const bg = m ? col(P.oteBandCol, 85) : col(TV.gray, 92);
-                            const bd = m ? col(P.oteHighlight, 0) : col(TV.gray, 60);
+                            const bg = m ? this.cF(P.oteBandCol, 85) : this.cF(TV.gray, 92);
+                            const bd = m ? this.cB(P.oteHighlight, 0) : this.cB(TV.gray, 60);
                             const txt = t.tag + (t.dir === 1 ? " ↑" : " ↓");
                             if (!t.band) {
                                 t.band = this.g.box({ rel: true, relL: this.oteOff(t), relR: this.oteOff(t) + P.oteWidth,
                                     left: j + this.oteOff(t), right: j + this.oteOff(t) + P.oteWidth, top: bHi, bottom: bLo,
                                     bg, border: bd, bstyle: "dashed", bw: 1, text: txt, tsize: "tiny",
-                                    textCol: col(P.oteTextCol, 0), halign: "left" });
+                                    textCol: this.cB(P.oteTextCol, 0), halign: "left" });
                             } else {
                                 Object.assign(t.band, { top: bHi, bottom: bLo, left: j + this.oteOff(t),
                                     right: j + this.oteOff(t) + P.oteWidth, bg, border: bd, text: txt });
@@ -2015,7 +2021,7 @@ class FVGSIFVGOTE {
         const P = this.P, j = this.j;
         const colr = mb ? (b.dir === 1 ? P.mbCol : P.mbColDn) : (b.dir === 1 ? P.brkCol : P.brkColDn);
         const sty = mb ? P.mbSty : P.brkSty;
-        const w = mb ? P.mbW : P.brkW;
+        const w = this.attW(mb ? P.mbW : P.brkW);
         const shd = mb ? P.mbShd : P.brkShd;
         const mid = (b.hi + b.lo) / 2;
         b.tagged = true;
@@ -2026,16 +2032,16 @@ class FVGSIFVGOTE {
             while (kk <= 300 && j - kk >= 0 && j - kk >= b.t) {
                 const x = j - kk;
                 if (x <= b.t1) {
-                    b.fl.push(this.g.line({ x1: x, y1: this.H[x], x2: x, y2: this.L[x], color: col(colr, 0), width: 1 }));
-                    b.fl.push(this.g.line({ x1: x, y1: this.O[x], x2: x, y2: this.C[x], color: col(colr, 0), width: 5 }));
+                    b.fl.push(this.g.line({ x1: x, y1: this.H[x], x2: x, y2: this.L[x], color: this.cB(colr, 0), width: 1 }));
+                    b.fl.push(this.g.line({ x1: x, y1: this.O[x], x2: x, y2: this.C[x], color: this.cB(colr, 0), width: 5 }));
                 }
                 kk += 1;
             }
         }
         if ((mb ? P.mbBox : P.brkBox) || shd) {
-            b.bx = this.g.box({ left: b.t, top: b.hi, right: j, bottom: b.lo, border: shd ? col(TV.gray, 100) : col(colr, 0),
+            b.bx = this.g.box({ left: b.t, top: b.hi, right: j, bottom: b.lo, border: shd ? col(TV.gray, 100) : this.cB(colr, 0),
                 bstyle: sty, bw: shd ? 0 : w, bg: col(shd ? TV.gray : colr, shd ? 80 : 100), fixed: true });
-            b.ml = this.g.line({ x1: b.t, y1: mid, x2: j, y2: mid, color: col(colr, 0), style: sty, width: w, fixed: true });
+            b.ml = this.g.line({ x1: b.t, y1: mid, x2: j, y2: mid, color: this.cB(colr, 0), style: sty, width: w, fixed: true });
         }
     }
     // FVG shown as the box of a confirmed IFVG (close mode or swing mode), with its IFVG label
@@ -2183,7 +2189,7 @@ class FVGSIFVGOTE {
             });
         }
         if (P.deDispBar) {
-            const c = col(P.deDispCol, 0);
+            const c = this.cB(P.deDispCol, 0);
             for (const x of this.dispBars) {
                 lineItem("dw" + x, x, this.H[x], x, this.L[x], c, 1, "solid", false);
                 lineItem("db" + x, x, this.O[x], x, this.C[x], c, 5, "solid", false);

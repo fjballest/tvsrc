@@ -2,7 +2,7 @@
 // FVGSIFVGOTE - Fair value gaps, 1st presented FVGs, inverse FVGs (IFVG) and ICT OTE, for NinjaTrader 8
 // ---------------------------------------------------------------------------------------------------------------------
 // Port of the TradingView Pine Script v6 indicator "FVGs+IFVG+OTE5" by franjballest
-// (source file FVGS+IFVG+OTE.txt, md5 d5508337f99b753ce1666b604a42ed27). Mozilla Public License 2.0, as the original.
+// (source file FVGS+IFVG+OTE.txt, md5 0cd97213e255d32cd76378c1cf910b90). Mozilla Public License 2.0, as the original.
 //
 // What it draws: FVG boxes (or no-fill boxes, or hi / lo / C.E. segments) with C.E. lines, the 1st presented FVG of the
 // session open (New York 09:30, or Madrid 09:00 for DAX) and its optional inverse, wick C.E. segments, IFVG candidates
@@ -351,6 +351,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                 DrawSelection = FioDrawMode.All;
                 FvgFilter = FioFilterMode.None;
                 FpFilter = FioFpFilter.All;
+                Attenuation = 0;
                 HistoricCompute = false;
                 FvgBounceAlerts = false;
                 MinFvgSize = 3;
@@ -584,30 +585,30 @@ namespace NinjaTrader.NinjaScript.Indicators
             stySeg = FvgStyle == FioFvgStyle.Segments;
 
             // colors
-            cL = ColorOf(LongFvgColor, CTransp);
-            cLn = ColorOf(LongFvgBorder, CBlack);
-            cS = ColorOf(ShortFvgColor, CTransp);
-            cSn = ColorOf(ShortFvgBorder, CBlack);
-            cFp = ColorOf(FpDayColor, CTransp);
-            cFpn = ColorOf(FpDayBorder, CBlack);
-            cWfp = ColorOf(FpWeekColor, CTransp);
-            cWfpn = ColorOf(FpWeekBorder, CBlack);
-            cFfp = ColorOf(FpFridayColor, CTransp);
-            cFfpn = ColorOf(FpFridayBorder, CBlack);
-            cIfp = ColorOf(FpInverseColor, CTransp);
-            cIfpn = ColorOf(FpInverseBorder, CBlack);
-            cWick = ColorOf(WickColor, CBlack);
-            cDead = ColorOf(InvalidatedColor, CGray);
-            cBullIf = ColorOf(BullIfvgColor, CBlack);
-            cBearIf = ColorOf(BearIfvgColor, CBlack);
-            cOteBand = ColorOf(OteBandColor, CTransp);
-            cOteHi = ColorOf(OteBorderColor, CBlack);
-            cOteTxt = ColorOf(OteTextColor, CBlack);
-            cBrk = ColorOf(BreakerColor, CBlack);
-            cMb = ColorOf(MitigationColor, CBlack);
-            cBrkDn = ColorOf(BreakerColorDown, CBlack);
-            cMbDn = ColorOf(MitigationColorDown, CBlack);
-            cIfvgTxt = IfvgLabels ? CBlack : Tr(CBlack, 100);
+            cL = AttF(ColorOf(LongFvgColor, CTransp));
+            cLn = AttB(ColorOf(LongFvgBorder, CBlack));
+            cS = AttF(ColorOf(ShortFvgColor, CTransp));
+            cSn = AttB(ColorOf(ShortFvgBorder, CBlack));
+            cFp = AttF(ColorOf(FpDayColor, CTransp));
+            cFpn = AttB(ColorOf(FpDayBorder, CBlack));
+            cWfp = AttF(ColorOf(FpWeekColor, CTransp));
+            cWfpn = AttB(ColorOf(FpWeekBorder, CBlack));
+            cFfp = AttF(ColorOf(FpFridayColor, CTransp));
+            cFfpn = AttB(ColorOf(FpFridayBorder, CBlack));
+            cIfp = AttF(ColorOf(FpInverseColor, CTransp));
+            cIfpn = AttB(ColorOf(FpInverseBorder, CBlack));
+            cWick = AttB(ColorOf(WickColor, CBlack));
+            cDead = AttF(ColorOf(InvalidatedColor, CGray));
+            cBullIf = AttB(ColorOf(BullIfvgColor, CBlack));
+            cBearIf = AttB(ColorOf(BearIfvgColor, CBlack));
+            cOteBand = AttF(ColorOf(OteBandColor, CTransp));
+            cOteHi = AttB(ColorOf(OteBorderColor, CBlack));
+            cOteTxt = AttB(ColorOf(OteTextColor, CBlack));
+            cBrk = AttB(ColorOf(BreakerColor, CBlack));
+            cMb = AttB(ColorOf(MitigationColor, CBlack));
+            cBrkDn = AttB(ColorOf(BreakerColorDown, CBlack));
+            cMbDn = AttB(ColorOf(MitigationColorDown, CBlack));
+            cIfvgTxt = IfvgLabels ? AttB(CBlack) : Tr(CBlack, 100);
             dispBrush = DispCandleColor;
             ifvgTs = FontPx(IfvgTextSize);
             ifvgHa = IfvgTextHAlign == FioHAlign.Left ? 0 : (IfvgTextHAlign == FioHAlign.Right ? 2 : 1);
@@ -917,6 +918,13 @@ namespace NinjaTrader.NinjaScript.Indicators
         #endregion
 
         #region Drawing model helpers
+        // [ATT] attenuation: fills (F), borders / lines / text (B), box borders (gone at 4), transparencies (T), widths
+        private Color AttF(Color c) { return Attenuation == 0 ? c : Color.FromArgb((byte)Math.Round(c.A * (1 - 0.15 * Attenuation)), c.R, c.G, c.B); }
+        private Color AttB(Color c) { return Attenuation == 0 ? c : Color.FromArgb((byte)Math.Round(c.A * (1 - 0.18 * Attenuation)), c.R, c.G, c.B); }
+        private int AttT(int t) { return (int)Math.Round(t + (100 - t) * Attenuation * 0.15); }
+        private int AttTB(int t) { return Attenuation >= 4 ? 100 : (int)Math.Round(t + (100 - t) * Attenuation * 0.18); }
+        private int AttW(int w) { return Math.Max(1, w - Attenuation / 2); }
+
         private static Color Tr(Color c, int transp)
         {
             int t = Math.Max(0, Math.Min(100, transp));
@@ -1234,7 +1242,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             return r;
         }
 
-        private int Bw(Fvg f) { return FlagDispFvgs && f.disp && !f.isfp && !f.isifp ? FlagDispWidth : 1; } // 1PFVGs keep their look
+        private int Bw(Fvg f) { return FlagDispFvgs && f.disp && !f.isfp && !f.isifp ? AttW(FlagDispWidth) : 1; } // 1PFVGs keep their look
 
         // 1PFVG (or inverse 1PFVG) zone, or a duplicate merged into one: it keeps its own look
         private static bool IsFp(Fvg fv) { if (fv == null) return false; Fvg f = fv.dup ?? fv; return f.isfp || f.isifp; }
@@ -1392,7 +1400,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             if (f.isifp) c = cIfpn;
             bool hid = hideReg && (ifvgOnly || (!f.isfp && !f.isifp));
             // [REL] too small for a C.E.: no border (boxes only; segments are the lines themselves)
-            return hid || (RelSmall(f) && !stySeg) ? Tr(c, 100) : c;
+            return hid || (RelSmall(f) && !stySeg) || (Attenuation >= 4 && !stySeg) ? Tr(c, 100) : c;
         }
 
         // [REL] "relevant" filter: a plain FVG too small to draw its C.E.
@@ -1441,15 +1449,15 @@ namespace NinjaTrader.NinjaScript.Indicators
                 Color fc = f.isifp ? cIfp : (f.iswfp ? cWfp : f.isffp ? cFfp : cFp);
                 Color lc = f.isifp ? cIfpn : (f.iswfp ? cWfpn : f.isffp ? cFfpn : cFpn);
                 r.Bg = styNoFill ? CTransp : fc;
-                r.Bd = lc;
+                r.Bd = Attenuation >= 4 ? Tr(lc, 100) : lc;
                 r.Bw = 1;
                 SetExt(r, true);
             }
             else
             {
-                r.Bg = Tr(c, IfvgFillTransparency);
-                r.Bd = Tr(c, IfvgBorderTransparency);
-                r.Bw = 2;
+                r.Bg = Tr(c, AttT(IfvgFillTransparency));
+                r.Bd = Tr(c, AttTB(IfvgBorderTransparency));
+                r.Bw = AttW(2);
                 SetExt(r, false);
             }
             r.T2 = curTime;
@@ -1886,7 +1894,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                 }
                 if (f.celine == null && f.hi - f.lo > CeMinHeight)
                 {
-                    f.celine = NewLine(f.start, f.ce, et, f.ce, LnColor(f), CeStyle, CeWidth);
+                    f.celine = NewLine(f.start, f.ce, et, f.ce, LnColor(f), CeStyle, AttW(CeWidth));
                     if (f.isfp) SetExt(f.celine, true);
                 }
                 // always follow the end: an FVG extended by a merged duplicate (end reset) has to grow again
@@ -1955,8 +1963,8 @@ namespace NinjaTrader.NinjaScript.Indicators
         {
             if (b == null || IsFp(fv)) return;
             Color c = d < 0 ? cBearIf : cBullIf;
-            b.Bg = Tr(c, IfvgFillTransparency);
-            b.Bd = Tr(c, IfvgBorderTransparency);
+            b.Bg = Tr(c, AttT(IfvgFillTransparency));
+            b.Bd = Tr(c, AttTB(IfvgBorderTransparency));
             Touch(b);
         }
         #endregion
@@ -2334,8 +2342,8 @@ namespace NinjaTrader.NinjaScript.Indicators
                         else m = mid >= bLo && mid <= bHi;
                         if (DrawOteBands)
                         {
-                            Color bg = m ? cOteBand : Tr(CGray, 92);
-                            Color bd = m ? cOteHi : Tr(CGray, 60);
+                            Color bg = m ? cOteBand : AttF(Tr(CGray, 92));
+                            Color bd = m ? cOteHi : AttB(Tr(CGray, 60));
                             if (t.band == null)
                             {
                                 GBox nb = NewBarBox(OteX0(t, bi), bHi, OteX0(t, bi) + OteBandWidth, bLo);
@@ -2680,7 +2688,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                         Touch(f.rect);
                     }
                 }
-                BlkDraw(b, BreakerFlagCandles, BreakerRectangle, BreakerShadow, b.dir == 1 ? cBrk : cBrkDn, BreakerLineStyle, BreakerLineWidth);
+                BlkDraw(b, BreakerFlagCandles, BreakerRectangle, BreakerShadow, b.dir == 1 ? cBrk : cBrkDn, BreakerLineStyle, AttW(BreakerLineWidth));
             }
         }
 
@@ -2719,7 +2727,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                         Touch(f.rect);
                     }
                 }
-                BlkDraw(b, MitigationFlagCandles, MitigationRectangle, MitigationShadow, b.dir == 1 ? cMb : cMbDn, MitigationLineStyle, MitigationLineWidth);
+                BlkDraw(b, MitigationFlagCandles, MitigationRectangle, MitigationShadow, b.dir == 1 ? cMb : cMbDn, MitigationLineStyle, AttW(MitigationLineWidth));
             }
         }
 
@@ -3590,6 +3598,11 @@ namespace NinjaTrader.NinjaScript.Indicators
         [NinjaScriptProperty]
         [Display(Name = "1PFVG filter", GroupName = "Enable / Draw / Filter", Order = 106, Description = "Which 1st presented FVGs are kept and drawn. All: every day's 1PFVG. Week: only the week 1PFVGs (Mondays). WeekAndFridays: the Monday and the Friday 1PFVGs. WeekFridaysAndLast: also the latest 1PFVG, whatever the day (it goes away when the next one forms). The others are plain FVGs (and no inverse 1PFVG follows them). Keep counts the kept ones, so with Week it holds that many weeks.")]
         public FioFpFilter FpFilter { get; set; }
+
+        [NinjaScriptProperty]
+        [Range(0, 4)]
+        [Display(Name = "Attenuation", GroupName = "Enable / Draw / Filter", Order = 107, Description = "Tones down the drawings for a cleaner chart. 0: as configured. 1 to 4: fills more transparent, borders, lines and texts more transparent and, from 2, thinner; at 4 the boxes have no border (fills only). Applied on top of the colors and widths chosen below.")]
+        public int Attenuation { get; set; }
 
         [NinjaScriptProperty]
         [Display(Name = "Historic compute", GroupName = "FVG Settings", Order = 201, Description = "Kept for parity with the Pine input. NinjaTrader has no visible-range information in OnBarUpdate, so FVGs are always computed on every bar.")]

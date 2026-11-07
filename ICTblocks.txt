@@ -60,6 +60,18 @@ var dowick = false
 drawMode = "all"
 fltMode = "none"
 fpMode = "all"
+attLvl = 0
+// [ATT] attenuation: fills (F), borders / lines / text (B), box borders (gone at 4), transparencies (T) and widths
+attF(color c) =>
+    attLvl == 0 or na(c) ? c : color.new(c, color.t(c) + (100 - color.t(c)) * attLvl * 0.15)
+attB(color c) =>
+    attLvl == 0 or na(c) ? c : color.new(c, color.t(c) + (100 - color.t(c)) * attLvl * 0.18)
+attT(int t) =>
+    int(math.round(t + (100 - t) * attLvl * 0.15))
+attTB(int t) =>
+    attLvl >= 4 ? 100 : int(math.round(t + (100 - t) * attLvl * 0.18))
+attW(int w) =>
+    math.max(1, w - int(attLvl / 2))
 bool fponly = drawMode == "1PFVGs"            // regular FVGs are discarded
 // [1PF] the 1PFVG of a day of the week d (dayofweek.*) is kept as a 1PFVG
 fpPass(int d) =>
@@ -100,13 +112,13 @@ bool styNoFill = drawStyle == "Box, no fill"
 bool stySeg = drawStyle == "Segments (hi / lo / C.E.)"
 
 var mince = 20
-var celnwid = 2
+var celnwid = attW(2)
 var cesty = getstyle("dotted")
 
-var lcol = color.new(#FF6D00, 90)
-var lnlcol = color.new(#FF6D00, 20)
-var scol = color.new(#f7525f, 90)
-var lnscol = color.new(#f7525f, 20)
+var lcol = attF(color.new(#FF6D00, 90))
+var lnlcol = attB(color.new(#FF6D00, 20))
+var scol = attF(color.new(#f7525f, 90))
+var lnscol = attB(color.new(#f7525f, 20))
 
 // 1st Presented FVGs ========================================
 GRP_F1 = "1st Presented FVGs"
@@ -117,15 +129,15 @@ var nfp = 6
 fp1m = false
 fpMaxTf = "60"
 
-var fpcol = color.new(#00fbff, 90)
-var lnfpcol = color.new(#0097a7, 20)
-var wfpcol = color.new(#2962ff, 90)
-var lnwfpcol = color.new(#2962ff, 20)
-var ffpcol = color.new(#9c27b0, 90)
-var lnffpcol = color.new(#9c27b0, 20)
+var fpcol = attF(color.new(#00fbff, 90))
+var lnfpcol = attB(color.new(#0097a7, 20))
+var wfpcol = attF(color.new(#2962ff, 90))
+var lnwfpcol = attB(color.new(#2962ff, 20))
+var ffpcol = attF(color.new(#9c27b0, 90))
+var lnffpcol = attB(color.new(#9c27b0, 20))
 var doifp = false
-var ifpcol = color.new(#880e4f, 80)
-var ilnfpcol = color.new(#880e4f, 20)
+var ifpcol = attF(color.new(#880e4f, 80))
+var ilnfpcol = attB(color.new(#880e4f, 20))
 
 // Wick Settings =============================================
 GRP_W = "Wick Settings"
@@ -134,7 +146,7 @@ var nwicks = 30
 var minwick = float(20)
 var wickdx = 0
 var wicksty = getstyle("solid")
-var wickcol = color.black
+var wickcol = attB(color.black)
 var dowickalert = false
 
 // IFVG Settings =============================================
@@ -143,7 +155,7 @@ G_IFVG = "IFVG Settings"
 var doifvgalert = false
 showSignals = false
 showIfvgLbl = true
-color ifvgTxtCol = showIfvgLbl ? color.black : color.new(color.black, 100)
+color ifvgTxtCol = showIfvgLbl ? attB(color.black) : color.new(color.black, 100)
 lblTf = true
 lblSign = true
 lblAp = true
@@ -160,7 +172,7 @@ deInv = input.bool(false, "Inversion rules, max inversions", group = G_IFVG, inl
         "...) up to the max; the next close through invalidates it. Only the first inversion is tracked for OTE.")
 deMaxInv = input.int(1, "", minval = 1, maxval = 10, group = G_IFVG, inline = "di")
 deDead = "Fade"
-deDeadCol = color.new(color.gray, 85)
+deDeadCol = attF(color.new(color.gray, 85))
 
 ifvgswings = false
 useSwingFilter = true
@@ -170,10 +182,10 @@ pivR = 3
 atrLen = 14
 minATR = float(4.0)
 
-bullIFVGColor = color.orange
-bearIFVGColor = color.aqua
-ifvgTrans = 80
-borderTrans = 20
+bullIFVGColor = attB(color.orange)
+bearIFVGColor = attB(color.aqua)
+ifvgTrans = attT(80)
+borderTrans = attTB(20)
 ifvgtsz = getsize("small")
 ifvgha = gethalign("right")
 ifvgva = getvalign("center")
@@ -202,9 +214,9 @@ oteHtfR = 2
 showOTEband = false
 oteOffset = 5
 oteWidth = 8
-oteBandCol = color.new(color.yellow, 85)
-oteHighlight = color.yellow
-oteTextCol = color.black
+oteBandCol = attF(color.new(color.yellow, 85))
+oteHighlight = attB(color.yellow)
+oteTextCol = attB(color.black)
 
 // Breakers =========
 G_BRK = "Breakers"
@@ -234,11 +246,11 @@ brkAge = input.int(60, "Max bars to the pullback", minval = 5, maxval = 1000, gr
 brkBox = input.bool(true, "Rectangle", group = G_BRK, inline = "bc",
     tooltip = "Draw the breaker rectangle (semi-transparent fill, labeled B↑ / B↓) and its mid line. The bold IFVG labels and the B↑ / B↓ labels are "
     + "set either way.")
-brkCol = input.color(color.orange, "↑", group = G_BRK, inline = "bc")
-brkColDn = input.color(color.fuchsia, "↓", group = G_BRK, inline = "bc")
+brkCol = attB(input.color(color.orange, "↑", group = G_BRK, inline = "bc"))
+brkColDn = attB(input.color(color.fuchsia, "↓", group = G_BRK, inline = "bc"))
 brkC(int d) => d == 1 ? brkCol : brkColDn  // color of a bullish / bearish block
 brkSty = getstyle(input.string("dashed", "", options = ["solid", "dashed", "dotted"], group = G_BRK, inline = "bc"))
-brkW = input.int(1, "width", minval = 1, maxval = 4, group = G_BRK, inline = "bc")
+brkW = attW(input.int(1, "width", minval = 1, maxval = 4, group = G_BRK, inline = "bc"))
 brkFlag = input.bool(false, "Flag candles", group = G_BRK, inline = "bf")
 brkShd = input.bool(false, "Shadow rectangle", group = G_BRK, inline = "bf",
     tooltip = "Flag candles: color the breaker candle(s) (the zone candles) with the rectangle color, once it is "
@@ -278,11 +290,11 @@ mbAge = input.int(60, "Max bars to the pullback", minval = 5, maxval = 1000, gro
 mbBox = input.bool(true, "Rectangle", group = G_MB, inline = "mc",
     tooltip = "Draw the mitigation block rectangle (semi-transparent fill, labeled M↑ / M↓) and its mid line. The IFVG labels and the M↑ / M↓ labels are "
     + "set either way.")
-mbCol = input.color(color.orange, "↑", group = G_MB, inline = "mc")
-mbColDn = input.color(color.fuchsia, "↓", group = G_MB, inline = "mc")
+mbCol = attB(input.color(color.orange, "↑", group = G_MB, inline = "mc"))
+mbColDn = attB(input.color(color.fuchsia, "↓", group = G_MB, inline = "mc"))
 mbC(int d) => d == 1 ? mbCol : mbColDn  // color of a bullish / bearish block
 mbSty = getstyle(input.string("dashed", "", options = ["solid", "dashed", "dotted"], group = G_MB, inline = "mc"))
-mbW = input.int(1, "width", minval = 1, maxval = 4, group = G_MB, inline = "mc")
+mbW = attW(input.int(1, "width", minval = 1, maxval = 4, group = G_MB, inline = "mc"))
 mbFlag = input.bool(false, "Flag candles", group = G_MB, inline = "mf")
 mbShd = input.bool(false, "Shadow rectangle", group = G_MB, inline = "mf",
     tooltip = "Flag candles: color the mitigation block candle(s) (the zone candles) with the rectangle color, once it is "
@@ -309,9 +321,9 @@ deStdX = input.float(4.0, "", minval = 0.0, step = 0.5, group = G_DE, inline = "
 deDispBar = input.bool(false, "Color displacement candles", group = G_DE, inline = "dc",
     tooltip = "The middle candle of each displacement FVG (length / strength above), with or without "+
         "'Displacement FVGs only'.")
-deDispCol = input.color(color.yellow, "", group = G_DE, inline = "dc")
+deDispCol = attB(input.color(color.yellow, "", group = G_DE, inline = "dc"))
 deFlag = false
-deFlagW = 3
+deFlagW = attW(3)
 
 
 deAplus = false
@@ -635,7 +647,7 @@ method lnColor(FVG f) =>
         c := ilnfpcol
     bool hid = hideReg and (ifvgOnly or (not f.isfp and not f.isifp))
     // [REL] too small for a C.E.: no border (boxes only; segments are the lines themselves)
-    hid or (false and not stySeg) ? color.new(c, 100) : c
+    hid or (false and not stySeg) or (attLvl >= 4 and not stySeg) ? color.new(c, 100) : c
 
 // IFVG boxes: the FVG box itself is turned into the IFVG box (no second box on the same place) ====
 var array<FVG> keptIf = array.new<FVG>()   // FVGs whose box is currently shown as IFVG

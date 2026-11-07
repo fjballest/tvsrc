@@ -80,6 +80,22 @@ fpMode = input.string("all", "1PFVG filter", options = ["all", "week", "week+fri
         "(Mondays).\nweek+fridays: the Monday and the Friday 1PFVGs.\nweek+fridays+last: also the latest 1PFVG, whatever "+
         "the day (it goes away when the next one forms). The others are plain FVGs (and no inverse 1PFVG "+
         "follows them). Keep counts the kept ones, so with week it holds that many weeks.")
+attLvl = input.int(0, "Attenuation", minval = 0, maxval = 4, group = GRP_EN, inline = "att",
+    tooltip = "Tones down the drawings for a cleaner chart. 0: as configured. 1 to 4: fills more transparent, borders, "+
+        "lines and texts more transparent and, from 2, thinner; at 4 the boxes have no border (fills only). Applied "+
+        "on top of the colors and widths chosen below. Segments, signals and breaker / mitigation block fills keep "+
+        "their look apart from the colors.")
+// [ATT] attenuation: fills (F), borders / lines / text (B), box borders (gone at 4), transparencies (T) and widths
+attF(color c) =>
+    attLvl == 0 or na(c) ? c : color.new(c, color.t(c) + (100 - color.t(c)) * attLvl * 0.15)
+attB(color c) =>
+    attLvl == 0 or na(c) ? c : color.new(c, color.t(c) + (100 - color.t(c)) * attLvl * 0.18)
+attT(int t) =>
+    int(math.round(t + (100 - t) * attLvl * 0.15))
+attTB(int t) =>
+    attLvl >= 4 ? 100 : int(math.round(t + (100 - t) * attLvl * 0.18))
+attW(int w) =>
+    math.max(1, w - int(attLvl / 2))
 bool fponly = drawMode == "1PFVGs"            // regular FVGs are discarded
 // [1PF] the 1PFVG of a day of the week d (dayofweek.*) is kept as a 1PFVG
 fpPass(int d) =>
@@ -129,13 +145,13 @@ bool stySeg = drawStyle == "Segments (hi / lo / C.E.)"
 
 var mince = input.int(20, "C.E.: min height", minval = 10, maxval = 1000, group = GRP_MAIN, inline = "ce",
     tooltip = "Min FVG height to draw the C.E.")
-var celnwid = input.int(2, "width", minval = 1, maxval = 3, group = GRP_MAIN, inline = "ce")
+var celnwid = attW(input.int(2, "width", minval = 1, maxval = 3, group = GRP_MAIN, inline = "ce"))
 var cesty = getstyle(input.string("dotted", "style", options = ["solid", "dashed", "dotted"], group = GRP_MAIN, inline = "ce"))
 
-var lcol = input.color( color.new(#FF6D00, 90), "Long FVG color", group = GRP_MAIN, inline = "lfvg")
-var lnlcol = input.color( color.new(#FF6D00, 20), "border", group = GRP_MAIN, inline = "lfvg")
-var scol = input.color( color.new(#f7525f, 90), "Short FVG color", group = GRP_MAIN, inline = "sfvg")
-var lnscol = input.color( color.new(#f7525f, 20), "border", group = GRP_MAIN, inline = "sfvg")
+var lcol = attF(input.color( color.new(#FF6D00, 90), "Long FVG color", group = GRP_MAIN, inline = "lfvg"))
+var lnlcol = attB(input.color( color.new(#FF6D00, 20), "border", group = GRP_MAIN, inline = "lfvg"))
+var scol = attF(input.color( color.new(#f7525f, 90), "Short FVG color", group = GRP_MAIN, inline = "sfvg"))
+var lnscol = attB(input.color( color.new(#f7525f, 20), "border", group = GRP_MAIN, inline = "sfvg"))
 
 // 1st Presented FVGs ========================================
 GRP_F1 = "1st Presented FVGs"
@@ -153,15 +169,15 @@ fpMaxTf = input.timeframe("60", "Show 1m 1PFVGs up to", group = GRP_F1, inline =
     tooltip = "1PFVGs (and inverse 1PFVGs) found on the 1m candles are shown on minute charts at or below this "+
         "timeframe, so the week / Friday 1PFVGs (see the 1PFVG filter) can be seen on 15m or 1H charts.")
 
-var fpcol = input.color( color.new(#00fbff, 90), "Day 1PFVG", group = GRP_F1, inline = "fp1")
-var lnfpcol = input.color( color.new(#0097a7, 20), "border", group = GRP_F1, inline = "fp1")
-var wfpcol = input.color( color.new(#2962ff, 90), "Week 1PFVG", group = GRP_F1, inline = "wfp")
-var lnwfpcol = input.color( color.new(#2962ff, 20), "border", group = GRP_F1, inline = "wfp")
-var ffpcol = input.color( color.new(#9c27b0, 90), "Friday 1PFVG", group = GRP_F1, inline = "ffp")
-var lnffpcol = input.color( color.new(#9c27b0, 20), "border", group = GRP_F1, inline = "ffp")
+var fpcol = attF(input.color( color.new(#00fbff, 90), "Day 1PFVG", group = GRP_F1, inline = "fp1"))
+var lnfpcol = attB(input.color( color.new(#0097a7, 20), "border", group = GRP_F1, inline = "fp1"))
+var wfpcol = attF(input.color( color.new(#2962ff, 90), "Week 1PFVG", group = GRP_F1, inline = "wfp"))
+var lnwfpcol = attB(input.color( color.new(#2962ff, 20), "border", group = GRP_F1, inline = "wfp"))
+var ffpcol = attF(input.color( color.new(#9c27b0, 90), "Friday 1PFVG", group = GRP_F1, inline = "ffp"))
+var lnffpcol = attB(input.color( color.new(#9c27b0, 20), "border", group = GRP_F1, inline = "ffp"))
 var doifp = input.bool(false, "1PFVG inverse", group = GRP_F1, inline = "ifp1")
-var ifpcol = input.color( color.new(#880e4f, 80), "color", group = GRP_F1, inline = "ifp1")
-var ilnfpcol = input.color( color.new(#880e4f, 20), "border", group = GRP_F1, inline = "ifp1")
+var ifpcol = attF(input.color( color.new(#880e4f, 80), "color", group = GRP_F1, inline = "ifp1"))
+var ilnfpcol = attB(input.color( color.new(#880e4f, 20), "border", group = GRP_F1, inline = "ifp1"))
 
 // Wick Settings =============================================
 GRP_W = "Wick Settings"
@@ -173,7 +189,7 @@ var minwick = input.float(20, "Min size", group = GRP_W, inline = "w1",
 var wickdx = input.int(0, "Segment width", group = GRP_W, inline = "w1",
     tooltip = "0 = auto, or number of candles.")
 var wicksty = getstyle(input.string("solid", "C.E. line style", options = ["solid", "dashed", "dotted"], group = GRP_W, inline = "wick"))
-var wickcol = input.color( color.black, "", group = GRP_W, inline = "wick")
+var wickcol = attB(input.color( color.black, "", group = GRP_W, inline = "wick"))
 var dowickalert = input.bool(false, "alerts on bounces", group = GRP_W, inline = "wick",
     tooltip = "Alert on wick C.E. bounces.")
 
@@ -185,7 +201,7 @@ showSignals = input.bool(false, "Show signals", group = G_IFVG, inline = "ial",
     tooltip = "Debug: show where alarms are triggered.")
 showIfvgLbl = input.bool(true, "Labels", group = G_IFVG, inline = "ial",
     tooltip = "Show the text labels (IFVG+ / IFVG- / OTE) on the IFVG boxes.")
-color ifvgTxtCol = showIfvgLbl ? color.black : color.new(color.black, 100)
+color ifvgTxtCol = showIfvgLbl ? attB(color.black) : color.new(color.black, 100)
 lblTf = input.bool(true, "Label parts: OTE TF", group = G_IFVG, inline = "lp",
     tooltip = "Parts of the IFVG labels: the timeframes of the OTE match (e.g. 5m+15m), the + / - of the IFVG "+
         "(IFVG+ / IFVG-), and the A+ tag of the Delivery Engine setups.")
@@ -211,7 +227,7 @@ deInv = input.bool(false, "Inversion rules, max inversions", group = G_IFVG, inl
         "...) up to the max; the next close through invalidates it. Only the first inversion is tracked for OTE.")
 deMaxInv = input.int(1, "", minval = 1, maxval = 10, group = G_IFVG, inline = "di")
 deDead = input.string("Fade", "Invalidated IFVG", options = ["Fade", "Back to FVG"], group = G_IFVG, inline = "dv")
-deDeadCol = input.color(color.new(color.gray, 85), "", group = G_IFVG, inline = "dv")
+deDeadCol = attF(input.color(color.new(color.gray, 85), "", group = G_IFVG, inline = "dv"))
 
 ifvgswings = false
 useSwingFilter = true
@@ -224,10 +240,10 @@ atrLen = input.int(14, "ATR length / min swing (ATR)", minval = 1, group = G_IFV
     tooltip = "ATR length, and minimum swing displacement in ATRs.")
 minATR = input.float(4.0, "", minval = 0.0, step = 0.1, group = G_IFVG, inline = "atr")
 
-bullIFVGColor = input.color(color.orange, "Bullish / Bearish IFVG colors", group = G_IFVG, inline = "icol")
-bearIFVGColor = input.color(color.aqua, "", group = G_IFVG, inline = "icol")
-ifvgTrans = input.int(80, "Transparency: fill / border", minval = 0, maxval = 100, group = G_IFVG, inline = "itr")
-borderTrans = input.int(20, "", minval = 0, maxval = 100, group = G_IFVG, inline = "itr")
+bullIFVGColor = attB(input.color(color.orange, "Bullish / Bearish IFVG colors", group = G_IFVG, inline = "icol"))
+bearIFVGColor = attB(input.color(color.aqua, "", group = G_IFVG, inline = "icol"))
+ifvgTrans = attT(input.int(80, "Transparency: fill / border", minval = 0, maxval = 100, group = G_IFVG, inline = "itr"))
+borderTrans = attTB(input.int(20, "", minval = 0, maxval = 100, group = G_IFVG, inline = "itr"))
 ifvgtsz = getsize(input.string("small", "Text size / align H, V", options = ["auto", "tiny", "small", "normal", "huge"], group = G_IFVG, inline = "itx"))
 ifvgha = gethalign(input.string("right", "", options = ["left", "center", "right"], group = G_IFVG, inline = "itx"))
 ifvgva = getvalign(input.string("center", "", options = ["top", "center", "bottom"], group = G_IFVG, inline = "itx"))
@@ -274,10 +290,10 @@ showOTEband = input.bool(true, "Band: draw / start / width", group = G_OTE, inli
          "Each timeframe gets its own column (chart timeframe first), one candle apart.")
 oteOffset = input.int(5, "", minval = 0, maxval = 200, group = G_OTE, inline = "pos")
 oteWidth = input.int(8, "", minval = 1, maxval = 100, group = G_OTE, inline = "pos")
-oteBandCol = input.color(color.new(color.yellow, 85), "Colors: band", group = G_OTE, inline = "oc",
-    tooltip = "Band fill (when matching), IFVG highlight / border, and band text.")
-oteHighlight = input.color(color.yellow, "border", group = G_OTE, inline = "oc")
-oteTextCol = input.color(color.black, "text", group = G_OTE, inline = "oc")
+oteBandCol = attF(input.color(color.new(color.yellow, 85), "Colors: band", group = G_OTE, inline = "oc",
+    tooltip = "Band fill (when matching), IFVG highlight / border, and band text."))
+oteHighlight = attB(input.color(color.yellow, "border", group = G_OTE, inline = "oc"))
+oteTextCol = attB(input.color(color.black, "text", group = G_OTE, inline = "oc"))
 
 // Breakers =========
 G_BRK = "Breakers"
@@ -287,11 +303,11 @@ brkLen = 2
 brkKeep = 3
 brkAge = 60
 brkBox = false
-brkCol = color.orange
-brkColDn = color.fuchsia
+brkCol = attB(color.orange)
+brkColDn = attB(color.fuchsia)
 brkC(int d) => d == 1 ? brkCol : brkColDn  // color of a bullish / bearish block
 brkSty = getstyle("dashed")
-brkW = 1
+brkW = attW(1)
 brkFlag = false
 brkShd = false
 
@@ -303,11 +319,11 @@ mbLen = 2
 mbKeep = 3
 mbAge = 60
 mbBox = false
-mbCol = color.orange
-mbColDn = color.fuchsia
+mbCol = attB(color.orange)
+mbColDn = attB(color.fuchsia)
 mbC(int d) => d == 1 ? mbCol : mbColDn  // color of a bullish / bearish block
 mbSty = getstyle("dashed")
-mbW = 1
+mbW = attW(1)
 mbFlag = false
 mbShd = false
 
@@ -319,9 +335,9 @@ deDispType = "Open to Close"
 deStdLen = 100
 deStdX = float(4.0)
 deDispBar = false
-deDispCol = color.yellow
+deDispCol = attB(color.yellow)
 deFlag = false
-deFlagW = 3
+deFlagW = attW(3)
 
 
 deAplus = false
@@ -691,7 +707,7 @@ method lnColor(FVG f) =>
         c := ilnfpcol
     bool hid = hideReg and (ifvgOnly or (not f.isfp and not f.isifp))
     // [REL] too small for a C.E.: no border (boxes only; segments are the lines themselves)
-    hid or (f.relSmall() and not stySeg) ? color.new(c, 100) : c
+    hid or (f.relSmall() and not stySeg) or (attLvl >= 4 and not stySeg) ? color.new(c, 100) : c
 
 // IFVG boxes: the FVG box itself is turned into the IFVG box (no second box on the same place) ====
 var array<FVG> keptIf = array.new<FVG>()   // FVGs whose box is currently shown as IFVG
@@ -726,13 +742,13 @@ method adopt(FVG fv, int dir) =>
         color fc = f.isifp ? ifpcol : (f.iswfp ? wfpcol : f.isffp ? ffpcol : fpcol)
         color lc = f.isifp ? ilnfpcol : (f.iswfp ? lnwfpcol : f.isffp ? lnffpcol : lnfpcol)
         f.rect.set_bgcolor(styNoFill ? color(na) : fc)
-        f.rect.set_border_color(lc)
+        f.rect.set_border_color(attLvl >= 4 ? color.new(lc, 100) : lc)
         f.rect.set_border_width(1)
         f.rect.set_extend(extend.right)
     else
         f.rect.set_bgcolor(color.new(c, ifvgTrans))
         f.rect.set_border_color(color.new(c, borderTrans))
-        f.rect.set_border_width(2)
+        f.rect.set_border_width(attW(2))
         f.rect.set_extend(extend.none)
     f.rect.set_right(time)
     // an unconfirmed candidate keeps its B / M / BM label (confirming it sets the IFVG label)
@@ -1605,8 +1621,8 @@ method oteStep(OteTrack t) =>
                 else
                     m := mid >= bLo and mid <= bHi
                 if showOTEband
-                    color bg = m ? oteBandCol : color.new(color.gray, 92)
-                    color bd = m ? oteHighlight : color.new(color.gray, 60)
+                    color bg = m ? oteBandCol : attF(color.new(color.gray, 92))
+                    color bd = m ? oteHighlight : attB(color.new(color.gray, 60))
                     if na(t.band)
                         t.band := box.new(oteX0(t), bHi, oteX0(t) + oteWidth, bLo,
                             xloc = xloc.bar_index,

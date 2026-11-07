@@ -401,6 +401,7 @@ Inputs on one line in the settings dialog are listed together; a field without i
 | Draw | `all` | `all`, `1PFVGs`, `IFVGs`, `1PFVGs+IFVGs` (see section 7, Draw modes). Alerts keep working in every mode. |
 | FVG filter | `none` | `none`, `sweeps`, `sweeps&mid`, `relevant`, `recent relevant` (see section 4; `relevant` is the slowest). Does not filter 1PFVGs or the close-mode IFVG logic. |
 | 1PFVG filter | `all` | `all`, `week` (Mondays only), `week+fridays` (Mondays and Fridays), `week+fridays+last` (also the latest one). Which days keep their 1PFVG (section 5). |
+| Attenuation | 0 | 0 to 4: tones the drawings down for a cleaner chart. Fills get more transparent; borders, lines and texts more transparent and, from 2, one pixel thinner (two at 4); at 4 the boxes have no border, only the fill (segments keep their lines). Applied on top of the colors and widths below. Breaker / mitigation block fills and the signals are not changed. |
 
 ### FVG Settings
 
