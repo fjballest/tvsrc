@@ -2,7 +2,7 @@
 // FVGSIFVGOTE - Fair value gaps, 1st presented FVGs, inverse FVGs (IFVG) and ICT OTE, for NinjaTrader 8
 // ---------------------------------------------------------------------------------------------------------------------
 // Port of the TradingView Pine Script v6 indicator "FVGs+IFVG+OTE5" by franjballest
-// (source file FVGS+IFVG+OTE.txt, md5 81c16cfa9bf948a5ad81a830a4214882). Mozilla Public License 2.0, as the original.
+// (source file FVGS+IFVG+OTE.txt, md5 689f83ff161c906f5ad1b19a076a6609). Mozilla Public License 2.0, as the original.
 //
 // What it draws: FVG boxes (or no-fill boxes, or hi / lo / C.E. segments) with C.E. lines, the 1st presented FVG of the
 // session open (New York 09:30, or Madrid 09:00 for DAX) and its optional inverse, wick C.E. segments, IFVG candidates
@@ -302,6 +302,7 @@ namespace NinjaTrader.NinjaScript.Indicators
         private readonly List<Fvg> bearOld = new List<Fvg>(), bullOld = new List<Fvg>();
         private DateTime? bullconfirm, bearconfirm;
         private int bullInv, bearInv;
+        private int bullHold = -1, bearHold = -1, ifsHold = -1; // [HOLD] bar of the first close back through (-1: none)
         private bool bullAp, bearAp, swAp;
 
         // swing-mode IFVGs
@@ -391,6 +392,8 @@ namespace NinjaTrader.NinjaScript.Indicators
                 KeepIfvgs = true;
                 KeepIfvgsMax = 20;
                 IfvgConfirmation = FioConfirm.Close;
+                InvalidationTicks = 4;
+                HoldBars = 3;
                 InversionRules = false;
                 MaxInversions = 1;
                 InvalidatedIfvg = FioDeadMode.Fade;
@@ -760,6 +763,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             bearconfirm = null;
             bullInv = 0;
             bearInv = 0;
+            bullHold = bearHold = ifsHold = -1;
             bullAp = bearAp = swAp = false;
 
             swingTime = null;
@@ -877,6 +881,26 @@ namespace NinjaTrader.NinjaScript.Indicators
         }
 
         private bool UpBreak(double hi) { return IfvgConfirmation == FioConfirm.FullBody ? Math.Min(bo, bc) > hi : bc > hi; }
+        // [HOLD] closed bar check of a confirmed IFVG of direction d with hold h (bar of the first close through, -1
+        // none): a close past the zone by at most InvalidationTicks with a wick beyond it starts / keeps a hold of up
+        // to HoldBars bars; back inside ends it; beyond the margin (or the hold running out) cancels. Returns cancel.
+        private bool IfvgOut(int d, double lo, double hi, ref int h)
+        {
+            double tol = InvalidationTicks * TickSize;
+            bool past = d < 0 ? bc > hi : bc < lo;
+            bool far = d < 0 ? bc > hi + tol : bc < lo - tol;
+            bool cancel = false;
+            int nh = -1;
+            if (past)
+            {
+                if (far) cancel = true;
+                else if (h >= 0) { cancel = bi - h >= HoldBars; nh = cancel ? -1 : h; }
+                else if (d < 0 ? bh > bc : bl < bc) nh = bi;
+                else cancel = true;
+            }
+            h = nh;
+            return cancel;
+        }
         private bool DnBreak(double lo) { return IfvgConfirmation == FioConfirm.FullBody ? Math.Max(bo, bc) < lo : bc < lo; }
 
         private void Fire(string msg)
@@ -3162,6 +3186,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                 bearifvg = lastlongfvg;
                 bearconfirm = null;
                 bearInv = 0;
+                bearHold = -1;
                 bearAp = false;
                 GStart(gBear, -1, bearifvg.lo, bearifvg.hi, h4, bearifvg.sbar);
                 ifvgBoxb = Adopt(bearifvg, -1);
@@ -3173,6 +3198,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                 bullifvg = lastshortfvg;
                 bullconfirm = null;
                 bullInv = 0;
+                bullHold = -1;
                 bullAp = false;
                 GStart(gBull, 1, bullifvg.lo, bullifvg.hi, l4, bullifvg.sbar);
                 ifvgBox = Adopt(bullifvg, 1);
@@ -3228,6 +3254,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                         ifslo = ifvg.lo;
                         ifsdir = -1;
                         ifsconfirm = null;
+                        ifsHold = -1;
                         GStart(gSw, -1, ifvg.lo, ifvg.hi, swingPrice, ifvg.sbar); // leg origin = the swing high
                         ifvgBox = Adopt(ifvg, -1);
                     }
@@ -3253,6 +3280,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                         ifslo = ifvg.lo;
                         ifsdir = 1;
                         ifsconfirm = null;
+                        ifsHold = -1;
                         GStart(gSw, 1, ifvg.lo, ifvg.hi, swingPrice, ifvg.sbar); // leg origin = the swing low
                         ifvgBox = Adopt(ifvg, 1);
                     }
@@ -3277,13 +3305,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                     swAp = DeAp(1);
                     BText(ifvgBox, IfvgTxt(1, 1, false, "", swAp, MbOf(swFvg)));
                 }
-                if (ifsdir == -1 && ifsconfirm.HasValue && bc > ifshi)
-                {
-                    ifsconfirm = null;
-                    GCancel(gSw);
-                    BText(ifvgBox, "");
-                }
-                else if (ifsdir == 1 && ifsconfirm.HasValue && bc < ifslo)
+                if (ifsdir != 0 && ifsconfirm.HasValue && IfvgOut(ifsdir, ifslo, ifshi, ref ifsHold))
                 {
                     ifsconfirm = null;
                     GCancel(gSw);
@@ -3304,7 +3326,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 
             if (ShowIFVGs && !SwingMode && !InversionRules)
             {
-                if (bullifvg != null && bullconfirm.HasValue && bc < bullifvg.lo)
+                if (bullifvg != null && bullconfirm.HasValue && IfvgOut(1, bullifvg.lo, bullifvg.hi, ref bullHold))
                 {
                     bullconfirm = null;
                     GCancel(gBull);
@@ -3319,7 +3341,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                     BText(ifvgBox, IfvgTxt(1, 1, false, "", bullAp, MbOf(bullifvg)));
                     sig = 1;
                 }
-                if (bearifvg != null && bearconfirm.HasValue && bc > bearifvg.hi)
+                if (bearifvg != null && bearconfirm.HasValue && IfvgOut(-1, bearifvg.lo, bearifvg.hi, ref bearHold))
                 {
                     bearconfirm = null;
                     GCancel(gBear);
@@ -3831,21 +3853,31 @@ namespace NinjaTrader.NinjaScript.Indicators
         public FioConfirm IfvgConfirmation { get; set; }
 
         [NinjaScriptProperty]
-        [Display(Name = "Inversion rules", GroupName = "IFVG Settings", Order = 510, Description = "Close mode only. Each close through the zone inverts it again (IFVG, IFVG x2 in the other direction, ...) up to the max; the next close through invalidates it. Only the first inversion is tracked for OTE.")]
+        [Range(0, int.MaxValue)]
+        [Display(Name = "Invalidation margin (ticks)", GroupName = "IFVG Settings", Order = 510, Description = "Inversion rules off. A close back through a confirmed IFVG by no more than this many ticks, with a wick beyond the close (a rejection), does not cancel it at once: the IFVG is on hold for up to Hold bars. A close back inside (or beyond it in its direction) ends the hold and it stays an IFVG; a close beyond the margin, or the hold running out with the close still past it, cancels it. 0: cancel on the first close through.")]
+        public int InvalidationTicks { get; set; }
+
+        [NinjaScriptProperty]
+        [Range(1, 10)]
+        [Display(Name = "Hold bars", GroupName = "IFVG Settings", Order = 511, Description = "Bars an IFVG closed back through within the invalidation margin stays on hold.")]
+        public int HoldBars { get; set; }
+
+        [NinjaScriptProperty]
+        [Display(Name = "Inversion rules", GroupName = "IFVG Settings", Order = 512, Description = "Close mode only. Each close through the zone inverts it again (IFVG, IFVG x2 in the other direction, ...) up to the max; the next close through invalidates it. Only the first inversion is tracked for OTE.")]
         public bool InversionRules { get; set; }
 
         [NinjaScriptProperty]
         [Range(1, 10)]
-        [Display(Name = "Max inversions", GroupName = "IFVG Settings", Order = 511)]
+        [Display(Name = "Max inversions", GroupName = "IFVG Settings", Order = 513)]
         public int MaxInversions { get; set; }
 
         [NinjaScriptProperty]
-        [Display(Name = "Invalidated IFVG", GroupName = "IFVG Settings", Order = 512)]
+        [Display(Name = "Invalidated IFVG", GroupName = "IFVG Settings", Order = 514)]
         public FioDeadMode InvalidatedIfvg { get; set; }
 
         [NinjaScriptProperty]
         [XmlIgnore]
-        [Display(Name = "Invalidated IFVG color", GroupName = "IFVG Settings", Order = 513)]
+        [Display(Name = "Invalidated IFVG color", GroupName = "IFVG Settings", Order = 515)]
         public Brush InvalidatedColor { get; set; }
 
         [Browsable(false)]
@@ -3856,40 +3888,40 @@ namespace NinjaTrader.NinjaScript.Indicators
         }
 
         [NinjaScriptProperty]
-        [Display(Name = "Swings (else closes)", GroupName = "IFVG Settings", Order = 514, Description = "On: keep a single IFVG under watch, located using swings. Off: keep the last bull / bear FVG pair and confirm them when a close goes through.")]
+        [Display(Name = "Swings (else closes)", GroupName = "IFVG Settings", Order = 516, Description = "On: keep a single IFVG under watch, located using swings. Off: keep the last bull / bear FVG pair and confirm them when a close goes through.")]
         public bool SwingMode { get; set; }
 
         [NinjaScriptProperty]
-        [Display(Name = "Significant swing", GroupName = "IFVG Settings", Order = 515)]
+        [Display(Name = "Significant swing", GroupName = "IFVG Settings", Order = 517)]
         public bool SignificantSwing { get; set; }
 
         [NinjaScriptProperty]
-        [Display(Name = "Swing labels", GroupName = "IFVG Settings", Order = 516, Description = "Only with swings.")]
+        [Display(Name = "Swing labels", GroupName = "IFVG Settings", Order = 518, Description = "Only with swings.")]
         public bool SwingLabels { get; set; }
 
         [NinjaScriptProperty]
         [Range(1, int.MaxValue)]
-        [Display(Name = "Swing pivot left", GroupName = "IFVG Settings", Order = 517, Description = "Swing pivot lengths. Also used to find the leg before the FVG for the OTE prior-leg rejection.")]
+        [Display(Name = "Swing pivot left", GroupName = "IFVG Settings", Order = 519, Description = "Swing pivot lengths. Also used to find the leg before the FVG for the OTE prior-leg rejection.")]
         public int SwingPivotLeft { get; set; }
 
         [NinjaScriptProperty]
         [Range(1, int.MaxValue)]
-        [Display(Name = "Swing pivot right", GroupName = "IFVG Settings", Order = 518)]
+        [Display(Name = "Swing pivot right", GroupName = "IFVG Settings", Order = 520)]
         public int SwingPivotRight { get; set; }
 
         [NinjaScriptProperty]
         [Range(1, int.MaxValue)]
-        [Display(Name = "ATR length", GroupName = "IFVG Settings", Order = 519)]
+        [Display(Name = "ATR length", GroupName = "IFVG Settings", Order = 521)]
         public int AtrLength { get; set; }
 
         [NinjaScriptProperty]
         [Range(0, double.MaxValue)]
-        [Display(Name = "Min swing (ATR)", GroupName = "IFVG Settings", Order = 520, Description = "Minimum swing displacement in ATRs.")]
+        [Display(Name = "Min swing (ATR)", GroupName = "IFVG Settings", Order = 522, Description = "Minimum swing displacement in ATRs.")]
         public double MinSwingAtr { get; set; }
 
         [NinjaScriptProperty]
         [XmlIgnore]
-        [Display(Name = "Bullish IFVG color", GroupName = "IFVG Settings", Order = 521)]
+        [Display(Name = "Bullish IFVG color", GroupName = "IFVG Settings", Order = 523)]
         public Brush BullIfvgColor { get; set; }
 
         [Browsable(false)]
@@ -3901,7 +3933,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 
         [NinjaScriptProperty]
         [XmlIgnore]
-        [Display(Name = "Bearish IFVG color", GroupName = "IFVG Settings", Order = 522)]
+        [Display(Name = "Bearish IFVG color", GroupName = "IFVG Settings", Order = 524)]
         public Brush BearIfvgColor { get; set; }
 
         [Browsable(false)]
@@ -3913,24 +3945,24 @@ namespace NinjaTrader.NinjaScript.Indicators
 
         [NinjaScriptProperty]
         [Range(0, 100)]
-        [Display(Name = "Transparency: fill", GroupName = "IFVG Settings", Order = 523)]
+        [Display(Name = "Transparency: fill", GroupName = "IFVG Settings", Order = 525)]
         public int IfvgFillTransparency { get; set; }
 
         [NinjaScriptProperty]
         [Range(0, 100)]
-        [Display(Name = "Transparency: border", GroupName = "IFVG Settings", Order = 524)]
+        [Display(Name = "Transparency: border", GroupName = "IFVG Settings", Order = 526)]
         public int IfvgBorderTransparency { get; set; }
 
         [NinjaScriptProperty]
-        [Display(Name = "Text size", GroupName = "IFVG Settings", Order = 525)]
+        [Display(Name = "Text size", GroupName = "IFVG Settings", Order = 527)]
         public FioTextSize IfvgTextSize { get; set; }
 
         [NinjaScriptProperty]
-        [Display(Name = "Text align H", GroupName = "IFVG Settings", Order = 526)]
+        [Display(Name = "Text align H", GroupName = "IFVG Settings", Order = 528)]
         public FioHAlign IfvgTextHAlign { get; set; }
 
         [NinjaScriptProperty]
-        [Display(Name = "Text align V", GroupName = "IFVG Settings", Order = 527)]
+        [Display(Name = "Text align V", GroupName = "IFVG Settings", Order = 529)]
         public FioVAlign IfvgTextVAlign { get; set; }
 
         [NinjaScriptProperty]

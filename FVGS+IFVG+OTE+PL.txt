@@ -210,6 +210,13 @@ keepIFVG = input.bool(true, "Keep confirmed IFVGs, max", group = G_IFVG, inline 
 keepMax = input.int(20, "", minval = 1, maxval = 100, group = G_IFVG, inline = "keep")
 deConf = input.string("Close", "IFVG confirmation", options = ["Close", "Full body"], group = G_IFVG,
     tooltip = "Close: the close is beyond the FVG. Full body: open and close are both beyond it.")
+ifvgTolT = input.int(4, "Invalidation margin (ticks), hold bars", minval = 0, group = G_IFVG, inline = "ho",
+    tooltip = "Inversion rules off. A close back through a confirmed IFVG by no more than this many ticks, with a "+
+        "wick beyond the close (a rejection), does not cancel it at once: the IFVG is on hold for up to the given "+
+        "bars. A close back inside (or beyond it in its direction) ends the hold and it stays an IFVG; a close "+
+        "beyond the margin, or the hold running out with the close still past it, cancels it. 0 ticks: cancel "+
+        "on the first close through, as before.")
+ifvgHold = input.int(3, "", minval = 1, maxval = 10, group = G_IFVG, inline = "ho")
 deInv = input.bool(false, "Inversion rules, max inversions", group = G_IFVG, inline = "di",
     tooltip = "Close mode (not swings). Off: a close back through a confirmed IFVG just cancels it and it can be "+
         "confirmed again.\nOn: each close through the zone inverts it again (IFVG, IFVG x2 in the other direction, "+
@@ -1164,6 +1171,26 @@ upBreak(float hi) =>
     deConf == "Full body" ? math.min(dO, dC) > hi : dC > hi
 dnBreak(float lo) =>
     deConf == "Full body" ? math.max(dO, dC) < lo : dC < lo
+// [HOLD] closed bar check of a confirmed IFVG of direction d (zone lo..hi) with hold h (bar of the first close
+// through, na: none). Returns [cancel, new hold]: a close past the zone by at most ifvgTolT ticks with a wick
+// beyond it starts / keeps a hold of up to ifvgHold bars; back inside ends it; beyond the margin cancels.
+ifvgOut(int d, float lo, float hi, int h) =>
+    float tol = ifvgTolT * syminfo.mintick
+    bool past = d < 0 ? dC > hi : dC < lo
+    bool far = d < 0 ? dC > hi + tol : dC < lo - tol
+    bool cancel = false
+    int nh = na
+    if past
+        if far
+            cancel := true
+        else if not na(h)
+            cancel := bar_index - h >= ifvgHold
+            nh := cancel ? na : h
+        else if d < 0 ? dH > dC : dL < dC
+            nh := bar_index
+        else
+            cancel := true
+    [cancel, nh]
 
 var hasfp = false
 var hasifp = false
@@ -1888,6 +1915,8 @@ var FVG bearifvg = na
 var int bullconfirm = na
 var int bearconfirm = na
 var int bullInv = 0       // [DE] inversions of the bull candidate (-1 invalidated)
+var int bullHold = na     // [HOLD] bar of the first close back through the confirmed candidate
+var int bearHold = na
 var int bearInv = 0
 var bool bullAp = false   // [DE] A+ IFVG
 var bool bearAp = false
@@ -1925,6 +1954,7 @@ if doifvg and not ifvgswings and not na(lastlongfvg)
     bearifvg := lastlongfvg
     bearconfirm := na
     bearInv := 0
+    bearHold := na
     bearAp := false
     gBear.gStart(-1, bearifvg.lo, bearifvg.hi, h4, bearifvg.sbar) // [OTE]
     ifvgBoxb := bearifvg.adopt(-1)
@@ -1936,6 +1966,7 @@ if doifvg and not ifvgswings and not na(lastshortfvg)
     bullifvg := lastshortfvg
     bullconfirm := na
     bullInv := 0
+    bullHold := na
     bullAp := false
     gBull.gStart(1, bullifvg.lo, bullifvg.hi, l4, bullifvg.sbar) // [OTE]
     ifvgBox := bullifvg.adopt(1)
@@ -2002,6 +2033,7 @@ var float ifshi = na // fvg hi
 var float ifslo = na // fvg lo
 var int ifsdir = 0  // -1 IFVG in swing high to trade short; 1 IFVG in swing lo to trade long
 var int ifsconfirm = na // did close above/below the IFVG confirming it is an IFVG? If so, the time, else na
+var int ifsHold = na // [HOLD] bar of the first close back through it
 
 if newHi and doifvg and ifvgswings
     float swingPrice = pivHi
@@ -2025,6 +2057,7 @@ if newHi and doifvg and ifvgswings
             ifslo := ifvg.lo
             ifsdir := -1
             ifsconfirm := na
+            ifsHold := na
             gSw.gStart(-1, ifvg.lo, ifvg.hi, swingPrice, ifvg.sbar) // [OTE] leg origin = the swing high
             ifvgBox := ifvg.adopt(-1)
 
@@ -2052,6 +2085,7 @@ if newLo and doifvg and ifvgswings
             ifslo := ifvg.lo
             ifsdir := 1
             ifsconfirm := na
+            ifsHold := na
             gSw.gStart(1, ifvg.lo, ifvg.hi, swingPrice, ifvg.sbar) // [OTE] leg origin = the swing low
             ifvgBox := ifvg.adopt(1)
 
@@ -2072,11 +2106,12 @@ if not na(ifstime) and barstate.isconfirmed
         gSw.gConfirm() // [OTE]
         swAp := deAp(1)
         ifvgBox.set_text(ifvgTxt(1, 1, false, "", swAp, mbOf(swFvg)))
-    if ifsdir == -1 and not na(ifsconfirm) and dC > ifshi
-        ifsconfirm := na
-        gSw.gCancel() // [OTE]
-        ifvgBox.set_text(na)
-    else if ifsdir == 1 and not na(ifsconfirm) and dC < ifslo
+    bool swOut = false
+    if ifsdir != 0 and not na(ifsconfirm)
+        [ifC, ifH] = ifvgOut(ifsdir, ifslo, ifshi, ifsHold)
+        swOut := ifC
+        ifsHold := ifH
+    if swOut
         ifsconfirm := na
         gSw.gCancel() // [OTE]
         ifvgBox.set_text(na)
@@ -2120,7 +2155,12 @@ deRecolor(box b, int d, FVG fv) =>
     true
 
 if doifvg and not ifvgswings and not deInv
-    if not na(bullifvg) and not na(bullconfirm) and barstate.isconfirmed and dC < bullifvg.lo
+    bool bullOut = false
+    if not na(bullifvg) and not na(bullconfirm) and barstate.isconfirmed
+        [ifC, ifH] = ifvgOut(1, bullifvg.lo, bullifvg.hi, bullHold)
+        bullOut := ifC
+        bullHold := ifH
+    if bullOut
         bullconfirm := na
         gBull.gCancel() // [OTE]
         ifvgBox.set_text(na)
@@ -2131,7 +2171,12 @@ if doifvg and not ifvgswings and not deInv
         bullAp := deAp(1)
         ifvgBox.set_text(ifvgTxt(1, 1, false, "", bullAp, mbOf(bullifvg)))
         sig := 1
-    if not na(bearifvg) and not na(bearconfirm) and barstate.isconfirmed and dC > bearifvg.hi
+    bool bearOut = false
+    if not na(bearifvg) and not na(bearconfirm) and barstate.isconfirmed
+        [ifC, ifH] = ifvgOut(-1, bearifvg.lo, bearifvg.hi, bearHold)
+        bearOut := ifC
+        bearHold := ifH
+    if bearOut
         bearconfirm := na
         gBear.gCancel() // [OTE]
         ifvgBoxb.set_text(na)

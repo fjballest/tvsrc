@@ -13,7 +13,7 @@
  *   BM↑/BM↓, inheritance of the tags by IFVGs) and LONG / SHORT / OTE signal markers.
  *
  *   Port of the TradingView Pine Script v6 indicator "FVGS+IFVG+OTE.txt"
- *   (md5 81c16cfa9bf948a5ad81a830a4214882, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
+ *   (md5 689f83ff161c906f5ad1b19a076a6609, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
  *   input variable names (camelCase). See the design document (d.md) and user manual (m.md) for the logic.
  *
  * How to install
@@ -115,6 +115,7 @@ const PARAMS = [
     ["lblTf", "b", true], ["lblSign", "b", true], ["lblAp", "b", true],
     ["keepIFVG", "b", true], ["keepMax", "n", 20, [1, 1]],
     ["deConf", "e", "close", { close: "Close", fullBody: "Full body" }],
+    ["ifvgTolT", "n", 4, [1, 0]], ["ifvgHold", "n", 3, [1, 1]],
     ["deInv", "b", false], ["deMaxInv", "n", 1, [1, 1]],
     ["deDead", "e", "fade", { fade: "Fade", backToFVG: "Back to FVG" }], ["deDeadCol", "c", TV.gray],
     ["ifvgswings", "b", false], ["useSwingFilter", "b", true], ["showSwing", "b", false],
@@ -155,7 +156,7 @@ const PARAMS = [
 ];
 
 // integer parameters (Pine input.int)
-const INT_PARAMS = new Set(["maxfvgs", "flL", "flR", "mince", "celnwid", "fpfvgtime", "nfp", "nwicks", "wickdx",
+const INT_PARAMS = new Set(["maxfvgs", "ifvgTolT", "ifvgHold", "flL", "flR", "mince", "celnwid", "fpfvgtime", "nfp", "nwicks", "wickdx",
     "keepMax", "deMaxInv", "pivL", "pivR", "atrLen", "ifvgTrans", "borderTrans", "oteHtfL", "oteHtfR", "oteOffset",
     "oteWidth", "brkLen", "brkKeep", "brkAge", "brkW", "mbLen", "mbKeep", "mbAge", "mbW", "deStdLen", "deFlagW", "deLiqLen", "deSeqWin",
     "deMssLen", "deMssWin"]);
@@ -458,6 +459,8 @@ class FVGSIFVGOTE {
         this.ifvgBox = null; this.ifvgBoxb = null;
         this.bullifvg = null; this.bearifvg = null; this.bullconfirm = null; this.bearconfirm = null;
         this.bearOld = []; this.bullOld = []; // [IFO] replaced candidates not yet closed through (at most 3 per side)
+        this.bullHold = null; this.bearHold = null; this.ifsHold = null; // [HOLD] bar of the first close back through
+        this.tick = Infinity; // smallest price step seen (the tick size is not known here)
         this.bullInv = 0; this.bearInv = 0; this.bullAp = false; this.bearAp = false; this.swAp = false;
         this.findRf = { l: null, s: null };
         this.swingTime = null; this.swingBar = null;
@@ -554,6 +557,10 @@ class FVGSIFVGOTE {
         if (!this.tzResolved) this.resolveTz();
         this.lastJ = j;
         this.j = j; this.o = o; this.h = h; this.l = l; this.c = c; this.ts = ts;
+        for (const d of [h - l, Math.abs(c - o), h - Math.max(o, c), Math.min(o, c) - l]) {
+            const r = Math.round(d * 1e6) / 1e6;
+            if (r > 0 && r < this.tick) this.tick = r;
+        }
         this.ny = localInfo(ts, "America/New_York");
         this.loc = this.tz === "America/New_York" ? this.ny : localInfo(ts, this.tz);
         this.bounceNow = 0;
@@ -871,6 +878,7 @@ class FVGSIFVGOTE {
             this.bearifvg = lastlongfvg;
             this.bearconfirm = null;
             this.bearInv = 0;
+            this.bearHold = null;
             this.bearAp = false;
             this.gStart(this.gBear, -1, this.bearifvg.lo, this.bearifvg.hi, h4, this.bearifvg.sbar);
             this.ifvgBoxb = this.adopt(this.bearifvg, -1);
@@ -881,6 +889,7 @@ class FVGSIFVGOTE {
             this.bullifvg = lastshortfvg;
             this.bullconfirm = null;
             this.bullInv = 0;
+            this.bullHold = null;
             this.bullAp = false;
             this.gStart(this.gBull, 1, this.bullifvg.lo, this.bullifvg.hi, l4, this.bullifvg.sbar);
             this.ifvgBox = this.adopt(this.bullifvg, 1);
@@ -912,6 +921,7 @@ class FVGSIFVGOTE {
                     this.swFvg = ifvg;
                     this.ifstime = ifvg.start; this.ifshi = ifvg.hi; this.ifslo = ifvg.lo; this.ifsdir = -1;
                     this.ifsconfirm = null;
+                    this.ifsHold = null;
                     this.gStart(this.gSw, -1, ifvg.lo, ifvg.hi, swingPrice, ifvg.sbar);
                     this.ifvgBox = this.adopt(ifvg, -1);
                 }
@@ -930,6 +940,7 @@ class FVGSIFVGOTE {
                     this.swFvg = ifvg;
                     this.ifstime = ifvg.start; this.ifshi = ifvg.hi; this.ifslo = ifvg.lo; this.ifsdir = 1;
                     this.ifsconfirm = null;
+                    this.ifsHold = null;
                     this.gStart(this.gSw, 1, ifvg.lo, ifvg.hi, swingPrice, ifvg.sbar);
                     this.ifvgBox = this.adopt(ifvg, 1);
                 }
@@ -948,11 +959,7 @@ class FVGSIFVGOTE {
                 this.swAp = this.deAp(1);
                 this.setText(this.ifvgBox, this.ifvgTxt(1, 1, false, "", this.swAp, this.mbOf(this.swFvg)));
             }
-            if (this.ifsdir === -1 && this.ifsconfirm !== null && c > this.ifshi) {
-                this.ifsconfirm = null;
-                this.gCancel(this.gSw);
-                this.setText(this.ifvgBox, "");
-            } else if (this.ifsdir === 1 && this.ifsconfirm !== null && c < this.ifslo) {
+            if (this.ifsdir !== 0 && this.ifsconfirm !== null && this.ifvgOut(this.ifsdir, this.ifslo, this.ifshi, "ifsHold")) {
                 this.ifsconfirm = null;
                 this.gCancel(this.gSw);
                 this.setText(this.ifvgBox, "");
@@ -968,7 +975,7 @@ class FVGSIFVGOTE {
             }
         }
         if (P.doifvg && !P.ifvgswings && !P.deInv) {
-            if (this.bullifvg && this.bullconfirm !== null && c < this.bullifvg.lo) {
+            if (this.bullifvg && this.bullconfirm !== null && this.ifvgOut(1, this.bullifvg.lo, this.bullifvg.hi, "bullHold")) {
                 this.bullconfirm = null;
                 this.gCancel(this.gBull);
                 this.setText(this.ifvgBox, "");
@@ -981,7 +988,7 @@ class FVGSIFVGOTE {
                 this.setText(this.ifvgBox, this.ifvgTxt(1, 1, false, "", this.bullAp, this.mbOf(this.bullifvg)));
                 sig = 1;
             }
-            if (this.bearifvg && this.bearconfirm !== null && c > this.bearifvg.hi) {
+            if (this.bearifvg && this.bearconfirm !== null && this.ifvgOut(-1, this.bearifvg.lo, this.bearifvg.hi, "bearHold")) {
                 this.bearconfirm = null;
                 this.gCancel(this.gBear);
                 this.setText(this.ifvgBoxb, "");
@@ -1600,6 +1607,24 @@ class FVGSIFVGOTE {
         return this.P.deAplus && this.deKzOK && (d === 1 ? this.deSslRecent && this.deHtfUp : this.deBslRecent && this.deHtfDn);
     }
     upBreak(hi) { return this.P.deConf === "fullBody" ? Math.min(this.o, this.c) > hi : this.c > hi; }
+    // [HOLD] closed bar check of a confirmed IFVG of direction d, hold in this[hk] (bar of the first close through):
+    // a close past the zone by at most ifvgTolT ticks with a wick beyond it starts / keeps a hold of up to ifvgHold
+    // bars; back inside ends it; beyond the margin (or the hold running out) cancels. Returns cancel.
+    ifvgOut(d, lo, hi, hk) {
+        const P = this.P, c = this.c, h = this[hk];
+        const tol = P.ifvgTolT * (isFinite(this.tick) ? this.tick : 0);
+        const past = d < 0 ? c > hi : c < lo;
+        const far = d < 0 ? c > hi + tol : c < lo - tol;
+        let cancel = false, nh = null;
+        if (past) {
+            if (far) cancel = true;
+            else if (h !== null) { cancel = this.j - h >= P.ifvgHold; nh = cancel ? null : h; }
+            else if (d < 0 ? this.h > c : this.l < c) nh = this.j;
+            else cancel = true;
+        }
+        this[hk] = nh;
+        return cancel;
+    }
     dnBreak(lo) { return this.P.deConf === "fullBody" ? Math.max(this.o, this.c) < lo : this.c < lo; }
     ifvgTxt(d, inv, ote, tags, ap, mbd) {
         const P = this.P;

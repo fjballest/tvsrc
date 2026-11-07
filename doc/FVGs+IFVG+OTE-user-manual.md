@@ -205,7 +205,7 @@ The IFVG never gets a second box: the FVG's own box is restyled. If the FVG is n
 - **Older candidates closed through together** (close mode): when a candle confirms a candidate, the previous candidates of the same side (up to 3, released unconfirmed and not closed through since) that the same candle also closed through are shown as confirmed IFVGs too. They get the IFVG box and label only: no signal, alert or OTE tracking.
 - **Confirmation** (on a closed candle): with **IFVG confirmation** = `Close`, a close below the low of the bearish candidate confirms `IFVG-`, a close above the high of the bullish candidate confirms `IFVG+`. With `Full body`, both open and close must be beyond the FVG.
 - **Signal**: the confirming candle is the signal candle: `SHORT` / `LONG` marker (if enabled) and alert `SHORT IFVG <tf>` / `LONG IFVG <tf>`.
-- **Cancellation** (inversion rules off): if price then closes back through the other side (above the high of an `IFVG-`, below the low of an `IFVG+`), the label is removed and the OTE tracking stops. The candidate stays under watch and can be confirmed again.
+- **Cancellation** (inversion rules off): if price then closes back through the other side (above the high of an `IFVG-`, below the low of an `IFVG+`), the label is removed and the OTE tracking stops. The candidate stays under watch and can be confirmed again. A close back through by no more than **Invalidation margin** ticks (4) with a wick beyond the close (a rejection) does not cancel it at once: the IFVG is on hold for up to **hold bars** (3). A close back inside the zone (or beyond it in its direction) ends the hold and it stays an IFVG; a close beyond the margin, or the hold running out with the close still past the zone, cancels it. Margin 0 cancels on the first close through. The same applies in swing mode.
 
 ### Swing mode (**Swings (else closes)** on)
 
@@ -456,6 +456,7 @@ Inputs on one line in the settings dialog are listed together; a field without i
 | A+ | On | The `A+` tag of the Delivery Engine setups (IFVG labels and FVG boxes). |
 | Keep confirmed IFVGs, max | On, 20 (1 - 100) | Keep confirmed IFVGs drawn as IFVGs until a close back through them, up to about this number. Off: only the current candidates are shown as IFVGs. |
 | IFVG confirmation | `Close` | `Close`: the close is beyond the FVG. `Full body`: open and close both beyond it. |
+| Invalidation margin (ticks), hold bars | 4, 3 | A close back through a confirmed IFVG within the margin, with a wick beyond the close, puts it on hold instead of cancelling it (section 7). 0 ticks: cancel at once. |
 | Inversion rules, max inversions | Off, 1 (1 - 10) | Close mode only. Each close through the zone inverts it again up to the max; the next one invalidates it. |
 | Invalidated IFVG | `Fade` | With inversion rules: `Fade` (freeze in the fade color) or `Back to FVG`. |
 | (2nd field: color) | Gray, 85% transparent | Fade color. |
