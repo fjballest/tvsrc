@@ -13,7 +13,7 @@
  *   BM↑/BM↓, inheritance of the tags by IFVGs) and LONG / SHORT / OTE signal markers.
  *
  *   Port of the TradingView Pine Script v6 indicator "FVGS+IFVG+OTE.txt"
- *   (md5 f13f29aa8d6030458e277aebb35d8813, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
+ *   (md5 d5508337f99b753ce1666b604a42ed27, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
  *   input variable names (camelCase). See the design document (d.md) and user manual (m.md) for the logic.
  *
  * How to install
@@ -92,7 +92,7 @@ const PARAMS = [
     ["dofp", "b", true], ["doifvg", "b", true], ["dowick", "b", true],
     ["drawMode", "e", "all", { all: "all", PFVG: "1PFVGs", IFVG: "IFVGs", PFVG_IFVG: "1PFVGs+IFVGs" }],
     ["fltMode", "e", "none", { none: "none", sweeps: "sweeps", sweepsMid: "sweeps&mid", relevant: "relevant", recentRelevant: "recent relevant" }],
-    ["fpMode", "e", "all", { all: "all", week: "week", weekFridays: "week+fridays" }],
+    ["fpMode", "e", "all", { all: "all", week: "week", weekFridays: "week+fridays", weekFridaysLast: "week+fridays+last" }],
     // FVG Settings
     ["visible", "b", false], ["dofvgalert", "b", false], ["diag", "b", false],
     ["minfvg", "n", 3, [0.25, 1]], ["maxfvg", "n", 10000, [1, 100]], ["maxfvgs", "n", 200, [1, 2]],
@@ -814,6 +814,7 @@ class FVGSIFVGOTE {
                         const fp = this.fpfvgs[this.fpfvgs.length - 1];
                         if (fp.islong !== f.islong) {
                             f.isifp = true;
+                            f.fptmp = fp.fptmp;
                             this.hasifp = true;
                             this.fpfvgs.push(f);
                         }
@@ -821,11 +822,18 @@ class FVGSIFVGOTE {
                     const fpDay = !this.hasfp && isfpNow && !f.isifp;
                     if (fpDay) this.hasfp = true;
                     // [1PF] 1PFVG filter: all days, Mondays (week), or Mondays and Fridays
-                    if (fpDay && (P.fpMode === "all" || this.loc.dow === 1 || (P.fpMode === "weekFridays" && this.loc.dow === 5))) {
+                    const dow = this.loc.dow;
+                    if (fpDay && (P.fpMode === "all" || P.fpMode === "weekFridaysLast" || dow === 1 || (P.fpMode === "weekFridays" && dow === 5))) {
                         f.isfp = true;
                         f.iswfp = this.loc.dow === 1;
                         f.isffp = this.loc.dow === 5;
                         this.fpKept = true;
+                        // [1PF] drop the ones shown only as the latest 1PFVG (week+fridays+last)
+                        for (let k = this.fpfvgs.length - 1; k >= 0; k--) {
+                            const g = this.fpfvgs[k];
+                            if (g.fptmp) { this.fpfvgs.splice(k, 1); g.isfp = false; g.isifp = false; this.kill(g); }
+                        }
+                        f.fptmp = P.fpMode === "weekFridaysLast" && dow !== 1 && dow !== 5;
                         this.fpfvgs.push(f);
                         this.clearlastfp();
                     } else if (!this.fponly && !f.isifp && (!P.deDisp || deDispOK)) {
@@ -1154,7 +1162,7 @@ class FVGSIFVGOTE {
     // ---------------------------------------------------------------------------------- FVG helpers
     newFVG(hi, lo, ce, islong, start) {
         return {
-            hi, lo, ce, islong, start, end: null, rect: null, celine: null, isfp: false, iswfp: false, isffp: false, isifp: false,
+            hi, lo, ce, islong, start, end: null, rect: null, celine: null, isfp: false, iswfp: false, isffp: false, isifp: false, fptmp: false,
             sbar: null, hiln: null, loln: null, kept: false, kdir: 0, khold: null, dup: null, cand: false, own: false,
             shown: false, aplus: false, disp: false, brk: false, brkD: 0, mbD: 0,
             lblD: 0, ote: false, oLo: null, oHi: null,

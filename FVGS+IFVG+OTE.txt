@@ -96,14 +96,19 @@ fltMode = input.string("none", "FVG filter", options = ["none", "sweeps", "sweep
         "extended by a merged FVG. relevant is the slowest filter: every bar it checks all hidden live FVGs.\n"+
         "recent relevant: as relevant, but hidden FVGs older than 1000 bars are dropped (they no longer "+
         "reappear), which keeps it fast on long histories.")
-fpMode = input.string("all", "1PFVG filter", options = ["all", "week", "week+fridays"], group = GRP_EN, inline = "dr",
+fpMode = input.string("all", "1PFVG filter", options = ["all", "week", "week+fridays", "week+fridays+last"], group = GRP_EN, inline = "dr",
     tooltip = "Which 1st presented FVGs are kept and drawn.\nall: every day's 1PFVG.\nweek: only the week 1PFVGs "+
-        "(Mondays).\nweek+fridays: the Monday and the Friday 1PFVGs. The others are plain FVGs (and no inverse 1PFVG "+
+        "(Mondays).\nweek+fridays: the Monday and the Friday 1PFVGs.\nweek+fridays+last: also the latest 1PFVG, whatever "+
+        "the day (it goes away when the next one forms). The others are plain FVGs (and no inverse 1PFVG "+
         "follows them). Keep counts the kept ones, so with week it holds that many weeks.")
 bool fponly = drawMode == "1PFVGs"            // regular FVGs are discarded
 // [1PF] the 1PFVG of a day of the week d (dayofweek.*) is kept as a 1PFVG
 fpPass(int d) =>
-    fpMode == "all" or d == dayofweek.monday or (fpMode == "week+fridays" and d == dayofweek.friday)
+    fpMode == "all" or fpMode == "week+fridays+last" or d == dayofweek.monday or
+         (fpMode == "week+fridays" and d == dayofweek.friday)
+// [1PF] kept only while it is the latest 1PFVG (week+fridays+last, not a Monday or Friday)
+fpTemp(int d) =>
+    fpMode == "week+fridays+last" and d != dayofweek.monday and d != dayofweek.friday
 bool ifvgOnly = drawMode == "IFVGs"           // all FVGs are hidden, 1PFVGs included
 bool hideReg = drawMode == "IFVGs" or drawMode == "1PFVGs+IFVGs"  // regular FVGs, wicks, swing labels, signals hidden
 bool fltOff = fltMode == "none"
@@ -507,6 +512,7 @@ type FVG
     bool isfp = false // is first presented FVG
     bool iswfp = false // is week first presented FVG
     bool isffp = false // is Friday first presented FVG
+    bool fptmp = false // [1PF] shown only while it (or its 1PFVG) is the latest one
     bool isifp = false // is first presented FVG inverse
     int sbar = na // [OTE] bar index where the FVG starts
     line hiln = na // segments style: high line
@@ -670,6 +676,19 @@ clearlastfp(array<FVG> fpfvgs) =>
                 f.loln.set_extend(extend.none)
             f.isfp := false
             f.kill()
+
+// [1PF] a new 1PFVG forms: drop the 1PFVGs (and their inverse ones) shown only as the latest
+fpDropTmp(array<FVG> fpfvgs) =>
+    int n = fpfvgs.size()
+    if n > 0
+        for i = n - 1 to 0
+            FVG f = fpfvgs.get(i)
+            if f.fptmp
+                fpfvgs.remove(i)
+                f.isfp := false
+                f.isifp := false
+                f.kill()
+    true
 
 isLongFVG(l1,h3) =>
     l1 > h3
@@ -1223,6 +1242,7 @@ if true
             fp = fpfvgs.last()
             if fp.islong != f.islong
                 f.isifp := true
+                f.fptmp := fp.fptmp
                 hasifp := true
                 fpfvgs.push(f)
         bool fpNow = not hasfp and isFPFVG() and not f.isifp
@@ -1233,6 +1253,8 @@ if true
             f.iswfp := dayofweek == dayofweek.monday
             f.isffp := dayofweek == dayofweek.friday
             fpKept := true
+            fpDropTmp(fpfvgs)
+            f.fptmp := fpTemp(dayofweek)
             fpfvgs.push(f)
             clearlastfp(fpfvgs)
         else if not fponly and not f.isifp and (not deDisp or deDispOK)
@@ -1261,6 +1283,7 @@ if true
             fp = fpfvgs.last()
             if fp.islong != f.islong
                 f.isifp := true
+                f.fptmp := fp.fptmp
                 hasifp := true
                 fpfvgs.push(f)
         bool fpNow = not hasfp and isFPFVG() and not f.isifp
@@ -1271,6 +1294,8 @@ if true
             f.iswfp := dayofweek == dayofweek.monday
             f.isffp := dayofweek == dayofweek.friday
             fpKept := true
+            fpDropTmp(fpfvgs)
+            f.fptmp := fpTemp(dayofweek)
             fpfvgs.push(f)
             clearlastfp(fpfvgs)
         else if not fponly and not f.isifp and (not deDisp or deDispOK)
@@ -1327,6 +1352,7 @@ if fpLow and barstate.isconfirmed and not na(l1t) and l1t.size() > 0
                     f.sbar := bar_index
                     if ifpWin
                         f.isifp := true
+                        f.fptmp := fpfvgs.last().fptmp
                         hasifp := true
                         fpfvgs.push(f)
                     else
@@ -1335,6 +1361,8 @@ if fpLow and barstate.isconfirmed and not na(l1t) and l1t.size() > 0
                         f.isffp := dayofweek(t0, tz) == dayofweek.friday
                         hasfp := true
                         fpKept := true
+                        fpDropTmp(fpfvgs)
+                        f.fptmp := fpTemp(dayofweek(t0, tz))
                         fpfvgs.push(f)
                         clearlastfp(fpfvgs)
 

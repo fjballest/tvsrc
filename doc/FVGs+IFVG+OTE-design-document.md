@@ -47,7 +47,7 @@ The settings dialog has seven sections, ordered so that what to draw and which F
 
 | Section | Inputs | Effect |
 | --- | --- | --- |
-| Enable / Draw / Filter | `dofp` 1PFVGs \[on\], `doifvg` IFVGs \[on\], `dowick` Wick C.E. \[on\]; `drawMode` \[all\]; `fltMode` \[none\]; `fpMode` 1PFVG filter \[all\] | `drawMode` is all, 1PFVGs, IFVGs or 1PFVGs+IFVGs. The IFVG modes hide regular FVGs, wicks, swing labels and signals; alerts keep working. `fltMode` is none, sweeps, sweeps&mid, relevant or recent relevant. `fpMode` is all, week (Mondays) or week+fridays. |
+| Enable / Draw / Filter | `dofp` 1PFVGs \[on\], `doifvg` IFVGs \[on\], `dowick` Wick C.E. \[on\]; `drawMode` \[all\]; `fltMode` \[none\]; `fpMode` 1PFVG filter \[all\] | `drawMode` is all, 1PFVGs, IFVGs or 1PFVGs+IFVGs. The IFVG modes hide regular FVGs, wicks, swing labels and signals; alerts keep working. `fltMode` is none, sweeps, sweeps&mid, relevant or recent relevant. `fpMode` is all, week (Mondays), week+fridays or week+fridays+last. |
 | FVG Settings | `visible` Historic compute \[off\], `dofvgalert`; `minfvg` \[3\], `maxfvg` \[10000\], `maxfvgs` keep \[200\]; `dupTol` merge tolerance \[10%\], `flL` / `flR` sweep pivots \[3 / 3\]; `drawStyle` \[Box\]; C.E. height / width / style; FVG colors | Size limits are in points. `dupTol = 0` turns merging off. `drawStyle` is Box, Box no fill, or Segments (hi / lo / C.E.). |
 | 1st Presented FVGs | `fpfvgtime` \[0930\], `tz` \[Auto\], `nfp` keep \[6\], `fp1m` from 1m candles \[on\]; day / week / Friday / inverse colors; `doifp` \[off\] | Session open for the 1PFVG; the week variant (Monday) has its own color. |
 | Wick Settings | `nwicks` \[30\], `minwick` \[20\], `wickdx` \[0 = auto\], style, color, `dowickalert` | Wick C.E. segments and their bounce alerts. |
@@ -182,7 +182,7 @@ On every bar the script looks at candles \[1\], \[2\] and \[3\]. A gap is valid 
 Classification of a new FVG, in order:
 
 1. If a kept 1PFVG exists today (`fpKept`) and the inverse option is on, the first FVG of the opposite bias is the inverse 1PFVG.
-2. Otherwise, if no 1PFVG exists yet and the bar is in the 1PFVG window, it is the day's 1PFVG: `hasfp` is set, and if `fpPass(dayofweek)` accepts the day (`fpMode`: all; week = Mondays; week+fridays = Mondays and Fridays) it becomes a 1PFVG (`iswfp` on Mondays, `isffp` on Fridays, `fpKept`) and goes to `fpfvgs`. A rejected one falls through to step 3.
+2. Otherwise, if no 1PFVG exists yet and the bar is in the 1PFVG window, it is the day's 1PFVG: `hasfp` is set, and if `fpPass(dayofweek)` accepts the day (`fpMode`: all; week = Mondays; week+fridays = Mondays and Fridays) it becomes a 1PFVG (`iswfp` on Mondays, `isffp` on Fridays, `fpKept`) and goes to `fpfvgs`. A rejected one falls through to step 3. With week+fridays+last every day passes, but one that is not a Monday or Friday gets `fptmp` (its inverse 1PFVG inherits it), and `fpDropTmp` removes and kills the `fptmp` ones each time a new 1PFVG is pushed, so only the latest of them stays.
 3. Otherwise it is a regular FVG: `route()` handles it, or it is discarded when `drawMode` is 1PFVGs.
 
 ### Life cycle

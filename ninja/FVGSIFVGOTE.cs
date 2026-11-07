@@ -2,7 +2,7 @@
 // FVGSIFVGOTE - Fair value gaps, 1st presented FVGs, inverse FVGs (IFVG) and ICT OTE, for NinjaTrader 8
 // ---------------------------------------------------------------------------------------------------------------------
 // Port of the TradingView Pine Script v6 indicator "FVGs+IFVG+OTE5" by franjballest
-// (source file FVGS+IFVG+OTE.txt, md5 f13f29aa8d6030458e277aebb35d8813). Mozilla Public License 2.0, as the original.
+// (source file FVGS+IFVG+OTE.txt, md5 d5508337f99b753ce1666b604a42ed27). Mozilla Public License 2.0, as the original.
 //
 // What it draws: FVG boxes (or no-fill boxes, or hi / lo / C.E. segments) with C.E. lines, the 1st presented FVG of the
 // session open (New York 09:30, or Madrid 09:00 for DAX) and its optional inverse, wick C.E. segments, IFVG candidates
@@ -57,7 +57,7 @@ using NinjaTrader.NinjaScript.DrawingTools;
 // option lists of the Pine string inputs (global, uniquely prefixed, so the generated factory code can see them)
 public enum FioDrawMode { All, OnlyPFVGs, IFVGs, PFVGsAndIFVGs }
 public enum FioFilterMode { None, Sweeps, SweepsAndMid, Relevant, RecentRelevant }
-public enum FioFpFilter { All, Week, WeekAndFridays }
+public enum FioFpFilter { All, Week, WeekAndFridays, WeekFridaysAndLast }
 public enum FioFvgStyle { Box, BoxNoFill, Segments }
 public enum FioConfirm { Close, FullBody }
 public enum FioDeadMode { Fade, BackToFVG }
@@ -130,7 +130,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             public DateTime? end;
             public GBox rect;
             public GLine celine, hiln, loln;
-            public bool isfp, iswfp, isffp, isifp;
+            public bool isfp, iswfp, isffp, isifp, fptmp; // fptmp: shown only while it (or its 1PFVG) is the latest
             public int sbar;
             public bool kept;
             public int kdir;
@@ -1697,7 +1697,28 @@ namespace NinjaTrader.NinjaScript.Indicators
         // [1PF] the 1PFVG of day of the week d is kept as a 1PFVG (the others are plain FVGs)
         private bool FpPass(DayOfWeek d)
         {
-            return FpFilter == FioFpFilter.All || d == DayOfWeek.Monday || (FpFilter == FioFpFilter.WeekAndFridays && d == DayOfWeek.Friday);
+            return FpFilter == FioFpFilter.All || FpFilter == FioFpFilter.WeekFridaysAndLast || d == DayOfWeek.Monday
+                || (FpFilter == FioFpFilter.WeekAndFridays && d == DayOfWeek.Friday);
+        }
+
+        // [1PF] kept only while it is the latest 1PFVG (WeekFridaysAndLast, not a Monday or Friday)
+        private bool FpTemp(DayOfWeek d)
+        {
+            return FpFilter == FioFpFilter.WeekFridaysAndLast && d != DayOfWeek.Monday && d != DayOfWeek.Friday;
+        }
+
+        // [1PF] a new 1PFVG forms: drop the 1PFVGs (and their inverse ones) shown only as the latest
+        private void FpDropTmp()
+        {
+            for (int i = fpfvgs.Count - 1; i >= 0; i--)
+            {
+                Fvg f = fpfvgs[i];
+                if (!f.fptmp) continue;
+                fpfvgs.RemoveAt(i);
+                f.isfp = false;
+                f.isifp = false;
+                Kill(f);
+            }
         }
 
         private void Classify(Fvg f, bool fpNow)
@@ -1708,6 +1729,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                 if (fp.islong != f.islong)
                 {
                     f.isifp = true;
+                    f.fptmp = fp.fptmp;
                     hasifp = true;
                     fpfvgs.Add(f);
                 }
@@ -1721,6 +1743,8 @@ namespace NinjaTrader.NinjaScript.Indicators
                 f.iswfp = dow == DayOfWeek.Monday;
                 f.isffp = dow == DayOfWeek.Friday;
                 fpKept = true;
+                FpDropTmp();
+                f.fptmp = FpTemp(dow);
                 fpfvgs.Add(f);
                 ClearLastFp();
             }
@@ -2000,6 +2024,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             if (ifpWin)
             {
                 f.isifp = true;
+                f.fptmp = fpfvgs[fpfvgs.Count - 1].fptmp;
                 hasifp = true;
                 fpfvgs.Add(f);
                 return;
@@ -2011,6 +2036,8 @@ namespace NinjaTrader.NinjaScript.Indicators
             f.iswfp = dow == DayOfWeek.Monday;
             f.isffp = dow == DayOfWeek.Friday;
             fpKept = true;
+            FpDropTmp();
+            f.fptmp = FpTemp(dow);
             fpfvgs.Add(f);
             ClearLastFp();
         }
@@ -3561,7 +3588,7 @@ namespace NinjaTrader.NinjaScript.Indicators
         public FioFilterMode FvgFilter { get; set; }
 
         [NinjaScriptProperty]
-        [Display(Name = "1PFVG filter", GroupName = "Enable / Draw / Filter", Order = 106, Description = "Which 1st presented FVGs are kept and drawn. All: every day's 1PFVG. Week: only the week 1PFVGs (Mondays). WeekAndFridays: the Monday and the Friday 1PFVGs. The others are plain FVGs (and no inverse 1PFVG follows them). Keep counts the kept ones, so with Week it holds that many weeks.")]
+        [Display(Name = "1PFVG filter", GroupName = "Enable / Draw / Filter", Order = 106, Description = "Which 1st presented FVGs are kept and drawn. All: every day's 1PFVG. Week: only the week 1PFVGs (Mondays). WeekAndFridays: the Monday and the Friday 1PFVGs. WeekFridaysAndLast: also the latest 1PFVG, whatever the day (it goes away when the next one forms). The others are plain FVGs (and no inverse 1PFVG follows them). Keep counts the kept ones, so with Week it holds that many weeks.")]
         public FioFpFilter FpFilter { get; set; }
 
         [NinjaScriptProperty]

@@ -170,7 +170,7 @@ A cyan box (default) for the first FVG after the session open, extended to the r
 - **Charts**: minute charts up to **Show 1m 1PFVGs up to** (`60`, i.e. 1H), so the week and Friday 1PFVGs (see the 1PFVG filter) can be seen on 15m and 1H charts. **From 1m candles** (on): on charts above 1m the 1PFVG is found on the 1m candles of the chart bars (the same rule, applied to the 1m candles), so it is the same box as on a 1m chart; its left edge can fall inside a chart candle. The 1m candles are read when a chart bar closes. Off: on 1m to 5m charts only 1m to 3m charts show it, from the chart candles; above 5m the 1m candles are always used. The NinjaTrader port does the same with an added 1m series (**Show 1m 1PFVGs up to (minutes)**, 60); the Tradovate port cannot read 1m candles and always uses the chart candles (1m to 3m).
 - **Week 1PFVG**: on Mondays the 1PFVG, bullish or bearish, is drawn in the week colors (blue).
 - **Friday 1PFVG**: on Fridays the 1PFVG is drawn in the Friday colors (purple).
-- **1PFVG filter** (`all`, next to the FVG filter): `all` keeps every day's 1PFVG; `week` keeps only the week 1PFVGs (Mondays); `week+fridays` keeps the Monday and the Friday ones. On the other days the first FVG is a plain FVG (it goes through the FVG filter like any other) and there is no inverse 1PFVG. **Keep** counts only the kept ones, so with `week` and Keep 6 you see the last six weeks.
+- **1PFVG filter** (`all`, next to the FVG filter): `all` keeps every day's 1PFVG; `week` keeps only the week 1PFVGs (Mondays); `week+fridays` keeps the Monday and the Friday ones; `week+fridays+last` also keeps the latest 1PFVG of any day (with its inverse 1PFVG) until the next 1PFVG forms. On the other days the first FVG is a plain FVG (it goes through the FVG filter like any other) and there is no inverse 1PFVG. **Keep** counts only the kept ones, so with `week` and Keep 6 you see the last six weeks.
 - **Inverse 1PFVG** (**1PFVG inverse**, off by default): the first FVG of the opposite bias after the 1PFVG, in the same hour. With **From 1m candles** it also comes from the 1m candles.
 - **Keep** (6): number of 1PFVGs kept; when a new one appears the oldest is removed. Inverse 1PFVGs share this list.
 - 1PFVGs stay extended to the right even after price trades through them, until they drop out of the list. They always keep their 1PFVG colors, width and zone, whatever the filtering: they are not affected by the FVG filter or the displacement filter (inverse 1PFVG included), a regular FVG on the same zone never widens or moves them, and the Delivery Engine inversion rules, the displacement flag and the OTE highlight do not recolor them. Only **Draw** = `IFVGs` hides them.
@@ -400,7 +400,7 @@ Inputs on one line in the settings dialog are listed together; a field without i
 | Wick C.E. | On | Draw the C.E. of large candle wicks. |
 | Draw | `all` | `all`, `1PFVGs`, `IFVGs`, `1PFVGs+IFVGs` (see section 7, Draw modes). Alerts keep working in every mode. |
 | FVG filter | `none` | `none`, `sweeps`, `sweeps&mid`, `relevant`, `recent relevant` (see section 4; `relevant` is the slowest). Does not filter 1PFVGs or the close-mode IFVG logic. |
-| 1PFVG filter | `all` | `all`, `week` (Mondays only), `week+fridays` (Mondays and Fridays). Which days keep their 1PFVG (section 5). |
+| 1PFVG filter | `all` | `all`, `week` (Mondays only), `week+fridays` (Mondays and Fridays), `week+fridays+last` (also the latest one). Which days keep their 1PFVG (section 5). |
 
 ### FVG Settings
 
