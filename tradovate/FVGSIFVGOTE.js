@@ -13,7 +13,7 @@
  *   BM↑/BM↓, inheritance of the tags by IFVGs) and LONG / SHORT / OTE signal markers.
  *
  *   Port of the TradingView Pine Script v6 indicator "FVGS+IFVG+OTE.txt"
- *   (md5 d364db65cd4260085489f552d91f8982, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
+ *   (md5 ca70e36e8c52b59a7eeccab0895385fa, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
  *   input variable names (camelCase). See the design document (d.md) and user manual (m.md) for the logic.
  *
  * How to install
@@ -92,6 +92,7 @@ const PARAMS = [
     ["dofp", "b", true], ["doifvg", "b", true], ["dowick", "b", true],
     ["drawMode", "e", "all", { all: "all", PFVG: "1PFVGs", IFVG: "IFVGs", PFVG_IFVG: "1PFVGs+IFVGs" }],
     ["fltMode", "e", "none", { none: "none", sweeps: "sweeps", sweepsMid: "sweeps&mid", relevant: "relevant", recentRelevant: "recent relevant" }],
+    ["fpMode", "e", "all", { all: "all", week: "week", weekFridays: "week+fridays" }],
     // FVG Settings
     ["visible", "b", false], ["dofvgalert", "b", false], ["diag", "b", false],
     ["minfvg", "n", 3, [0.25, 1]], ["maxfvg", "n", 10000, [1, 100]], ["maxfvgs", "n", 200, [1, 2]],
@@ -104,6 +105,7 @@ const PARAMS = [
     ["market", "e", "Auto", { Auto: "Auto (DAX: EU, else US)", US: "US (New York)", EU: "EU (Madrid)" }],
     ["nfp", "n", 6, [1, 1]],
     ["fpcol", "c", "#00fbff"], ["lnfpcol", "c", "#0097a7"], ["wfpcol", "c", "#2962ff"], ["lnwfpcol", "c", "#2962ff"],
+    ["ffpcol", "c", "#9c27b0"], ["lnffpcol", "c", "#9c27b0"],
     ["doifp", "b", false], ["ifpcol", "c", "#880e4f"], ["ilnfpcol", "c", "#880e4f"],
     // Wick Settings
     ["nwicks", "n", 30, [1, 0]], ["minwick", "n", 20, [1, 0]], ["wickdx", "n", 0, [1, 0]],
@@ -132,11 +134,13 @@ const PARAMS = [
     ["oteBandCol", "c", TV.yellow], ["oteHighlight", "c", TV.yellow], ["oteTextCol", "c", TV.black],
     // Breakers
     ["brkOn", "b", true], ["brkMode", "e", "last", { last: "Last candle", sequence: "Whole sequence" }],
-    ["brkLen", "n", 5, [1, 1]], ["brkKeep", "n", 3, [1, 1]], ["brkBox", "b", false], ["brkCol", "c", TV.fuchsia],
+    ["brkLen", "n", 2, [1, 1]], ["brkKeep", "n", 3, [1, 1]], ["brkAge", "n", 60, [5, 1]], ["brkBox", "b", false],
+    ["brkCol", "c", TV.orange], ["brkColDn", "c", TV.fuchsia],
     ["brkSty", "e", "dashed", STYLE_OPTS], ["brkW", "n", 1, [1, 1]], ["brkFlag", "b", false], ["brkShd", "b", false],
     // Mitigation blocks
     ["mbOn", "b", true], ["mbMode", "e", "last", { last: "Last candle", sequence: "Whole sequence" }],
-    ["mbLen", "n", 5, [1, 1]], ["mbKeep", "n", 3, [1, 1]], ["mbBox", "b", false], ["mbCol", "c", TV.orange],
+    ["mbLen", "n", 2, [1, 1]], ["mbKeep", "n", 3, [1, 1]], ["mbAge", "n", 60, [5, 1]], ["mbBox", "b", false],
+    ["mbCol", "c", TV.orange], ["mbColDn", "c", TV.fuchsia],
     ["mbSty", "e", "dashed", STYLE_OPTS], ["mbW", "n", 1, [1, 1]], ["mbFlag", "b", false], ["mbShd", "b", false],
     // Delivery Engine
     ["deDisp", "b", false], ["deDispType", "e", "oc", { oc: "Open to Close", hl: "High to Low" }],
@@ -153,7 +157,7 @@ const PARAMS = [
 // integer parameters (Pine input.int)
 const INT_PARAMS = new Set(["maxfvgs", "flL", "flR", "mince", "celnwid", "fpfvgtime", "nfp", "nwicks", "wickdx",
     "keepMax", "deMaxInv", "pivL", "pivR", "atrLen", "ifvgTrans", "borderTrans", "oteHtfL", "oteHtfR", "oteOffset",
-    "oteWidth", "brkLen", "brkKeep", "brkW", "mbLen", "mbKeep", "mbW", "deStdLen", "deFlagW", "deLiqLen", "deSeqWin",
+    "oteWidth", "brkLen", "brkKeep", "brkAge", "brkW", "mbLen", "mbKeep", "mbAge", "mbW", "deStdLen", "deFlagW", "deLiqLen", "deSeqWin",
     "deMssLen", "deMssWin"]);
 
 function buildParamSpecs() {
@@ -430,7 +434,7 @@ class FVGSIFVGOTE {
         this.relF = []; this.relS = []; this.relB = [];
         this.otePL = null; this.otePLb = null; this.otePH = null; this.otePHb = null; // [OTEF] last chart swings
         this.fs = { post: 1000000, stH: null, stL: null, stHbar: null, stLbar: null };
-        this.hasfp = false; this.hasifp = false;
+        this.hasfp = false; this.hasifp = false; this.fpKept = false;
         // DE
         this.deRange = []; this.deStd = []; this.deStdMss = [];
         this.rsStd = new RollStd(Math.max(1, P.deStdLen));
@@ -461,8 +465,10 @@ class FVGSIFVGOTE {
         this.ifsconfirm = null;
         this.prevSig = 0;
         // breakers / mitigation blocks
-        this.brks = []; this.bz = { lastH: null, lastHb: null, prevH: null, prevHb: null, lastL: null, lastLb: null, prevL: null, prevLb: null };
-        this.mbs = []; this.mz = { lastH: null, lastHb: null, prevH: null, prevHb: null, lastL: null, lastLb: null, prevL: null, prevLb: null };
+        // swing sequence (pr prices, br bars, ty 1 high / -1 low) and the swings armed for a close through them
+        const zst = () => ({ pr: [], br: [], ty: [], upLvl: null, upBar: null, upDone: null, dnLvl: null, dnBar: null, dnDone: null });
+        this.brks = []; this.bz = zst();
+        this.mbs = []; this.mz = zst();
         // markers
         this.markers = [];
     }
@@ -773,7 +779,7 @@ class FVGSIFVGOTE {
         }
 
         // ---- FVGs
-        if (Math.floor(this.loc.mod / 60) !== this.fph) { this.hasfp = false; this.hasifp = false; }
+        if (Math.floor(this.loc.mod / 60) !== this.fph) { this.hasfp = false; this.hasifp = false; this.fpKept = false; }
         let lastlongfvg = null, lastshortfvg = null;
         if (j >= 3) {
             const isfpNow = this.isFPFVG();
@@ -787,7 +793,7 @@ class FVGSIFVGOTE {
                     if (g) { [hi, lo] = g; fhi = hi; flo = lo; fk = 2; }
                 }
                 if (fhi - flo > P.minfvg && fhi - flo < P.maxfvg && (!P.deDisp || deDispOK || isfpNow ||
-                    (!this.hasifp && this.hasfp && P.doifp && this.fpfvgs.length > 0))) {
+                    (!this.hasifp && this.hasfp && this.fpKept && P.doifp && this.fpfvgs.length > 0))) {
                     const f = this.newFVG(hi, lo, avg(hi, lo), islong, j - fk);
                     this.dg.fvgs++;
                     f.sbar = j - fk;
@@ -796,7 +802,7 @@ class FVGSIFVGOTE {
                     f.aplus = P.deAplus && mssBar !== null && j - mssBar <= 3;
                     f.disp = deDispOK;
                     if (islong) lastlongfvg = f; else lastshortfvg = f;
-                    if (!this.hasifp && this.hasfp && P.doifp && this.fpfvgs.length > 0) {
+                    if (!this.hasifp && this.hasfp && this.fpKept && P.doifp && this.fpfvgs.length > 0) {
                         const fp = this.fpfvgs[this.fpfvgs.length - 1];
                         if (fp.islong !== f.islong) {
                             f.isifp = true;
@@ -804,10 +810,14 @@ class FVGSIFVGOTE {
                             this.fpfvgs.push(f);
                         }
                     }
-                    if (!this.hasfp && isfpNow && !f.isifp) {
+                    const fpDay = !this.hasfp && isfpNow && !f.isifp;
+                    if (fpDay) this.hasfp = true;
+                    // [1PF] 1PFVG filter: all days, Mondays (week), or Mondays and Fridays
+                    if (fpDay && (P.fpMode === "all" || this.loc.dow === 1 || (P.fpMode === "weekFridays" && this.loc.dow === 5))) {
                         f.isfp = true;
                         f.iswfp = this.loc.dow === 1;
-                        this.hasfp = f.isfp;
+                        f.isffp = this.loc.dow === 5;
+                        this.fpKept = true;
                         this.fpfvgs.push(f);
                         this.clearlastfp();
                     } else if (!this.fponly && !f.isifp && (!P.deDisp || deDispOK)) {
@@ -1124,7 +1134,7 @@ class FVGSIFVGOTE {
     // ---------------------------------------------------------------------------------- FVG helpers
     newFVG(hi, lo, ce, islong, start) {
         return {
-            hi, lo, ce, islong, start, end: null, rect: null, celine: null, isfp: false, iswfp: false, isifp: false,
+            hi, lo, ce, islong, start, end: null, rect: null, celine: null, isfp: false, iswfp: false, isffp: false, isifp: false,
             sbar: null, hiln: null, loln: null, kept: false, kdir: 0, dup: null, cand: false, own: false,
             shown: false, aplus: false, disp: false, brk: false, brkD: 0, mbD: 0,
             lblD: 0, ote: false, oLo: null, oHi: null,
@@ -1238,7 +1248,7 @@ class FVGSIFVGOTE {
     bgColor(f) {
         const P = this.P;
         let c = f.islong ? P.lcol : P.scol, t = 90;
-        if (f.isfp) { c = P.fpcol; if (f.iswfp) c = P.wfpcol; }
+        if (f.isfp) { c = P.fpcol; if (f.iswfp) c = P.wfpcol; else if (f.isffp) c = P.ffpcol; }
         if (f.isifp) { c = P.ifpcol; t = 80; }
         // [REL] too small for a C.E.: a little more transparent
         if (this.relSmall(f)) t = t + (100 - t) / 2;
@@ -1248,7 +1258,7 @@ class FVGSIFVGOTE {
     lnColor(f) {
         const P = this.P;
         let c = f.islong ? P.lnlcol : P.lnscol;
-        if (f.isfp) { c = P.lnfpcol; if (f.iswfp) c = P.lnwfpcol; }
+        if (f.isfp) { c = P.lnfpcol; if (f.iswfp) c = P.lnwfpcol; else if (f.isffp) c = P.lnffpcol; }
         if (f.isifp) c = P.ilnfpcol;
         const hid = this.hideReg && (this.ifvgOnly || (!f.isfp && !f.isifp));
         // [REL] too small for a C.E.: no border (boxes only; segments are the lines themselves)
@@ -1298,8 +1308,8 @@ class FVGSIFVGOTE {
             f.own = !(f.shown || f.isfp || f.isifp);
         }
         if (f.isfp || f.isifp) {
-            const fc = f.isifp ? col(P.ifpcol, 80) : (f.iswfp ? col(P.wfpcol, 90) : col(P.fpcol, 90));
-            const lc = f.isifp ? col(P.ilnfpcol, 20) : (f.iswfp ? col(P.lnwfpcol, 20) : col(P.lnfpcol, 20));
+            const fc = f.isifp ? col(P.ifpcol, 80) : (f.iswfp ? col(P.wfpcol, 90) : f.isffp ? col(P.ffpcol, 90) : col(P.fpcol, 90));
+            const lc = f.isifp ? col(P.ilnfpcol, 20) : (f.iswfp ? col(P.lnwfpcol, 20) : f.isffp ? col(P.lnffpcol, 20) : col(P.lnfpcol, 20));
             f.rect.bg = this.styNoFill ? null : fc;
             f.rect.border = lc;
             f.rect.bw = 1;
@@ -1806,36 +1816,56 @@ class FVGSIFVGOTE {
         const arr = mb ? this.mbs : this.brks;
         const len = mb ? P.mbLen : P.brkLen;
         const keep = mb ? P.mbKeep : P.brkKeep;
+        const age = mb ? P.mbAge : P.brkAge;
         const seq = (mb ? P.mbMode : P.brkMode) === "sequence";
         const { h, l, c } = this;
-        if (PL !== null) {
-            z.prevL = z.lastL; z.prevLb = z.lastLb;
-            z.lastL = PL; z.lastLb = j - len;
-            // breaker: lower low / mitigation block: higher low, with the last pivot high between them
-            if (z.prevL !== null && (mb ? z.lastL > z.prevL : z.lastL < z.prevL) && z.lastHb !== null &&
-                z.lastHb > z.prevLb && z.lastHb < z.lastLb) {
-                const r = this.zoneOf(1, j - z.lastHb, z.prevLb, seq);
-                if (r) this.zoneAdd(arr, keep, 1, r);
+        // bearish: high, low, higher high (breaker: the second high raids the first) / lower high (mitigation
+        // block); armed on the low between them
+        if (PH !== null && this.blkPivot(z, PH, j - len, 1)) {
+            if (z.ty.length === 3 && z.ty[0] === 1 && z.br[1] !== z.dnDone) {
+                z.dnLvl = (mb ? z.pr[2] < z.pr[0] : z.pr[2] > z.pr[0]) ? z.pr[1] : null;
+                z.dnBar = z.br[1];
             }
         }
-        if (PH !== null) {
-            z.prevH = z.lastH; z.prevHb = z.lastHb;
-            z.lastH = PH; z.lastHb = j - len;
-            if (z.prevH !== null && (mb ? z.lastH < z.prevH : z.lastH > z.prevH) && z.lastLb !== null &&
-                z.lastLb > z.prevHb && z.lastLb < z.lastHb) {
-                const r = this.zoneOf(-1, j - z.lastLb, z.prevHb, seq);
-                if (r) this.zoneAdd(arr, keep, -1, r);
+        // bullish: low, high, lower low (breaker) / higher low (mitigation block); armed on the high between them
+        if (PL !== null && this.blkPivot(z, PL, j - len, -1)) {
+            if (z.ty.length === 3 && z.ty[0] === -1 && z.br[1] !== z.upDone) {
+                z.upLvl = (mb ? z.pr[2] > z.pr[0] : z.pr[2] < z.pr[0]) ? z.pr[1] : null;
+                z.upBar = z.br[1];
             }
+        }
+        if (z.dnLvl !== null && j - z.dnBar > age) z.dnLvl = null;
+        if (z.upLvl !== null && j - z.upBar > age) z.upLvl = null;
+        // the block forms on the close through that swing
+        if (z.dnLvl !== null && c < z.dnLvl) {
+            const r = this.zoneOf(-1, j - z.dnBar, mb, seq);
+            if (r) { const b = this.zoneAdd(arr, keep, -1, r); b.broken = true; b.bkBar = j; }
+            z.dnDone = z.dnBar; z.dnLvl = null;
+        }
+        if (z.upLvl !== null && c > z.upLvl) {
+            const r = this.zoneOf(1, j - z.upBar, mb, seq);
+            if (r) { const b = this.zoneAdd(arr, keep, 1, r); b.broken = true; b.bkBar = j; }
+            z.upDone = z.upBar; z.upLvl = null;
         }
         for (let k = arr.length - 1; k >= 0; k--) {
             const b = arr[k];
             if (b.tagged) {
-                if ((b.dir === 1 && l < b.lo) || (b.dir === -1 && h > b.hi)) {
-                    this.zoneDelDraw(b);
+                // each pullback extends it; fails on a close through the far side (erased if no pullback worked
+                // yet); ends when no pullback came for the age limit
+                if ((b.dir === 1 && c < b.lo) || (b.dir === -1 && c > b.hi)) {
+                    if (!b.won) this.zoneDelDraw(b);
                     arr.splice(k, 1);
-                } else if ((b.dir === 1 && c > b.hi) || (b.dir === -1 && c < b.lo)) {
+                } else if (j - b.pb > age) {
                     arr.splice(k, 1);
+                } else {
+                    if ((b.dir === 1 && l <= b.hi) || (b.dir === -1 && h >= b.lo)) {
+                        b.pb = j;
+                        if (b.bx) { b.bx.right = j; b.ml.x2 = j; }
+                    }
+                    if ((b.dir === 1 && c > b.hi) || (b.dir === -1 && c < b.lo)) b.won = true;
                 }
+            } else if (j - b.zb > age) {
+                arr.splice(k, 1);  // no pullback in time: of no interest at this timeframe
             } else if (!b.broken) {
                 if ((b.dir === 1 && c > b.hi) || (b.dir === -1 && c < b.lo)) { b.broken = true; b.bkBar = j; }
             } else if (!b.swung) {
@@ -1855,39 +1885,58 @@ class FVGSIFVGOTE {
                     if (!P.ifvgswings && this.bearconfirm !== null) tag(this.bearifvg, b, this.ifvgBoxb, -1);
                     if (P.ifvgswings && this.ifsdir === -1 && this.ifsconfirm !== null) tag(this.swFvg, b, this.ifvgBox, 2);
                 }
-                if (b.tagged && ((b.dir === 1 && l < b.lo) || (b.dir === -1 && h > b.hi))) {
+                if (b.tagged && ((b.dir === 1 && c < b.lo) || (b.dir === -1 && c > b.hi))) {
                     this.zoneDelDraw(b);
                     arr.splice(k, 1);
                 }
             }
         }
     }
-    zoneOf(dir, k0, from, seq) {
+    // swings as an alternating high / low sequence of the last three pivots, two of a kind merged into the more
+    // extreme; true when the sequence changed
+    blkPivot(z, price, bar, kind) {
+        const n = z.ty.length;
+        if (n > 0 && z.ty[n - 1] === kind) {
+            if (kind === 1 ? price > z.pr[n - 1] : price < z.pr[n - 1]) { z.pr[n - 1] = price; z.br[n - 1] = bar; return true; }
+            return false;
+        }
+        z.pr.push(price); z.br.push(bar); z.ty.push(kind);
+        while (z.ty.length > 3) { z.pr.shift(); z.br.shift(); z.ty.shift(); }
+        return true;
+    }
+    // zone at the swing k0 bars back: the up-close (dir 1) / down-close (dir -1) candle there or among the 3
+    // before it, wick to wick (breaker) or its body (mitigation block), plus the consecutive ones before it in
+    // "Whole sequence" mode
+    zoneOf(dir, k0, body, seq) {
         const j = this.j;
+        const top = x => body ? Math.max(this.O[x], this.C[x]) : this.H[x];
+        const bot = x => body ? Math.min(this.O[x], this.C[x]) : this.L[x];
         let zh = null, zl = null, zt = null, zt1 = null;
-        const kmax = Math.min(j - from, 300);
+        if (k0 + 3 > 300) return null;
         let k = k0;
-        while (k <= kmax && zt === null) {
-            if (j - k >= 0 && (this.C[j - k] - this.O[j - k]) * dir > 0) {
-                zh = this.H[j - k]; zl = this.L[j - k]; zt = j - k; zt1 = j - k;
-            }
+        while (k <= k0 + 3 && zt === null) {
+            const x = j - k;
+            if (x >= 0 && (this.C[x] - this.O[x]) * dir > 0) { zh = top(x); zl = bot(x); zt = x; zt1 = x; }
             k += 1;
         }
         if (zt !== null && seq) {
-            while (k <= kmax && j - k >= 0 && (this.C[j - k] - this.O[j - k]) * dir > 0) {
-                zh = Math.max(zh, this.H[j - k]); zl = Math.min(zl, this.L[j - k]); zt = j - k;
+            while (k <= 300 && j - k >= 0 && (this.C[j - k] - this.O[j - k]) * dir > 0) {
+                zh = Math.max(zh, top(j - k)); zl = Math.min(zl, bot(j - k)); zt = j - k;
                 k += 1;
             }
         }
         return zt === null ? null : { hi: zh, lo: zl, t: zt, t1: zt1 };
     }
     zoneAdd(arr, keep, dir, r) {
-        arr.push({ dir, hi: r.hi, lo: r.lo, t: r.t, t1: r.t1, broken: false, bkBar: null, swung: false, tagged: false, bx: null, ml: null, fl: null });
+        const b = { dir, hi: r.hi, lo: r.lo, t: r.t, t1: r.t1, zb: r.t1, pb: null, won: false, broken: false, bkBar: null,
+            swung: false, tagged: false, bx: null, ml: null, fl: null };
+        arr.push(b);
         let cnt = 0;
-        for (const b of arr) if (b.dir === dir) cnt++;
+        for (const o of arr) if (o.dir === dir) cnt++;
         if (cnt > keep) {
             for (let k = 0; k < arr.length; k++) if (arr[k].dir === dir) { arr.splice(k, 1); break; }
         }
+        return b;
     }
     zoneDelDraw(b) {
         if (b.bx) { this.g.del(b.bx); this.g.del(b.ml); }
@@ -1896,12 +1945,13 @@ class FVGSIFVGOTE {
     // draw the zone once (rectangle / shadow rectangle, mid line, flagged candles)
     zoneDraw(b, mb) {
         const P = this.P, j = this.j;
-        const colr = mb ? P.mbCol : P.brkCol;
+        const colr = mb ? (b.dir === 1 ? P.mbCol : P.mbColDn) : (b.dir === 1 ? P.brkCol : P.brkColDn);
         const sty = mb ? P.mbSty : P.brkSty;
         const w = mb ? P.mbW : P.brkW;
         const shd = mb ? P.mbShd : P.brkShd;
         const mid = (b.hi + b.lo) / 2;
         b.tagged = true;
+        b.pb = j;
         if (mb ? P.mbFlag : P.brkFlag) {
             b.fl = [];
             let kk = 0;

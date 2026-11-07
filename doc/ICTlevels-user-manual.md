@@ -268,7 +268,7 @@ A small table at the top right of the chart, updated on the last bar:
 
 Rows are empty when nothing is active. The premarket range is not shown in the table.
 
-Optionally ("flag macros with background color", off by default) the chart background is tinted during every macro window, on all bars, so you can see past macros on the chart.
+Optionally ("flag macros with background color", off by default) the chart background is tinted during every macro window, on all bars, so you can see past macros on the chart. The tint is only drawn on charts below 15m; on 15m and above the macros are shorter than a bar.
 
 **How to use it**
 
@@ -474,7 +474,7 @@ Settings are listed in the order they appear in the settings dialog. Several set
 | (no label, color) | blue | Text color of the session name. |
 | Show current macro name | on | Shows the active macro name in the table. |
 | (no label, color) | orange | Text color of the macro name. |
-| flag macros with background color | off | Tints the chart background during every macro window. |
+| flag macros with background color | off | Tints the chart background during every macro window (charts below 15m only). |
 | (no label, color) | black, 90% transparent | Background tint color. |
 | Show active silver bullet | on | Shows "S.Bullet" in the table during a silver bullet window. |
 | (no label, color) | red | Text color of the silver bullet note. |

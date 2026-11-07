@@ -3,3 +3,51 @@ Trading view ICT tools
 
 DeliveryEngine.txt is not mine.
 it's from the great Nuno.
+
+Generated files (reminders)
+===========================
+
+Run everything from the tvsrc folder. Never edit a generated file by
+hand: edit its source and regenerate.
+
+FVGs (source FVGS+IFVG+OTE.txt, i.e. FVGs+IFVG+OTE5):
+
+	python3 tools/mkfvgderiv.py
+		writes ICTblocks.txt and FVGS+IFVG+OTE4.txt.
+		Markers in the source: //#cut T ... //#end drops the lines
+		from derivative T (ote4, blk, or sw for both); //#T code
+		keeps "code" only in derivative T.
+
+	FVGS+IFVG+OTE+PL.txt is not generated: apply the same changes by
+	hand (it uses dO/dH/dL/dC instead of open/high/low/close).
+
+Levels (source ICTlevels.txt):
+
+	python3 tools/mklevelsderiv.py
+		writes ICTgaps.txt and ICTday.txt.
+
+ICTScalp (source ICTScalp.txt):
+
+	python3 tools/mk15.py ICTScalp.txt ICTScalp15.txt
+	python3 tools/mkhtf.py ICTScalp.txt ICTscalpHTFFVGs.txt
+	python3 tools/mkses.py ICTScalp.txt ICTScalpSes.txt
+	python3 tools/mkstrategy.py ICTScalp.txt ICTScalpStrategy.txt
+
+Ports (ICTlevels, ICTcotas and FVGS+IFVG+OTE):
+
+	ninja/<name>.cs and tradovate/<name>.js (FVGS+IFVG+OTE is
+	FVGSIFVGOTE) are hand ports. After changing the Pine source,
+	port the change and update the source md5 in the port header:
+
+	md5 ICTlevels.txt	(md5sum on Linux)
+
+PDF manuals (doc/), from the doc folder, for each document d:
+
+	t=$(head -1 $d.md | sed 's/^# *//')
+	pandoc $d.md -s --css manual.css --embed-resources \
+		--metadata pagetitle="$t" -o /tmp/$d.html
+	chrome --headless --no-pdf-header-footer \
+		--print-to-pdf=$d.pdf /tmp/$d.html
+
+	On the Mac "chrome" is
+	"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome".

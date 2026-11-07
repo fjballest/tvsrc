@@ -36,10 +36,10 @@ BLK_SUBST = [  # (old, new): defaults of the inputs it keeps
 # ICTblocks draws no FVG boxes, so the block rectangles carry the B / M label and a semi-transparent fill
 for k, t, n in (("brk", "B", "breaker"), ("mb", "M", "mitigation block")):
     BLK_SUBST += [
-        ("border_width = %sShd ? 0 : %sW, bgcolor = color.new(%sShd ? color.gray : %sCol, %sShd ? 80 : 100))"
+        ("border_width = %sShd ? 0 : %sW, bgcolor = color.new(%sShd ? color.gray : %sC(b.dir), %sShd ? 80 : 100))"
          % (k, k, k, k, k),
-         "border_width = %sShd ? 0 : %sW, bgcolor = color.new(%sShd ? color.gray : %sCol, %sShd ? 80 : 85),\n"
-         "                    text = b.dir == 1 ? \"%s↑\" : \"%s↓\", text_color = %sCol, text_size = size.small,\n"
+         "border_width = %sShd ? 0 : %sW, bgcolor = color.new(%sShd ? color.gray : %sC(b.dir), %sShd ? 80 : 85),\n"
+         "                    text = b.dir == 1 ? \"%s↑\" : \"%s↓\", text_color = %sC(b.dir), text_size = size.small,\n"
          "                    text_halign = %sLblH, text_valign = %sLblV)" % (k, k, k, k, k, t, t, k, k, k)),
         ("\n\n%s" % {"brk": "// Mitigation blocks =========", "mb": "// Delivery Engine (from Nuno's"}[k],
          "\n%sLbl = input.string(\"right\", \"Label\", options = [\"right\", \"left\", \"center\", \"top left\", "
@@ -47,9 +47,17 @@ for k, t, n in (("brk", "B", "breaker"), ("mb", "M", "mitigation block")):
          "vertically on its right / left side, in the middle, or at a top corner.\")\n"
          "%sLblH = %sLbl == \"left\" or %sLbl == \"top left\" ? text.align_left : %sLbl == \"center\" ? "
          "text.align_center : text.align_right\n"
-         "%sLblV = %sLbl == \"top left\" or %sLbl == \"top right\" ? text.align_top : text.align_center\n\n%s"
-         % (k, {"brk": "BRK", "mb": "MB"}[k], t, t, k, k, k, k, k, k, k,
+         "%sLblV = %sLbl == \"top left\" or %sLbl == \"top right\" ? text.align_top : text.align_center\n"
+         "%sNoFill = input.bool(false, \"Border only (no fill)\", group = G_%s,\n    tooltip = \"Draw the %s rectangle "
+         "with its border and label only, without the semi-transparent fill (the shadow rectangle keeps its grey fill).\")\n\n%s"
+         % (k, {"brk": "BRK", "mb": "MB"}[k], t, t, k, k, k, k, k, k, k, k, {"brk": "BRK", "mb": "MB"}[k], n,
             {"brk": "// Mitigation blocks =========", "mb": "// Delivery Engine (from Nuno's"}[k])),
+        ("            if %sBox or %sShd\n                b.bx := box.new(" % (k, k),
+         "            if not na(b.bx)  // drawn at the break: ends at the pullback, full fill\n"
+         "                b.bx.set_right(time)\n"
+         "                b.bx.set_bgcolor(color.new(%sShd ? color.gray : %sC(b.dir), %sShd ? 80 : 85))\n"
+         "                b.ml.set_x2(time)\n"
+         "            else if %sBox or %sShd\n                b.bx := box.new(" % (k, k, k, k, k)),
         ('"Draw the %s rectangle and its mid line.' % n,
          '"Draw the %s rectangle (semi-transparent fill, labeled %s↑ / %s↓) and its mid line.' % (n, t, t)),
     ]
@@ -262,6 +270,9 @@ def main():
     for a, b in BLK_SUBST:
         assert s.count(a) == 1, a
         s = s.replace(a, b)
+    # Border only: no fill for the block rectangles (the shadow rectangle keeps its own)
+    s, n = re.subn(r"\b(brk|mb)Shd \? (80|88) : (85|93)\b", r"\1Shd ? \2 : (\1NoFill ? 100 : \3)", s)
+    assert n == 6, n
     open("FVGS+IFVG+OTE4.txt", "w", newline="").write(ote4)
     open("ICTblocks.txt", "w", newline="").write(s)
     print("FVGS+IFVG+OTE4.txt", ote4.count("\n"), "lines; ICTblocks.txt", s.count("\n"), "lines")
