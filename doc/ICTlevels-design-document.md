@@ -166,7 +166,7 @@ One `request.security` call on `M` returns high, low and close of the previous t
 
 ### Macros and table
 
-Macro, session and silver bullet windows are tested with `inside(tsec)`. During a macro the chart background can be tinted, and the table shows the names of the active session, macro and silver bullet, plus a warning when the object cap forced limits.
+Macro, session and silver bullet windows are tested with `inside(tsec)`. During a macro the chart background can be tinted (`domacrobg`, only when the chart timeframe is below 15m), and the table shows the names of the active session, macro and silver bullet, plus a warning when the object cap forced limits.
 
 ## Function reference
 

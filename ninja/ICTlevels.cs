@@ -4,7 +4,7 @@
 // quadrants and standard deviations, premarket range, EQH/EQL, PO3 lines, TGIF levels, macros,
 // silver bullet and a session/macro status text. Draws levels only: no plots, no signals, no alerts.
 //
-// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 682c74cb57ebd2d4730853b77b2c6061),
+// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 8145a7539cadb43ef480a11c38fde131),
 // © franjballest, Mozilla Public License 2.0 (https://mozilla.org/MPL/2.0/).
 //
 // Install:
@@ -874,7 +874,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 			}
 
 			// ---------------------------------------------------- macros background
-			if (DoMacroBg)
+			if (DoMacroBg && tfsecs > 0 && tfsecs < 900) // not on 15m and above
 			{
 				foreach (ZI m in macros)
 				{

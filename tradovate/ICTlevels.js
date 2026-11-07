@@ -11,7 +11,7 @@
  *   It draws levels only: no signals, no alerts, no plots.
  *
  *   It is a port of the TradingView Pine Script v6 indicator ICTlevels.txt
- *   (md5 682c74cb57ebd2d4730853b77b2c6061). Parameter names are the Pine variable names and the
+ *   (md5 8145a7539cadb43ef480a11c38fde131). Parameter names are the Pine variable names and the
  *   defaults are the Pine defaults; see "doc/ICTlevels-user-manual.md" for what every level means.
  *
  * How to install
@@ -963,7 +963,7 @@ class ICTlevels {
 
         // ---------------- per-bar output: macro background
         const local = [];
-        if (P.domacrobg && tfok) {
+        if (P.domacrobg && tfok && tfsecs < 900) {  // not on 15m and above
             let inMacro = false;
             for (const m of C.macros) {
                 if (inside(m, tsec)) {

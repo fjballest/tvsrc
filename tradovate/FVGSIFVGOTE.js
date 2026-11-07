@@ -13,7 +13,7 @@
  *   BM↑/BM↓, inheritance of the tags by IFVGs) and LONG / SHORT / OTE signal markers.
  *
  *   Port of the TradingView Pine Script v6 indicator "FVGS+IFVG+OTE.txt"
- *   (md5 69af4331998af6295914f73eef40e8b7, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
+ *   (md5 ca70e36e8c52b59a7eeccab0895385fa, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
  *   input variable names (camelCase). See the design document (d.md) and user manual (m.md) for the logic.
  *
  * How to install
@@ -92,6 +92,7 @@ const PARAMS = [
     ["dofp", "b", true], ["doifvg", "b", true], ["dowick", "b", true],
     ["drawMode", "e", "all", { all: "all", PFVG: "1PFVGs", IFVG: "IFVGs", PFVG_IFVG: "1PFVGs+IFVGs" }],
     ["fltMode", "e", "none", { none: "none", sweeps: "sweeps", sweepsMid: "sweeps&mid", relevant: "relevant", recentRelevant: "recent relevant" }],
+    ["fpMode", "e", "all", { all: "all", week: "week", weekFridays: "week+fridays" }],
     // FVG Settings
     ["visible", "b", false], ["dofvgalert", "b", false], ["diag", "b", false],
     ["minfvg", "n", 3, [0.25, 1]], ["maxfvg", "n", 10000, [1, 100]], ["maxfvgs", "n", 200, [1, 2]],
@@ -104,6 +105,7 @@ const PARAMS = [
     ["market", "e", "Auto", { Auto: "Auto (DAX: EU, else US)", US: "US (New York)", EU: "EU (Madrid)" }],
     ["nfp", "n", 6, [1, 1]],
     ["fpcol", "c", "#00fbff"], ["lnfpcol", "c", "#0097a7"], ["wfpcol", "c", "#2962ff"], ["lnwfpcol", "c", "#2962ff"],
+    ["ffpcol", "c", "#9c27b0"], ["lnffpcol", "c", "#9c27b0"],
     ["doifp", "b", false], ["ifpcol", "c", "#880e4f"], ["ilnfpcol", "c", "#880e4f"],
     // Wick Settings
     ["nwicks", "n", 30, [1, 0]], ["minwick", "n", 20, [1, 0]], ["wickdx", "n", 0, [1, 0]],
@@ -432,7 +434,7 @@ class FVGSIFVGOTE {
         this.relF = []; this.relS = []; this.relB = [];
         this.otePL = null; this.otePLb = null; this.otePH = null; this.otePHb = null; // [OTEF] last chart swings
         this.fs = { post: 1000000, stH: null, stL: null, stHbar: null, stLbar: null };
-        this.hasfp = false; this.hasifp = false;
+        this.hasfp = false; this.hasifp = false; this.fpKept = false;
         // DE
         this.deRange = []; this.deStd = []; this.deStdMss = [];
         this.rsStd = new RollStd(Math.max(1, P.deStdLen));
@@ -777,7 +779,7 @@ class FVGSIFVGOTE {
         }
 
         // ---- FVGs
-        if (Math.floor(this.loc.mod / 60) !== this.fph) { this.hasfp = false; this.hasifp = false; }
+        if (Math.floor(this.loc.mod / 60) !== this.fph) { this.hasfp = false; this.hasifp = false; this.fpKept = false; }
         let lastlongfvg = null, lastshortfvg = null;
         if (j >= 3) {
             const isfpNow = this.isFPFVG();
@@ -791,7 +793,7 @@ class FVGSIFVGOTE {
                     if (g) { [hi, lo] = g; fhi = hi; flo = lo; fk = 2; }
                 }
                 if (fhi - flo > P.minfvg && fhi - flo < P.maxfvg && (!P.deDisp || deDispOK || isfpNow ||
-                    (!this.hasifp && this.hasfp && P.doifp && this.fpfvgs.length > 0))) {
+                    (!this.hasifp && this.hasfp && this.fpKept && P.doifp && this.fpfvgs.length > 0))) {
                     const f = this.newFVG(hi, lo, avg(hi, lo), islong, j - fk);
                     this.dg.fvgs++;
                     f.sbar = j - fk;
@@ -800,7 +802,7 @@ class FVGSIFVGOTE {
                     f.aplus = P.deAplus && mssBar !== null && j - mssBar <= 3;
                     f.disp = deDispOK;
                     if (islong) lastlongfvg = f; else lastshortfvg = f;
-                    if (!this.hasifp && this.hasfp && P.doifp && this.fpfvgs.length > 0) {
+                    if (!this.hasifp && this.hasfp && this.fpKept && P.doifp && this.fpfvgs.length > 0) {
                         const fp = this.fpfvgs[this.fpfvgs.length - 1];
                         if (fp.islong !== f.islong) {
                             f.isifp = true;
@@ -808,10 +810,14 @@ class FVGSIFVGOTE {
                             this.fpfvgs.push(f);
                         }
                     }
-                    if (!this.hasfp && isfpNow && !f.isifp) {
+                    const fpDay = !this.hasfp && isfpNow && !f.isifp;
+                    if (fpDay) this.hasfp = true;
+                    // [1PF] 1PFVG filter: all days, Mondays (week), or Mondays and Fridays
+                    if (fpDay && (P.fpMode === "all" || this.loc.dow === 1 || (P.fpMode === "weekFridays" && this.loc.dow === 5))) {
                         f.isfp = true;
                         f.iswfp = this.loc.dow === 1;
-                        this.hasfp = f.isfp;
+                        f.isffp = this.loc.dow === 5;
+                        this.fpKept = true;
                         this.fpfvgs.push(f);
                         this.clearlastfp();
                     } else if (!this.fponly && !f.isifp && (!P.deDisp || deDispOK)) {
@@ -1128,7 +1134,7 @@ class FVGSIFVGOTE {
     // ---------------------------------------------------------------------------------- FVG helpers
     newFVG(hi, lo, ce, islong, start) {
         return {
-            hi, lo, ce, islong, start, end: null, rect: null, celine: null, isfp: false, iswfp: false, isifp: false,
+            hi, lo, ce, islong, start, end: null, rect: null, celine: null, isfp: false, iswfp: false, isffp: false, isifp: false,
             sbar: null, hiln: null, loln: null, kept: false, kdir: 0, dup: null, cand: false, own: false,
             shown: false, aplus: false, disp: false, brk: false, brkD: 0, mbD: 0,
             lblD: 0, ote: false, oLo: null, oHi: null,
@@ -1242,7 +1248,7 @@ class FVGSIFVGOTE {
     bgColor(f) {
         const P = this.P;
         let c = f.islong ? P.lcol : P.scol, t = 90;
-        if (f.isfp) { c = P.fpcol; if (f.iswfp) c = P.wfpcol; }
+        if (f.isfp) { c = P.fpcol; if (f.iswfp) c = P.wfpcol; else if (f.isffp) c = P.ffpcol; }
         if (f.isifp) { c = P.ifpcol; t = 80; }
         // [REL] too small for a C.E.: a little more transparent
         if (this.relSmall(f)) t = t + (100 - t) / 2;
@@ -1252,7 +1258,7 @@ class FVGSIFVGOTE {
     lnColor(f) {
         const P = this.P;
         let c = f.islong ? P.lnlcol : P.lnscol;
-        if (f.isfp) { c = P.lnfpcol; if (f.iswfp) c = P.lnwfpcol; }
+        if (f.isfp) { c = P.lnfpcol; if (f.iswfp) c = P.lnwfpcol; else if (f.isffp) c = P.lnffpcol; }
         if (f.isifp) c = P.ilnfpcol;
         const hid = this.hideReg && (this.ifvgOnly || (!f.isfp && !f.isifp));
         // [REL] too small for a C.E.: no border (boxes only; segments are the lines themselves)
@@ -1302,8 +1308,8 @@ class FVGSIFVGOTE {
             f.own = !(f.shown || f.isfp || f.isifp);
         }
         if (f.isfp || f.isifp) {
-            const fc = f.isifp ? col(P.ifpcol, 80) : (f.iswfp ? col(P.wfpcol, 90) : col(P.fpcol, 90));
-            const lc = f.isifp ? col(P.ilnfpcol, 20) : (f.iswfp ? col(P.lnwfpcol, 20) : col(P.lnfpcol, 20));
+            const fc = f.isifp ? col(P.ifpcol, 80) : (f.iswfp ? col(P.wfpcol, 90) : f.isffp ? col(P.ffpcol, 90) : col(P.fpcol, 90));
+            const lc = f.isifp ? col(P.ilnfpcol, 20) : (f.iswfp ? col(P.lnwfpcol, 20) : f.isffp ? col(P.lnffpcol, 20) : col(P.lnfpcol, 20));
             f.rect.bg = this.styNoFill ? null : fc;
             f.rect.border = lc;
             f.rect.bw = 1;

@@ -1661,7 +1661,7 @@ combinePo3(RTHOG g, Zone z, float tol) =>
 var table tbl = table.new(position.top_right, 1, 4, bgcolor = transparent)
 
 bool inMacro = false
-if domacrobg and tfok
+if domacrobg and tfok and tfsecs < 900  // not on 15m and above
     for m in macros
         if m.inside(tsec)
             inMacro := true

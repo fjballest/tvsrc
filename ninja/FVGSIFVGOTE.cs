@@ -2,7 +2,7 @@
 // FVGSIFVGOTE - Fair value gaps, 1st presented FVGs, inverse FVGs (IFVG) and ICT OTE, for NinjaTrader 8
 // ---------------------------------------------------------------------------------------------------------------------
 // Port of the TradingView Pine Script v6 indicator "FVGs+IFVG+OTE5" by franjballest
-// (source file FVGS+IFVG+OTE.txt, md5 69af4331998af6295914f73eef40e8b7). Mozilla Public License 2.0, as the original.
+// (source file FVGS+IFVG+OTE.txt, md5 ca70e36e8c52b59a7eeccab0895385fa). Mozilla Public License 2.0, as the original.
 //
 // What it draws: FVG boxes (or no-fill boxes, or hi / lo / C.E. segments) with C.E. lines, the 1st presented FVG of the
 // session open (New York 09:30, or Madrid 09:00 for DAX) and its optional inverse, wick C.E. segments, IFVG candidates
@@ -57,6 +57,7 @@ using NinjaTrader.NinjaScript.DrawingTools;
 // option lists of the Pine string inputs (global, uniquely prefixed, so the generated factory code can see them)
 public enum FioDrawMode { All, OnlyPFVGs, IFVGs, PFVGsAndIFVGs }
 public enum FioFilterMode { None, Sweeps, SweepsAndMid, Relevant, RecentRelevant }
+public enum FioFpFilter { All, Week, WeekAndFridays }
 public enum FioFvgStyle { Box, BoxNoFill, Segments }
 public enum FioConfirm { Close, FullBody }
 public enum FioDeadMode { Fade, BackToFVG }
@@ -129,7 +130,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             public DateTime? end;
             public GBox rect;
             public GLine celine, hiln, loln;
-            public bool isfp, iswfp, isifp;
+            public bool isfp, iswfp, isffp, isifp;
             public int sbar;
             public bool kept;
             public int kdir;
@@ -241,7 +242,7 @@ namespace NinjaTrader.NinjaScript.Indicators
         // derived inputs
         private bool fponly, ifvgOnly, hideReg, fltOff, fltMid, fltRel, fltRecent, styNoFill, stySeg;
         private const int RelMaxAge = 1000;   // RecentRelevant: hidden FVGs older than this (bars) are dropped
-        private Color cL, cLn, cS, cSn, cFp, cFpn, cWfp, cWfpn, cIfp, cIfpn, cWick, cDead, cBullIf, cBearIf;
+        private Color cL, cLn, cS, cSn, cFp, cFpn, cWfp, cWfpn, cFfp, cFfpn, cIfp, cIfpn, cWick, cDead, cBullIf, cBearIf;
         private Color cOteBand, cOteHi, cOteTxt, cBrk, cMb, cBrkDn, cMbDn, cIfvgTxt;
         private Brush dispBrush;
         private int ifvgTs, ifvgHa, ifvgVa;
@@ -262,7 +263,7 @@ namespace NinjaTrader.NinjaScript.Indicators
         private List<Fvg> lfvgs, sfvgs, fpfvgs, keptIf, pendF;
         private List<Fvg> relF, relS;   // [REL] live FVGs not shown (yet); small drawn FVGs just filled (swing check)
         private List<GBox> relB;        // [REL] boxes of the live FVGs near the price
-        private bool hasfp, hasifp;
+        private bool hasfp, hasifp, fpKept; // fpKept: today's 1PFVG passed the 1PFVG filter
 
         // FVG filter state (FltState)
         private int fsPost;
@@ -344,6 +345,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                 ShowWickCE = true;
                 DrawSelection = FioDrawMode.All;
                 FvgFilter = FioFilterMode.None;
+                FpFilter = FioFpFilter.All;
                 HistoricCompute = false;
                 FvgBounceAlerts = false;
                 MinFvgSize = 3;
@@ -367,6 +369,8 @@ namespace NinjaTrader.NinjaScript.Indicators
                 FpDayBorder = MkBrush(0x0097A7, 20);
                 FpWeekColor = MkBrush(0x2962FF, 90);
                 FpWeekBorder = MkBrush(0x2962FF, 20);
+                FpFridayColor = MkBrush(0x9C27B0, 90);
+                FpFridayBorder = MkBrush(0x9C27B0, 20);
                 FpInverse = false;
                 FpInverseColor = MkBrush(0x880E4F, 80);
                 FpInverseBorder = MkBrush(0x880E4F, 20);
@@ -580,6 +584,8 @@ namespace NinjaTrader.NinjaScript.Indicators
             cFpn = ColorOf(FpDayBorder, CBlack);
             cWfp = ColorOf(FpWeekColor, CTransp);
             cWfpn = ColorOf(FpWeekBorder, CBlack);
+            cFfp = ColorOf(FpFridayColor, CTransp);
+            cFfpn = ColorOf(FpFridayBorder, CBlack);
             cIfp = ColorOf(FpInverseColor, CTransp);
             cIfpn = ColorOf(FpInverseBorder, CBlack);
             cWick = ColorOf(WickColor, CBlack);
@@ -677,6 +683,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             relB = new List<GBox>();
             hasfp = false;
             hasifp = false;
+            fpKept = false;
 
             fsPost = 1000000;
             fsStH = double.NaN;
@@ -1333,6 +1340,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             {
                 c = cFp;
                 if (f.iswfp) c = cWfp;
+                else if (f.isffp) c = cFfp;
             }
             if (f.isifp) c = cIfp;
             // [REL] too small for a C.E.: a little more transparent
@@ -1348,6 +1356,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             {
                 c = cFpn;
                 if (f.iswfp) c = cWfpn;
+                else if (f.isffp) c = cFfpn;
             }
             if (f.isifp) c = cIfpn;
             bool hid = hideReg && (ifvgOnly || (!f.isfp && !f.isifp));
@@ -1398,8 +1407,8 @@ namespace NinjaTrader.NinjaScript.Indicators
             if (f.isfp || f.isifp)
             {
                 // also a 1PFVG: IFVG label, but 1PFVG colors and behaviour (extends right)
-                Color fc = f.isifp ? cIfp : (f.iswfp ? cWfp : cFp);
-                Color lc = f.isifp ? cIfpn : (f.iswfp ? cWfpn : cFpn);
+                Color fc = f.isifp ? cIfp : (f.iswfp ? cWfp : f.isffp ? cFfp : cFp);
+                Color lc = f.isifp ? cIfpn : (f.iswfp ? cWfpn : f.isffp ? cFfpn : cFpn);
                 r.Bg = styNoFill ? CTransp : fc;
                 r.Bd = lc;
                 r.Bw = 1;
@@ -1632,9 +1641,15 @@ namespace NinjaTrader.NinjaScript.Indicators
             }
         }
 
+        // [1PF] the 1PFVG of day of the week d is kept as a 1PFVG (the others are plain FVGs)
+        private bool FpPass(DayOfWeek d)
+        {
+            return FpFilter == FioFpFilter.All || d == DayOfWeek.Monday || (FpFilter == FioFpFilter.WeekAndFridays && d == DayOfWeek.Friday);
+        }
+
         private void Classify(Fvg f, bool fpNow)
         {
-            if (!hasifp && hasfp && FpInverse && fpfvgs.Count > 0 && fp1mIdx < 0)
+            if (!hasifp && hasfp && fpKept && FpInverse && fpfvgs.Count > 0 && fp1mIdx < 0)
             {
                 Fvg fp = fpfvgs[fpfvgs.Count - 1];
                 if (fp.islong != f.islong)
@@ -1644,11 +1659,15 @@ namespace NinjaTrader.NinjaScript.Indicators
                     fpfvgs.Add(f);
                 }
             }
-            if (!hasfp && fpNow && !f.isifp)
+            bool fpDay = !hasfp && fpNow && !f.isifp;
+            DayOfWeek dow = ToZone(BarOpen(0), exchTz).DayOfWeek;
+            if (fpDay) hasfp = true;
+            if (fpDay && FpPass(dow))
             {
                 f.isfp = true;
-                f.iswfp = ToZone(BarOpen(0), exchTz).DayOfWeek == DayOfWeek.Monday;
-                hasfp = f.isfp;
+                f.iswfp = dow == DayOfWeek.Monday;
+                f.isffp = dow == DayOfWeek.Friday;
+                fpKept = true;
                 fpfvgs.Add(f);
                 ClearLastFp();
             }
@@ -1898,7 +1917,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             DateTime t0 = ToZone(mb.GetTime(p).AddMinutes(-1), tzInfo); // open time of candle [0]
             bool fpWin = !hasfp && t0.Minute > fpm + 2;
             // inverse 1PFVG: the first 1m FVG of the opposite bias after the 1PFVG
-            bool ifpWin = hasfp && FpInverse && !hasifp && fpfvgs.Count > 0;
+            bool ifpWin = hasfp && fpKept && FpInverse && !hasifp && fpfvgs.Count > 0;
             if (t0.Hour != fph || !(fpWin || ifpWin)) return;
             bool fpLong = ifpWin && fpfvgs[fpfvgs.Count - 1].islong;
             double o1 = mb.GetOpen(p - 1), c1 = mb.GetClose(p - 1), h1 = mb.GetHigh(p - 1), l1 = mb.GetLow(p - 1);
@@ -1932,9 +1951,13 @@ namespace NinjaTrader.NinjaScript.Indicators
                 fpfvgs.Add(f);
                 return;
             }
-            f.isfp = true;
-            f.iswfp = ToZone(mb.GetTime(p).AddMinutes(-1), exchTz).DayOfWeek == DayOfWeek.Monday;
+            DayOfWeek dow = ToZone(mb.GetTime(p).AddMinutes(-1), exchTz).DayOfWeek;
             hasfp = true;
+            if (!FpPass(dow)) return; // [1PF] the day's 1PFVG, filtered out
+            f.isfp = true;
+            f.iswfp = dow == DayOfWeek.Monday;
+            f.isffp = dow == DayOfWeek.Friday;
+            fpKept = true;
             fpfvgs.Add(f);
             ClearLastFp();
         }
@@ -2959,6 +2982,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             {
                 hasfp = false;
                 hasifp = false;
+                fpKept = false;
             }
 
             // ---- [OTEF] chart swings for the leg origin of new FVGs
@@ -2979,7 +3003,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                 double o3 = Op(3), c3 = Cp(3), h3 = Hp(3), l3 = Lp(3);
                 bool fpNow = IsFPFVG();
                 // the inverse 1PFVG candidate is not subject to the displacement filter
-                bool ifpNow = !hasifp && hasfp && FpInverse && fpfvgs.Count > 0 && fp1mIdx < 0;
+                bool ifpNow = !hasifp && hasfp && fpKept && FpInverse && fpfvgs.Count > 0 && fp1mIdx < 0;
                 {
                     // long: low of [1] above the high of [3]; include suspension blocks
                     double hi = l1, lo = h3;
@@ -3473,6 +3497,10 @@ namespace NinjaTrader.NinjaScript.Indicators
         public FioFilterMode FvgFilter { get; set; }
 
         [NinjaScriptProperty]
+        [Display(Name = "1PFVG filter", GroupName = "Enable / Draw / Filter", Order = 106, Description = "Which 1st presented FVGs are kept and drawn. All: every day's 1PFVG. Week: only the week 1PFVGs (Mondays). WeekAndFridays: the Monday and the Friday 1PFVGs. The others are plain FVGs (and no inverse 1PFVG follows them). Keep counts the kept ones, so with Week it holds that many weeks.")]
+        public FioFpFilter FpFilter { get; set; }
+
+        [NinjaScriptProperty]
         [Display(Name = "Historic compute", GroupName = "FVG Settings", Order = 201, Description = "Kept for parity with the Pine input. NinjaTrader has no visible-range information in OnBarUpdate, so FVGs are always computed on every bar.")]
         public bool HistoricCompute { get; set; }
 
@@ -3638,16 +3666,40 @@ namespace NinjaTrader.NinjaScript.Indicators
         }
 
         [NinjaScriptProperty]
-        [Display(Name = "From 1m candles", GroupName = "1st Presented FVGs", Order = 310, Description = "On charts above 1m and below 15m, the 1st presented FVG is found on the 1m candles instead of the chart candles. Off: only on 1m to 3m charts, from the chart candles.")]
+        [XmlIgnore]
+        [Display(Name = "Friday 1PFVG", GroupName = "1st Presented FVGs", Order = 308)]
+        public Brush FpFridayColor { get; set; }
+
+        [Browsable(false)]
+        public string FpFridayColorSerializable
+        {
+            get { return Serialize.BrushToString(FpFridayColor); }
+            set { FpFridayColor = Serialize.StringToBrush(value); }
+        }
+
+        [NinjaScriptProperty]
+        [XmlIgnore]
+        [Display(Name = "Friday 1PFVG border", GroupName = "1st Presented FVGs", Order = 309)]
+        public Brush FpFridayBorder { get; set; }
+
+        [Browsable(false)]
+        public string FpFridayBorderSerializable
+        {
+            get { return Serialize.BrushToString(FpFridayBorder); }
+            set { FpFridayBorder = Serialize.StringToBrush(value); }
+        }
+
+        [NinjaScriptProperty]
+        [Display(Name = "From 1m candles", GroupName = "1st Presented FVGs", Order = 312, Description = "On charts above 1m and below 15m, the 1st presented FVG is found on the 1m candles instead of the chart candles. Off: only on 1m to 3m charts, from the chart candles.")]
         public bool FpFrom1m { get; set; }
 
         [NinjaScriptProperty]
-        [Display(Name = "1PFVG inverse", GroupName = "1st Presented FVGs", Order = 308, Description = "Also draw the first FVG of the opposite bias after the 1PFVG.")]
+        [Display(Name = "1PFVG inverse", GroupName = "1st Presented FVGs", Order = 310, Description = "Also draw the first FVG of the opposite bias after the 1PFVG.")]
         public bool FpInverse { get; set; }
 
         [NinjaScriptProperty]
         [XmlIgnore]
-        [Display(Name = "1PFVG inverse color", GroupName = "1st Presented FVGs", Order = 309)]
+        [Display(Name = "1PFVG inverse color", GroupName = "1st Presented FVGs", Order = 311)]
         public Brush FpInverseColor { get; set; }
 
         [Browsable(false)]
@@ -3659,7 +3711,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 
         [NinjaScriptProperty]
         [XmlIgnore]
-        [Display(Name = "1PFVG inverse border", GroupName = "1st Presented FVGs", Order = 310)]
+        [Display(Name = "1PFVG inverse border", GroupName = "1st Presented FVGs", Order = 312)]
         public Brush FpInverseBorder { get; set; }
 
         [Browsable(false)]

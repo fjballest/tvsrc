@@ -59,7 +59,11 @@ var dowick = false
 
 drawMode = "all"
 fltMode = "none"
+fpMode = "all"
 bool fponly = drawMode == "1PFVGs"            // regular FVGs are discarded
+// [1PF] the 1PFVG of a day of the week d (dayofweek.*) is kept as a 1PFVG
+fpPass(int d) =>
+    fpMode == "all" or d == dayofweek.monday or (fpMode == "week+fridays" and d == dayofweek.friday)
 bool ifvgOnly = drawMode == "IFVGs"           // all FVGs are hidden, 1PFVGs included
 bool hideReg = drawMode == "IFVGs" or drawMode == "1PFVGs+IFVGs"  // regular FVGs, wicks, swing labels, signals hidden
 bool fltOff = fltMode == "none"
@@ -112,6 +116,8 @@ var fpcol = color.new(#00fbff, 90)
 var lnfpcol = color.new(#0097a7, 20)
 var wfpcol = color.new(#2962ff, 90)
 var lnwfpcol = color.new(#2962ff, 20)
+var ffpcol = color.new(#9c27b0, 90)
+var lnffpcol = color.new(#9c27b0, 20)
 var doifp = false
 var ifpcol = color.new(#880e4f, 80)
 var ilnfpcol = color.new(#880e4f, 20)
@@ -396,6 +402,7 @@ type FVG
     line celine = na // CE line
     bool isfp = false // is first presented FVG
     bool iswfp = false // is week first presented FVG
+    bool isffp = false // is Friday first presented FVG
     bool isifp = false // is first presented FVG inverse
     int sbar = na // [OTE] bar index where the FVG starts
     line hiln = na // segments style: high line
@@ -582,6 +589,8 @@ method bgColor(FVG f) =>
         c := fpcol
         if f.iswfp
             c := wfpcol
+        else if f.isffp
+            c := ffpcol
     if f.isifp
         c := ifpcol
     bool hid = hideReg and (ifvgOnly or (not f.isfp and not f.isifp))
@@ -597,6 +606,8 @@ method lnColor(FVG f) =>
         c := lnfpcol
         if f.iswfp
             c := lnwfpcol
+        else if f.isffp
+            c := lnffpcol
     if f.isifp
         c := ilnfpcol
     bool hid = hideReg and (ifvgOnly or (not f.isfp and not f.isifp))
@@ -935,9 +946,11 @@ dnBreak(float lo) =>
 
 var hasfp = false
 var hasifp = false
+var fpKept = false // [1PF] today's 1PFVG passed the 1PFVG filter (an inverse 1PFVG may follow it)
 if hour(time,tz) != fph
     hasfp := false
     hasifp := false
+    fpKept := false
 timeat(int n) =>
     time[-n]
 FVG lastlongfvg = na
@@ -953,22 +966,26 @@ if true
         fhi := hi
         flo := lo
         fk := 2
-    if fhi - flo > minfvg and fhi-flo < maxfvg and (not deDisp or deDispOK or isFPFVG() or (not hasifp and hasfp and doifp and not fpLow))
+    if fhi - flo > minfvg and fhi-flo < maxfvg and (not deDisp or deDispOK or isFPFVG() or (not hasifp and hasfp and fpKept and doifp and not fpLow))
         f = FVG.new(hi,lo,math.avg(hi,lo),true,timeat(-fk))
         f.sbar := bar_index - fk // [OTE]
         f.aplus := false // [DE] A+ off
         f.disp := deDispOK // [DE]
         lastlongfvg := f
-        if not hasifp and hasfp and doifp and not fpLow
+        if not hasifp and hasfp and fpKept and doifp and not fpLow
             fp = fpfvgs.last()
             if fp.islong != f.islong
                 f.isifp := true
                 hasifp := true
                 fpfvgs.push(f)
-        if not hasfp and isFPFVG() and not f.isifp
+        bool fpNow = not hasfp and isFPFVG() and not f.isifp
+        if fpNow
+            hasfp := true
+        if fpNow and fpPass(dayofweek)
             f.isfp := true
             f.iswfp := dayofweek == dayofweek.monday
-            hasfp := f.isfp
+            f.isffp := dayofweek == dayofweek.friday
+            fpKept := true
             fpfvgs.push(f)
             clearlastfp(fpfvgs)
         else if not fponly and not f.isifp and (not deDisp or deDispOK)
@@ -986,22 +1003,26 @@ if true
         fhi := hi
         flo := lo
         fk := 2
-    if fhi - flo > minfvg and fhi - flo < maxfvg and (not deDisp or deDispOK or isFPFVG() or (not hasifp and hasfp and doifp and not fpLow))
+    if fhi - flo > minfvg and fhi - flo < maxfvg and (not deDisp or deDispOK or isFPFVG() or (not hasifp and hasfp and fpKept and doifp and not fpLow))
         f = FVG.new(hi,lo,math.avg(hi,lo),false,timeat(-fk))
         f.sbar := bar_index - fk // [OTE]
         f.aplus := false // [DE] A+ off
         f.disp := deDispOK // [DE]
         lastshortfvg := f
-        if not hasifp and hasfp and doifp and not fpLow
+        if not hasifp and hasfp and fpKept and doifp and not fpLow
             fp = fpfvgs.last()
             if fp.islong != f.islong
                 f.isifp := true
                 hasifp := true
                 fpfvgs.push(f)
-        if not hasfp and isFPFVG() and not f.isifp
+        bool fpNow = not hasfp and isFPFVG() and not f.isifp
+        if fpNow
+            hasfp := true
+        if fpNow and fpPass(dayofweek)
             f.isfp := true
             f.iswfp := dayofweek == dayofweek.monday
-            hasfp := f.isfp
+            f.isffp := dayofweek == dayofweek.friday
+            fpKept := true
             fpfvgs.push(f)
             clearlastfp(fpfvgs)
         else if not fponly and not f.isifp and (not deDisp or deDispOK)
@@ -1036,7 +1057,7 @@ if fpLow and barstate.isconfirmed and not na(l1t) and l1t.size() > 0
                 fpC.shift()
                 fpT.shift()
             bool fpWin = not hasfp and minute(t0, tz) > fpm + 2
-            bool ifpWin = hasfp and doifp and not hasifp and fpfvgs.size() > 0
+            bool ifpWin = hasfp and fpKept and doifp and not hasifp and fpfvgs.size() > 0
             if fpT.size() == 4 and hour(t0, tz) == fph and (fpWin or ifpWin)
                 // index 2: candle [1], 1: [2], 0: [3]
                 [lhi, llo, lfhi, lflo] = longFVGHL(fpO.get(2), fpC.get(2), fpL.get(2), fpO.get(1),
@@ -1050,7 +1071,9 @@ if fpLow and barstate.isconfirmed and not na(l1t) and l1t.size() > 0
                     bool fpLong = fpfvgs.last().islong
                     isL := isL and not fpLong
                     isS := isS and fpLong
-                if isL or isS
+                if (isL or isS) and not ifpWin and not fpPass(dayofweek(t0, tz))
+                    hasfp := true // [1PF] the day's 1PFVG, filtered out
+                else if isL or isS
                     FVG f = isL ? FVG.new(lhi, llo, math.avg(lhi, llo), true, fpT.get(0))
                          : FVG.new(shi, slo, math.avg(shi, slo), false, fpT.get(0))
                     f.sbar := bar_index
@@ -1061,7 +1084,9 @@ if fpLow and barstate.isconfirmed and not na(l1t) and l1t.size() > 0
                     else
                         f.isfp := true
                         f.iswfp := dayofweek(t0, tz) == dayofweek.monday
+                        f.isffp := dayofweek(t0, tz) == dayofweek.friday
                         hasfp := true
+                        fpKept := true
                         fpfvgs.push(f)
                         clearlastfp(fpfvgs)
 

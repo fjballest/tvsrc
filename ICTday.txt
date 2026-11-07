@@ -237,7 +237,7 @@ bool domacros = input.bool(true, "Show current macro name", group = GRP_MAIN, in
      tooltip = "macro name during macro time on the top right")
 color macrocolor = input.color(color.orange, "", group = GRP_MAIN, inline = "macro")
 bool domacrobg = input.bool(false, "flag macros with background color", group = GRP_MAIN,
-     inline = "macrobg")
+     inline = "macrobg", tooltip = "Below 15m only.")
 color macrobgcolor = input.color(color.new(color.black, 90), "", group = GRP_MAIN,
      inline = "macrobg")
 bool dosilver = input.bool(true, "Show active silver bullet", group = GRP_MAIN, inline = "sb",
@@ -1669,7 +1669,7 @@ combinePo3(RTHOG g, Zone z, float tol) =>
 var table tbl = table.new(position.top_right, 1, 4, bgcolor = transparent)
 
 bool inMacro = false
-if domacrobg and tfok
+if domacrobg and tfok and tfsecs < 900  // not on 15m and above
     for m in macros
         if m.inside(tsec)
             inMacro := true

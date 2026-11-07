@@ -9,7 +9,7 @@ The indicator works on the chart timeframe. It finds fair value gaps (FVGs) on y
 | Element | What it is | Drawn as |
 | --- | --- | --- |
 | FVG | Three-candle gap on the chart timeframe, bullish or bearish | Box (or box without fill, or high / low / C.E. lines), with a dotted C.E. line when it is large enough |
-| 1st presented FVG (1PFVG) | First FVG after the session open (09:30 New York, 09:00 Madrid for DAX), on minute charts below 15m | Cyan box (blue on Mondays, see section 5) extended to the right, with C.E. |
+| 1st presented FVG (1PFVG) | First FVG after the session open (09:30 New York, 09:00 Madrid for DAX), on minute charts below 15m | Cyan box (blue on Mondays, purple on Fridays, see section 5) extended to the right, with C.E. |
 | Inverse 1PFVG | Optional: the first FVG of the opposite bias after the 1PFVG | Dark magenta box extended to the right |
 | Wick C.E. | Midpoint of a large upper or lower candle wick | Short black horizontal segment |
 | IFVG candidate | The latest bullish and bearish FVG, under watch for inversion | The FVG's own box restyled in IFVG colors, thicker border, no label |
@@ -169,6 +169,8 @@ A cyan box (default) for the first FVG after the session open, extended to the r
 - **Which FVG**: the first FVG whose three candles all opened at or after the session time, detected within the same clock hour as the session time (for 09:30, until 09:59). If no FVG forms in that hour there is no 1PFVG that day.
 - **Charts**: minute charts below 15m. **From 1m candles** (on): on charts above 1m (2m to 14m) the 1PFVG is found on the 1m candles of the chart bars (the same rule, applied to the 1m candles), so it is the same box as on a 1m chart; its left edge can fall inside a chart candle. The 1m candles are read when a chart bar closes. Off: only 1m to 3m charts, from the chart candles. The NinjaTrader port does the same with an added 1m series; the Tradovate port cannot read 1m candles and always uses the chart candles (1m to 3m).
 - **Week 1PFVG**: on Mondays the 1PFVG, bullish or bearish, is drawn in the week colors (blue).
+- **Friday 1PFVG**: on Fridays the 1PFVG is drawn in the Friday colors (purple).
+- **1PFVG filter** (`all`, next to the FVG filter): `all` keeps every day's 1PFVG; `week` keeps only the week 1PFVGs (Mondays); `week+fridays` keeps the Monday and the Friday ones. On the other days the first FVG is a plain FVG (it goes through the FVG filter like any other) and there is no inverse 1PFVG. **Keep** counts only the kept ones, so with `week` and Keep 6 you see the last six weeks.
 - **Inverse 1PFVG** (**1PFVG inverse**, off by default): the first FVG of the opposite bias after the 1PFVG, in the same hour. With **From 1m candles** it also comes from the 1m candles.
 - **Keep** (6): number of 1PFVGs kept; when a new one appears the oldest is removed. Inverse 1PFVGs share this list.
 - 1PFVGs stay extended to the right even after price trades through them, until they drop out of the list. They always keep their 1PFVG colors, width and zone, whatever the filtering: they are not affected by the FVG filter or the displacement filter (inverse 1PFVG included), a regular FVG on the same zone never widens or moves them, and the Delivery Engine inversion rules, the displacement flag and the OTE highlight do not recolor them. Only **Draw** = `IFVGs` hides them.
@@ -397,6 +399,7 @@ Inputs on one line in the settings dialog are listed together; a field without i
 | Wick C.E. | On | Draw the C.E. of large candle wicks. |
 | Draw | `all` | `all`, `1PFVGs`, `IFVGs`, `1PFVGs+IFVGs` (see section 7, Draw modes). Alerts keep working in every mode. |
 | FVG filter | `none` | `none`, `sweeps`, `sweeps&mid`, `relevant`, `recent relevant` (see section 4; `relevant` is the slowest). Does not filter 1PFVGs or the close-mode IFVG logic. |
+| 1PFVG filter | `all` | `all`, `week` (Mondays only), `week+fridays` (Mondays and Fridays). Which days keep their 1PFVG (section 5). |
 
 ### FVG Settings
 
@@ -425,6 +428,7 @@ Inputs on one line in the settings dialog are listed together; a field without i
 | Keep | 6 | Number of 1PFVGs kept. |
 | Day 1PFVG / border | `#00fbff` 90% / `#0097a7` 20% | Day 1PFVG fill and border. |
 | Week 1PFVG / border | `#2962ff` 90% / 20% | Monday 1PFVG fill and border. |
+| Friday 1PFVG / border | `#9c27b0` 90% / 20% | Friday 1PFVG fill and border. |
 | 1PFVG inverse | Off | Also draw the first FVG of the opposite bias after the 1PFVG. |
 | color / border | `#880e4f` 80% / 20% | Inverse 1PFVG fill and border. |
 
