@@ -220,6 +220,7 @@ An IFVG goes through three states: candidate (under watch), confirmed (a close w
 ### Close mode (default)
 
 - **Candidate.** Each new long FVG becomes the bearish candidate `bearifvg`; each new short FVG becomes the bullish candidate `bullifvg`. The previous candidate of that side is released.
+- **Older candidates \[IFO\].** A candidate released unconfirmed (and with no inversions) goes to `bearOld` / `bullOld` (at most 3, oldest dropped). On the confirmation of the candidate of that side (first inversion with the inversion rules), `ifoConfirm` adopts each one the same candle broke (`dnBreak` / `upBreak`), labels it `IFVG-` / `IFVG+` and releases it as confirmed; then the list is cleared. No signal, alert or OTE tracker. On each confirmed bar `ifoPurge` drops the ones closed through (they were mitigated without the candidate confirming). Cost: at most 3 checks per side per bar. Same in both ports (`IfoPush` / `IfoConfirm`, `ifoPush` / `ifoConfirm`).
 - **Confirmation.** On a closed bar, `close < bearifvg.lo` confirms a bearish IFVG ("IFVG-"); `close > bullifvg.hi` confirms a bullish one ("IFVG+"). The confirming bar is also the signal bar (`sig = -1` or `1`).
 - **Cancellation.** After confirmation, a close back above `bearifvg.hi` (or below `bullifvg.lo`) clears the confirmation and the label, and cancels the OTE trackers. The candidate stays under watch.
 

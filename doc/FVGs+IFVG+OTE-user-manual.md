@@ -202,6 +202,7 @@ The IFVG never gets a second box: the FVG's own box is restyled. If the FVG is n
 ### Close mode (default)
 
 - **Candidates**: the newest bullish FVG is always the bearish IFVG candidate, and the newest bearish FVG the bullish candidate. The two candidates are shown in IFVG colors, without a label. When a newer FVG of the same bias forms, it takes over and the previous candidate is released (kept as an IFVG if it was confirmed, otherwise returned to a plain FVG).
+- **Older candidates closed through together** (close mode): when a candle confirms a candidate, the previous candidates of the same side (up to 3, released unconfirmed and not closed through since) that the same candle also closed through are shown as confirmed IFVGs too. They get the IFVG box and label only: no signal, alert or OTE tracking.
 - **Confirmation** (on a closed candle): with **IFVG confirmation** = `Close`, a close below the low of the bearish candidate confirms `IFVG-`, a close above the high of the bullish candidate confirms `IFVG+`. With `Full body`, both open and close must be beyond the FVG.
 - **Signal**: the confirming candle is the signal candle: `SHORT` / `LONG` marker (if enabled) and alert `SHORT IFVG <tf>` / `LONG IFVG <tf>`.
 - **Cancellation** (inversion rules off): if price then closes back through the other side (above the high of an `IFVG-`, below the low of an `IFVG+`), the label is removed and the OTE tracking stops. The candidate stays under watch and can be confirmed again.

@@ -2,7 +2,7 @@
 // FVGSIFVGOTE - Fair value gaps, 1st presented FVGs, inverse FVGs (IFVG) and ICT OTE, for NinjaTrader 8
 // ---------------------------------------------------------------------------------------------------------------------
 // Port of the TradingView Pine Script v6 indicator "FVGs+IFVG+OTE5" by franjballest
-// (source file FVGS+IFVG+OTE.txt, md5 ca70e36e8c52b59a7eeccab0895385fa). Mozilla Public License 2.0, as the original.
+// (source file FVGS+IFVG+OTE.txt, md5 81c16cfa9bf948a5ad81a830a4214882). Mozilla Public License 2.0, as the original.
 //
 // What it draws: FVG boxes (or no-fill boxes, or hi / lo / C.E. segments) with C.E. lines, the 1st presented FVG of the
 // session open (New York 09:30, or Madrid 09:00 for DAX) and its optional inverse, wick C.E. segments, IFVG candidates
@@ -298,6 +298,8 @@ namespace NinjaTrader.NinjaScript.Indicators
         // close-mode IFVGs
         private GBox ifvgBox, ifvgBoxb;
         private Fvg bullifvg, bearifvg;
+        // [IFO] replaced candidates not yet closed through (at most 3 per side)
+        private readonly List<Fvg> bearOld = new List<Fvg>(), bullOld = new List<Fvg>();
         private DateTime? bullconfirm, bearconfirm;
         private int bullInv, bearInv;
         private bool bullAp, bearAp, swAp;
@@ -752,6 +754,8 @@ namespace NinjaTrader.NinjaScript.Indicators
             ifvgBoxb = null;
             bullifvg = null;
             bearifvg = null;
+            bearOld.Clear();
+            bullOld.Clear();
             bullconfirm = null;
             bearconfirm = null;
             bullInv = 0;
@@ -1437,6 +1441,28 @@ namespace NinjaTrader.NinjaScript.Indicators
         }
 
         // the IFVG candidate is replaced: keep it if confirmed (and wanted), else restore the FVG
+        // [IFO] when the candidate of a side is confirmed, the replaced candidates the same candle closed through are
+        // shown as confirmed IFVGs too (box and label only: no signal, alert or OTE tracking)
+        private void IfoPush(List<Fvg> old, Fvg f)
+        {
+            old.Add(f);
+            if (old.Count > 3) old.RemoveAt(0);
+        }
+
+        private void IfoConfirm(List<Fvg> old, int d, DateTime ctime)
+        {
+            foreach (Fvg f in old)
+            {
+                if (d < 0 ? DnBreak(f.lo) : UpBreak(f.hi))
+                {
+                    GBox b = Adopt(f, d);
+                    if (b != null) BText(b, IfvgTxt(d, 1, false, "", false, MbOf(f)));
+                    Release(f, true, ctime);
+                }
+            }
+            old.Clear();
+        }
+
         private void Release(Fvg fv, bool confirmed, DateTime? ctime)
         {
             Fvg f = fv.dup ?? fv;
@@ -3131,6 +3157,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             // ---- Close above / below IFVG setups (close mode candidates)
             if (ShowIFVGs && !SwingMode && lastlongfvg != null)
             {
+                if (bearifvg != null && !bearconfirm.HasValue && bearInv == 0) IfoPush(bearOld, bearifvg);
                 if (bearifvg != null) Release(bearifvg, bearconfirm.HasValue, bearconfirm);
                 bearifvg = lastlongfvg;
                 bearconfirm = null;
@@ -3141,6 +3168,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             }
             if (ShowIFVGs && !SwingMode && lastshortfvg != null)
             {
+                if (bullifvg != null && !bullconfirm.HasValue && bullInv == 0) IfoPush(bullOld, bullifvg);
                 if (bullifvg != null) Release(bullifvg, bullconfirm.HasValue, bullconfirm);
                 bullifvg = lastshortfvg;
                 bullconfirm = null;
@@ -3286,6 +3314,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                 {
                     bullconfirm = curTime;
                     GConfirm(gBull);
+                    IfoConfirm(bullOld, 1, curTime);
                     bullAp = DeAp(1);
                     BText(ifvgBox, IfvgTxt(1, 1, false, "", bullAp, MbOf(bullifvg)));
                     sig = 1;
@@ -3302,6 +3331,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                     BText(ifvgBoxb, IfvgTxt(-1, 1, false, "", bearAp, MbOf(bearifvg)));
                     bearconfirm = curTime;
                     GConfirm(gBear);
+                    IfoConfirm(bearOld, -1, curTime);
                     sig = -1;
                 }
             }
@@ -3331,6 +3361,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                             {
                                 bullconfirm = curTime;
                                 GConfirm(gBull);
+                                IfoConfirm(bullOld, 1, curTime);
                             }
                             else
                             {
@@ -3365,6 +3396,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                             {
                                 bearconfirm = curTime;
                                 GConfirm(gBear);
+                                IfoConfirm(bearOld, -1, curTime);
                             }
                             else
                             {
@@ -3380,6 +3412,11 @@ namespace NinjaTrader.NinjaScript.Indicators
                 }
             }
 
+            if (ShowIFVGs && !SwingMode)
+            {
+                bearOld.RemoveAll(f => bc < f.lo);
+                bullOld.RemoveAll(f => bc > f.hi);
+            }
             UpdKept();
 
             // ---- [BRK] Breakers

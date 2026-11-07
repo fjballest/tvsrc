@@ -13,7 +13,7 @@
  *   BM↑/BM↓, inheritance of the tags by IFVGs) and LONG / SHORT / OTE signal markers.
  *
  *   Port of the TradingView Pine Script v6 indicator "FVGS+IFVG+OTE.txt"
- *   (md5 ca70e36e8c52b59a7eeccab0895385fa, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
+ *   (md5 81c16cfa9bf948a5ad81a830a4214882, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
  *   input variable names (camelCase). See the design document (d.md) and user manual (m.md) for the logic.
  *
  * How to install
@@ -457,6 +457,7 @@ class FVGSIFVGOTE {
         // IFVG state
         this.ifvgBox = null; this.ifvgBoxb = null;
         this.bullifvg = null; this.bearifvg = null; this.bullconfirm = null; this.bearconfirm = null;
+        this.bearOld = []; this.bullOld = []; // [IFO] replaced candidates not yet closed through (at most 3 per side)
         this.bullInv = 0; this.bearInv = 0; this.bullAp = false; this.bearAp = false; this.swAp = false;
         this.findRf = { l: null, s: null };
         this.swingTime = null; this.swingBar = null;
@@ -865,6 +866,7 @@ class FVGSIFVGOTE {
         const h4 = Math.max(this.hiB(0), j >= 1 ? this.hiB(1) : -Infinity, j >= 2 ? this.hiB(2) : -Infinity, j >= 3 ? this.hiB(3) : -Infinity);
         const l4 = Math.min(this.loB(0), j >= 1 ? this.loB(1) : Infinity, j >= 2 ? this.loB(2) : Infinity, j >= 3 ? this.loB(3) : Infinity);
         if (P.doifvg && !P.ifvgswings && lastlongfvg) {
+            if (this.bearifvg && this.bearconfirm === null && this.bearInv === 0) this.ifoPush(this.bearOld, this.bearifvg);
             if (this.bearifvg) this.release(this.bearifvg, this.bearconfirm !== null, this.bearconfirm);
             this.bearifvg = lastlongfvg;
             this.bearconfirm = null;
@@ -874,6 +876,7 @@ class FVGSIFVGOTE {
             this.ifvgBoxb = this.adopt(this.bearifvg, -1);
         }
         if (P.doifvg && !P.ifvgswings && lastshortfvg) {
+            if (this.bullifvg && this.bullconfirm === null && this.bullInv === 0) this.ifoPush(this.bullOld, this.bullifvg);
             if (this.bullifvg) this.release(this.bullifvg, this.bullconfirm !== null, this.bullconfirm);
             this.bullifvg = lastshortfvg;
             this.bullconfirm = null;
@@ -973,6 +976,7 @@ class FVGSIFVGOTE {
             if (this.bullifvg && this.upBreak(this.bullifvg.hi) && this.bullconfirm === null) {
                 this.bullconfirm = j;
                 this.gConfirm(this.gBull);
+                this.ifoConfirm(this.bullOld, 1, j);
                 this.bullAp = this.deAp(1);
                 this.setText(this.ifvgBox, this.ifvgTxt(1, 1, false, "", this.bullAp, this.mbOf(this.bullifvg)));
                 sig = 1;
@@ -987,6 +991,7 @@ class FVGSIFVGOTE {
                 this.setText(this.ifvgBoxb, this.ifvgTxt(-1, 1, false, "", this.bearAp, this.mbOf(this.bearifvg)));
                 this.bearconfirm = j;
                 this.gConfirm(this.gBear);
+                this.ifoConfirm(this.bearOld, -1, j);
                 sig = -1;
             }
         }
@@ -1006,6 +1011,7 @@ class FVGSIFVGOTE {
                         if (this.bullInv === 1) {
                             this.bullconfirm = j;
                             this.gConfirm(this.gBull);
+                            this.ifoConfirm(this.bullOld, 1, j);
                         } else {
                             this.bullconfirm = null;
                             this.gCancel(this.gBull);
@@ -1032,6 +1038,7 @@ class FVGSIFVGOTE {
                         if (this.bearInv === 1) {
                             this.bearconfirm = j;
                             this.gConfirm(this.gBear);
+                            this.ifoConfirm(this.bearOld, -1, j);
                         } else {
                             this.bearconfirm = null;
                             this.gCancel(this.gBear);
@@ -1045,6 +1052,10 @@ class FVGSIFVGOTE {
             }
         }
 
+        if (P.doifvg && !P.ifvgswings) {
+            this.bearOld = this.bearOld.filter((f) => !(c < f.lo));
+            this.bullOld = this.bullOld.filter((f) => !(c > f.hi));
+        }
         this.updKept();
 
         // ---- [BRK] breakers and [MB] mitigation blocks
@@ -1330,6 +1341,22 @@ class FVGSIFVGOTE {
         f.cand = true;
         f.kdir = dir;
         return f.rect;
+    }
+    // [IFO] when the candidate of a side is confirmed, the replaced candidates the same candle closed through are
+    // shown as confirmed IFVGs too (box and label only: no signal, alert or OTE tracking)
+    ifoPush(old, f) {
+        old.push(f);
+        if (old.length > 3) old.shift();
+    }
+    ifoConfirm(old, d, ctime) {
+        for (const f of old) {
+            if (d < 0 ? this.dnBreak(f.lo) : this.upBreak(f.hi)) {
+                const b = this.adopt(f, d);
+                if (b) this.setText(b, this.ifvgTxt(d, 1, false, "", false, this.mbOf(f)));
+                this.release(f, true, ctime);
+            }
+        }
+        old.length = 0;
     }
     release(fv, confirmed, ctime) {
         const f = fv.dup ? fv.dup : fv;

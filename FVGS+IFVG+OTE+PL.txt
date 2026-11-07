@@ -1892,8 +1892,35 @@ var int bearInv = 0
 var bool bullAp = false   // [DE] A+ IFVG
 var bool bearAp = false
 var bool swAp = false
+// [IFO] replaced candidates not yet closed through (at most 3 per side). When the candidate of their side is
+// confirmed, the ones the same candle closed through are shown as confirmed IFVGs too (box and label only)
+var array<FVG> bearOld = array.new<FVG>()
+var array<FVG> bullOld = array.new<FVG>()
+ifoPush(array<FVG> old, FVG f) =>
+    old.push(f)
+    if old.size() > 3
+        old.shift()
+ifoConfirm(array<FVG> old, int d) =>
+    for f in old
+        if d < 0 ? dnBreak(f.lo) : upBreak(f.hi)
+            box b = f.adopt(d)
+            if not na(b)
+                b.set_text(ifvgTxt(d, 1, false, "", false, mbOf(f)))
+            f.release(true, time)
+    old.clear()
+ifoPurge(array<FVG> old, int d) =>
+    int n = old.size()
+    if n > 0
+        for i = n - 1 to 0
+            FVG f = old.get(i)
+            if d < 0 ? dC < f.lo : dC > f.hi
+                old.remove(i)
+    true
+
 if doifvg and not ifvgswings and not na(lastlongfvg)
     if not na(bearifvg)
+        if na(bearconfirm) and bearInv == 0
+            ifoPush(bearOld, bearifvg)
         bearifvg.release(not na(bearconfirm), bearconfirm)
     bearifvg := lastlongfvg
     bearconfirm := na
@@ -1903,6 +1930,8 @@ if doifvg and not ifvgswings and not na(lastlongfvg)
     ifvgBoxb := bearifvg.adopt(-1)
 if doifvg and not ifvgswings and not na(lastshortfvg)
     if not na(bullifvg)
+        if na(bullconfirm) and bullInv == 0
+            ifoPush(bullOld, bullifvg)
         bullifvg.release(not na(bullconfirm), bullconfirm)
     bullifvg := lastshortfvg
     bullconfirm := na
@@ -2098,6 +2127,7 @@ if doifvg and not ifvgswings and not deInv
     if not na(bullifvg) and barstate.isconfirmed and upBreak(bullifvg.hi) and na(bullconfirm)
         bullconfirm := time
         gBull.gConfirm() // [OTE]
+        ifoConfirm(bullOld, 1)
         bullAp := deAp(1)
         ifvgBox.set_text(ifvgTxt(1, 1, false, "", bullAp, mbOf(bullifvg)))
         sig := 1
@@ -2110,6 +2140,7 @@ if doifvg and not ifvgswings and not deInv
         ifvgBoxb.set_text(ifvgTxt(-1, 1, false, "", bearAp, mbOf(bearifvg)))
         bearconfirm := time
         gBear.gConfirm() // [OTE]
+        ifoConfirm(bearOld, -1)
         sig := -1
 
 // [DE] inversion rules: every close through the zone inverts it again, up to the max; then it is invalidated.
@@ -2130,6 +2161,7 @@ if doifvg and not ifvgswings and deInv and barstate.isconfirmed
                 if bullInv == 1
                     bullconfirm := time
                     gBull.gConfirm() // [OTE]
+                    ifoConfirm(bullOld, 1)
                 else
                     bullconfirm := na
                     gBull.gCancel() // [OTE] only the first inversion
@@ -2152,6 +2184,7 @@ if doifvg and not ifvgswings and deInv and barstate.isconfirmed
                 if bearInv == 1
                     bearconfirm := time
                     gBear.gConfirm() // [OTE]
+                    ifoConfirm(bearOld, -1)
                 else
                     bearconfirm := na
                     gBear.gCancel() // [OTE] only the first inversion
@@ -2160,6 +2193,9 @@ if doifvg and not ifvgswings and deInv and barstate.isconfirmed
                 ifvgBoxb.set_text(ifvgTxt(d, bearInv, false, "", bearAp, mbOf(bearifvg)))
                 sig := sig == 0 ? d : sig
 
+if doifvg and not ifvgswings and barstate.isconfirmed
+    ifoPurge(bearOld, -1)
+    ifoPurge(bullOld, 1)
 updKept()
 
 // swings as an alternating high / low sequence of the last three pivots, two of a kind merged into
