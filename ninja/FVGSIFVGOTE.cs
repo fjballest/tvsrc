@@ -2,7 +2,7 @@
 // FVGSIFVGOTE - Fair value gaps, 1st presented FVGs, inverse FVGs (IFVG) and ICT OTE, for NinjaTrader 8
 // ---------------------------------------------------------------------------------------------------------------------
 // Port of the TradingView Pine Script v6 indicator "FVGs+IFVG+OTE5" by franjballest
-// (source file FVGS+IFVG+OTE.txt, md5 0cd97213e255d32cd76378c1cf910b90). Mozilla Public License 2.0, as the original.
+// (source file FVGS+IFVG+OTE.txt, md5 85f5b42dc212a2d41f49e73bd8aa9f1b). Mozilla Public License 2.0, as the original.
 //
 // What it draws: FVG boxes (or no-fill boxes, or hi / lo / C.E. segments) with C.E. lines, the 1st presented FVG of the
 // session open (New York 09:30, or Madrid 09:00 for DAX) and its optional inverse, wick C.E. segments, IFVG candidates
@@ -918,12 +918,14 @@ namespace NinjaTrader.NinjaScript.Indicators
         #endregion
 
         #region Drawing model helpers
-        // [ATT] attenuation: fills (F), borders / lines / text (B), box borders (gone at 4), transparencies (T), widths
-        private Color AttF(Color c) { return Attenuation == 0 ? c : Color.FromArgb((byte)Math.Round(c.A * (1 - 0.15 * Attenuation)), c.R, c.G, c.B); }
-        private Color AttB(Color c) { return Attenuation == 0 ? c : Color.FromArgb((byte)Math.Round(c.A * (1 - 0.18 * Attenuation)), c.R, c.G, c.B); }
-        private int AttT(int t) { return (int)Math.Round(t + (100 - t) * Attenuation * 0.15); }
-        private int AttTB(int t) { return Attenuation >= 4 ? 100 : (int)Math.Round(t + (100 - t) * Attenuation * 0.18); }
-        private int AttW(int w) { return Math.Max(1, w - Attenuation / 2); }
+        // [ATT] attenuation: fills (F), borders / lines / text (B), box borders (gone from 3, C.E. lines at 4),
+        // transparencies (T), widths; AttE is the strength (levels 1, 2, 3 and 4 -> 2, 3, 4 and 4)
+        private int AttE { get { return Attenuation == 0 ? 0 : Attenuation == 1 ? 2 : Attenuation == 2 ? 3 : 4; } }
+        private Color AttF(Color c) { return AttE == 0 ? c : Color.FromArgb((byte)Math.Round(c.A * (1 - 0.15 * AttE)), c.R, c.G, c.B); }
+        private Color AttB(Color c) { return AttE == 0 ? c : Color.FromArgb((byte)Math.Round(c.A * (1 - 0.18 * AttE)), c.R, c.G, c.B); }
+        private int AttT(int t) { return (int)Math.Round(t + (100 - t) * AttE * 0.15); }
+        private int AttTB(int t) { return Attenuation >= 3 ? 100 : (int)Math.Round(t + (100 - t) * AttE * 0.18); }
+        private int AttW(int w) { return Math.Max(1, w - AttE / 2); }
 
         private static Color Tr(Color c, int transp)
         {
@@ -1388,7 +1390,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             return styNoFill ? CTransp : (hid ? Tr(c, 100) : c);
         }
 
-        private Color LnColor(Fvg f)
+        private Color LnColor(Fvg f, bool ce = false)
         {
             Color c = f.islong ? cLn : cSn;
             if (f.isfp)
@@ -1400,7 +1402,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             if (f.isifp) c = cIfpn;
             bool hid = hideReg && (ifvgOnly || (!f.isfp && !f.isifp));
             // [REL] too small for a C.E.: no border (boxes only; segments are the lines themselves)
-            return hid || (RelSmall(f) && !stySeg) || (Attenuation >= 4 && !stySeg) ? Tr(c, 100) : c;
+            return hid || (RelSmall(f) && !stySeg) || (Attenuation >= (ce ? 4 : 3) && !stySeg) ? Tr(c, 100) : c;
         }
 
         // [REL] "relevant" filter: a plain FVG too small to draw its C.E.
@@ -1449,7 +1451,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                 Color fc = f.isifp ? cIfp : (f.iswfp ? cWfp : f.isffp ? cFfp : cFp);
                 Color lc = f.isifp ? cIfpn : (f.iswfp ? cWfpn : f.isffp ? cFfpn : cFpn);
                 r.Bg = styNoFill ? CTransp : fc;
-                r.Bd = Attenuation >= 4 ? Tr(lc, 100) : lc;
+                r.Bd = Attenuation >= 3 ? Tr(lc, 100) : lc;
                 r.Bw = 1;
                 SetExt(r, true);
             }
@@ -1894,7 +1896,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                 }
                 if (f.celine == null && f.hi - f.lo > CeMinHeight)
                 {
-                    f.celine = NewLine(f.start, f.ce, et, f.ce, LnColor(f), CeStyle, AttW(CeWidth));
+                    f.celine = NewLine(f.start, f.ce, et, f.ce, LnColor(f, true), CeStyle, AttW(CeWidth));
                     if (f.isfp) SetExt(f.celine, true);
                 }
                 // always follow the end: an FVG extended by a merged duplicate (end reset) has to grow again
@@ -3601,7 +3603,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 
         [NinjaScriptProperty]
         [Range(0, 4)]
-        [Display(Name = "Attenuation", GroupName = "Enable / Draw / Filter", Order = 107, Description = "Tones down the drawings for a cleaner chart. 0: as configured. 1 to 4: fills more transparent, borders, lines and texts more transparent and, from 2, thinner; at 4 the boxes have no border (fills only). Applied on top of the colors and widths chosen below.")]
+        [Display(Name = "Attenuation", GroupName = "Enable / Draw / Filter", Order = 107, Description = "Tones down the drawings for a cleaner chart. 0: as configured. 1 and 2: fills, borders, lines and texts more transparent, and thinner. 3: as 2 and more, boxes without border (fills only) but with their C.E. line. 4: as 3, without the C.E. lines either. Applied on top of the colors and widths chosen below.")]
         public int Attenuation { get; set; }
 
         [NinjaScriptProperty]

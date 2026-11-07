@@ -102,21 +102,23 @@ fpMode = input.string("all", "1PFVG filter", options = ["all", "week", "week+fri
         "the day (it goes away when the next one forms). The others are plain FVGs (and no inverse 1PFVG "+
         "follows them). Keep counts the kept ones, so with week it holds that many weeks.")
 attLvl = input.int(0, "Attenuation", minval = 0, maxval = 4, group = GRP_EN, inline = "att",
-    tooltip = "Tones down the drawings for a cleaner chart. 0: as configured. 1 to 4: fills more transparent, borders, "+
-        "lines and texts more transparent and, from 2, thinner; at 4 the boxes have no border (fills only). Applied "+
-        "on top of the colors and widths chosen below. Segments, signals and breaker / mitigation block fills keep "+
-        "their look apart from the colors.")
-// [ATT] attenuation: fills (F), borders / lines / text (B), box borders (gone at 4), transparencies (T) and widths
+    tooltip = "Tones down the drawings for a cleaner chart. 0: as configured. 1 and 2: fills, borders, lines and "+
+        "texts more transparent, and thinner. 3: as 2 and more, boxes without border (fills only) but with their C.E. "+
+        "line. 4: as 3, without the C.E. lines either. Applied on top of the colors and widths chosen below. "+
+        "Segments, signals and breaker / mitigation block fills keep their look apart from the colors.")
+// [ATT] attenuation: fills (F), borders / lines / text (B), box borders (gone from 3, C.E. lines at 4),
+// transparencies (T) and widths; attE is the strength (levels 1, 2, 3 and 4 -> 2, 3, 4 and 4)
+int attE = attLvl == 0 ? 0 : attLvl == 1 ? 2 : attLvl == 2 ? 3 : 4
 attF(color c) =>
-    attLvl == 0 or na(c) ? c : color.new(c, color.t(c) + (100 - color.t(c)) * attLvl * 0.15)
+    attE == 0 or na(c) ? c : color.new(c, color.t(c) + (100 - color.t(c)) * attE * 0.15)
 attB(color c) =>
-    attLvl == 0 or na(c) ? c : color.new(c, color.t(c) + (100 - color.t(c)) * attLvl * 0.18)
+    attE == 0 or na(c) ? c : color.new(c, color.t(c) + (100 - color.t(c)) * attE * 0.18)
 attT(int t) =>
-    int(math.round(t + (100 - t) * attLvl * 0.15))
+    int(math.round(t + (100 - t) * attE * 0.15))
 attTB(int t) =>
-    attLvl >= 4 ? 100 : int(math.round(t + (100 - t) * attLvl * 0.18))
+    attLvl >= 3 ? 100 : int(math.round(t + (100 - t) * attE * 0.18))
 attW(int w) =>
-    math.max(1, w - int(attLvl / 2))
+    math.max(1, w - int(attE / 2))
 bool fponly = drawMode == "1PFVGs"            // regular FVGs are discarded
 // [1PF] the 1PFVG of a day of the week d (dayofweek.*) is kept as a 1PFVG
 fpPass(int d) =>
@@ -791,7 +793,7 @@ method bgColor(FVG f) =>
     styNoFill ? color(na) : (hid ? color.new(c, 100) : c)
     
 
-method lnColor(FVG f) =>
+method lnColor(FVG f, bool ce = false) =>
     c = f.islong ? lnlcol : lnscol
     if f.isfp
         c := lnfpcol
@@ -803,7 +805,7 @@ method lnColor(FVG f) =>
         c := ilnfpcol
     bool hid = hideReg and (ifvgOnly or (not f.isfp and not f.isifp))
     // [REL] too small for a C.E.: no border (boxes only; segments are the lines themselves)
-    hid or (f.relSmall() and not stySeg) or (attLvl >= 4 and not stySeg) ? color.new(c, 100) : c
+    hid or (f.relSmall() and not stySeg) or (attLvl >= (ce ? 4 : 3) and not stySeg) ? color.new(c, 100) : c
 
 // IFVG boxes: the FVG box itself is turned into the IFVG box (no second box on the same place) ====
 var array<FVG> keptIf = array.new<FVG>()   // FVGs whose box is currently shown as IFVG
@@ -839,7 +841,7 @@ method adopt(FVG fv, int dir) =>
         color fc = f.isifp ? ifpcol : (f.iswfp ? wfpcol : f.isffp ? ffpcol : fpcol)
         color lc = f.isifp ? ilnfpcol : (f.iswfp ? lnwfpcol : f.isffp ? lnffpcol : lnfpcol)
         f.rect.set_bgcolor(styNoFill ? color(na) : fc)
-        f.rect.set_border_color(attLvl >= 4 ? color.new(lc, 100) : lc)
+        f.rect.set_border_color(attLvl >= 3 ? color.new(lc, 100) : lc)
         f.rect.set_border_width(1)
         f.rect.set_extend(extend.right)
     else
@@ -1437,7 +1439,7 @@ updfvgs(array<FVG> fvgs) =>
                     f.rect.set_text_valign(ifvgva)
             if na(f.celine) and f.hi-f.lo > mince
                 f.celine := line.new(f.start,f.ce,et,f.ce,
-                    color = f.lnColor(),
+                    color = f.lnColor(true),
                     style = cesty,
                     xloc = xloc.bar_time,
                     width = celnwid)

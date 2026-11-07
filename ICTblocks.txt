@@ -61,17 +61,19 @@ drawMode = "all"
 fltMode = "none"
 fpMode = "all"
 attLvl = 0
-// [ATT] attenuation: fills (F), borders / lines / text (B), box borders (gone at 4), transparencies (T) and widths
+// [ATT] attenuation: fills (F), borders / lines / text (B), box borders (gone from 3, C.E. lines at 4),
+// transparencies (T) and widths; attE is the strength (levels 1, 2, 3 and 4 -> 2, 3, 4 and 4)
+int attE = attLvl == 0 ? 0 : attLvl == 1 ? 2 : attLvl == 2 ? 3 : 4
 attF(color c) =>
-    attLvl == 0 or na(c) ? c : color.new(c, color.t(c) + (100 - color.t(c)) * attLvl * 0.15)
+    attE == 0 or na(c) ? c : color.new(c, color.t(c) + (100 - color.t(c)) * attE * 0.15)
 attB(color c) =>
-    attLvl == 0 or na(c) ? c : color.new(c, color.t(c) + (100 - color.t(c)) * attLvl * 0.18)
+    attE == 0 or na(c) ? c : color.new(c, color.t(c) + (100 - color.t(c)) * attE * 0.18)
 attT(int t) =>
-    int(math.round(t + (100 - t) * attLvl * 0.15))
+    int(math.round(t + (100 - t) * attE * 0.15))
 attTB(int t) =>
-    attLvl >= 4 ? 100 : int(math.round(t + (100 - t) * attLvl * 0.18))
+    attLvl >= 3 ? 100 : int(math.round(t + (100 - t) * attE * 0.18))
 attW(int w) =>
-    math.max(1, w - int(attLvl / 2))
+    math.max(1, w - int(attE / 2))
 bool fponly = drawMode == "1PFVGs"            // regular FVGs are discarded
 // [1PF] the 1PFVG of a day of the week d (dayofweek.*) is kept as a 1PFVG
 fpPass(int d) =>
@@ -647,7 +649,7 @@ method lnColor(FVG f) =>
         c := ilnfpcol
     bool hid = hideReg and (ifvgOnly or (not f.isfp and not f.isifp))
     // [REL] too small for a C.E.: no border (boxes only; segments are the lines themselves)
-    hid or (false and not stySeg) or (attLvl >= 4 and not stySeg) ? color.new(c, 100) : c
+    hid or (false and not stySeg) or (attLvl >= 3 and not stySeg) ? color.new(c, 100) : c
 
 // IFVG boxes: the FVG box itself is turned into the IFVG box (no second box on the same place) ====
 var array<FVG> keptIf = array.new<FVG>()   // FVGs whose box is currently shown as IFVG

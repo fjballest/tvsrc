@@ -270,6 +270,11 @@ def main():
     for a, b in BLK_SUBST:
         assert s.count(a) == 1, a
         s = s.replace(a, b)
+    # no C.E. lines here: lnColor needs no ce argument (it would be reported as unused)
+    for a, b in [("method lnColor(FVG f, bool ce = false) =>", "method lnColor(FVG f) =>"),
+                 ("(attLvl >= (ce ? 4 : 3) and not stySeg)", "(attLvl >= 3 and not stySeg)")]:
+        assert s.count(a) == 1, a
+        s = s.replace(a, b)
     # Border only: no fill for the block rectangles (the shadow rectangle keeps its own)
     s, n = re.subn(r"\b(brk|mb)Shd \? (80|88) : (85|93)\b", r"\1Shd ? \2 : (\1NoFill ? 100 : \3)", s)
     assert n == 6, n

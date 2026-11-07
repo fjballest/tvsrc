@@ -13,7 +13,7 @@
  *   BM↑/BM↓, inheritance of the tags by IFVGs) and LONG / SHORT / OTE signal markers.
  *
  *   Port of the TradingView Pine Script v6 indicator "FVGS+IFVG+OTE.txt"
- *   (md5 0cd97213e255d32cd76378c1cf910b90, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
+ *   (md5 85f5b42dc212a2d41f49e73bd8aa9f1b, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
  *   input variable names (camelCase). See the design document (d.md) and user manual (m.md) for the logic.
  *
  * How to install
@@ -1265,10 +1265,12 @@ class FVGSIFVGOTE {
         return r;
     }
     // [ATT] attenuation: fills (cF), borders / lines / text (cB), box borders (cBx: gone at 4), widths (attW)
-    cF(c, t) { const L = this.P.attLvl; return col(c, t + (100 - t) * L * 0.15); }
-    cB(c, t) { const L = this.P.attLvl; return col(c, t + (100 - t) * L * 0.18); }
-    cBx(c, t) { return this.P.attLvl >= 4 ? col(c, 100) : this.cB(c, t); }
-    attW(w) { return Math.max(1, w - Math.floor(this.P.attLvl / 2)); }
+    // (box borders gone from level 3, C.E. lines at 4; attE is the strength: levels 1, 2, 3, 4 -> 2, 3, 4, 4)
+    attE() { const L = this.P.attLvl; return L === 0 ? 0 : L === 1 ? 2 : L === 2 ? 3 : 4; }
+    cF(c, t) { return col(c, t + (100 - t) * this.attE() * 0.15); }
+    cB(c, t) { return col(c, t + (100 - t) * this.attE() * 0.18); }
+    cBx(c, t) { return this.P.attLvl >= 3 ? col(c, 100) : this.cB(c, t); }
+    attW(w) { return Math.max(1, w - Math.floor(this.attE() / 2)); }
     bw(f) { return this.P.deFlag && f.disp && !f.isfp && !f.isifp ? this.attW(this.P.deFlagW) : 1; } // 1PFVGs keep their look
     kill(f) {
         if (!f) return;
@@ -1289,14 +1291,14 @@ class FVGSIFVGOTE {
         const hid = this.hideReg && (this.ifvgOnly || (!f.isfp && !f.isifp));
         return this.styNoFill ? null : (hid ? col(c, 100) : this.cF(c, t));
     }
-    lnColor(f) {
+    lnColor(f, ce = false) {
         const P = this.P;
         let c = f.islong ? P.lnlcol : P.lnscol;
         if (f.isfp) { c = P.lnfpcol; if (f.iswfp) c = P.lnwfpcol; else if (f.isffp) c = P.lnffpcol; }
         if (f.isifp) c = P.ilnfpcol;
         const hid = this.hideReg && (this.ifvgOnly || (!f.isfp && !f.isifp));
         // [REL] too small for a C.E.: no border (boxes only; segments are the lines themselves)
-        return hid || (this.relSmall(f) && !this.stySeg) ? col(c, 100) : (this.stySeg ? this.cB(c, 20) : this.cBx(c, 20));
+        return hid || (this.relSmall(f) && !this.stySeg) ? col(c, 100) : (this.stySeg || (ce && this.P.attLvl === 3) ? this.cB(c, 20) : this.cBx(c, 20));
     }
     clearlastfp() {
         while (this.fpfvgs.length > this.P.nfp) {
@@ -1601,7 +1603,7 @@ class FVGSIFVGOTE {
                     }
                 }
                 if (!f.celine && f.hi - f.lo > P.mince) {
-                    f.celine = this.g.line({ x1: f.start, y1: f.ce, x2: et, y2: f.ce, color: this.lnColor(f), style: P.cesty, width: this.attW(P.celnwid) });
+                    f.celine = this.g.line({ x1: f.start, y1: f.ce, x2: et, y2: f.ce, color: this.lnColor(f, true), style: P.cesty, width: this.attW(P.celnwid) });
                     if (f.isfp) f.celine.extend = "right";
                 }
                 if (f.rect && !f.kept) f.rect.right = et;
