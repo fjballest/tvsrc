@@ -141,8 +141,12 @@ var tz = input.string("Auto", "TZ", group = GRP_F1, inline = "fp",
 var nfp = input.int(6, "Keep", group = GRP_F1, inline = "fp",
     tooltip = "Number of 1st presented FVGs kept.")
 fp1m = input.bool(true, "From 1m candles", group = GRP_F1, inline = "fp",
-    tooltip = "On charts above 1m and below 15m, the 1st presented FVG is found on the 1m candles "+
-        "(request.security_lower_tf) instead of the chart candles. Off: only on 1m to 3m charts, from the chart candles.")
+    tooltip = "On charts above 1m, the 1st presented FVG is found on the 1m candles (request.security_lower_tf) "+
+        "instead of the chart candles. Off: on 2m to 5m charts only 1m to 3m charts show it, from the chart candles; "+
+        "above 5m the 1m candles are always used.")
+fpMaxTf = input.timeframe("60", "Show 1m 1PFVGs up to", group = GRP_F1, inline = "fptf",
+    tooltip = "1PFVGs (and inverse 1PFVGs) found on the 1m candles are shown on minute charts at or below this "+
+        "timeframe, so the week / Friday 1PFVGs (see the 1PFVG filter) can be seen on 15m or 1H charts.")
 
 var fpcol = input.color( color.new(#00fbff, 90), "Day 1PFVG", group = GRP_F1, inline = "fp1")
 var lnfpcol = input.color( color.new(#0097a7, 20), "border", group = GRP_F1, inline = "fp1")
@@ -607,9 +611,10 @@ shortFVGHL(o1,c1,h1,o2,c2,o3,c3,l3) =>
         lo := bhi1
     [hi, lo, fhi, flo]
 
-// 1PFVG from the 1m candles (charts above 1m and below 15m)
+// 1PFVG from the 1m candles (minute charts above 1m up to fpMaxTf; always above 5m, else with fp1m)
 // (simple: also selects the timeframe of request.security_lower_tf)
-bool fpLowTf = fp1m and timeframe.isminutes and timeframe.in_seconds() > 60 and timeframe.in_seconds() < 900
+bool fpLowTf = timeframe.isminutes and timeframe.in_seconds() > 60 and
+     timeframe.in_seconds() <= timeframe.in_seconds(fpMaxTf) and (fp1m or timeframe.in_seconds() > 300)
 bool fpLow = dofp and fpLowTf
 
 isFPFVG() =>

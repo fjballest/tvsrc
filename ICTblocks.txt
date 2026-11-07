@@ -111,6 +111,7 @@ var fpfvgtime = "0930"
 var tz = "Auto"
 var nfp = 6
 fp1m = false
+fpMaxTf = "60"
 
 var fpcol = color.new(#00fbff, 90)
 var lnfpcol = color.new(#0097a7, 20)
@@ -558,9 +559,10 @@ shortFVGHL(o1,c1,h1,o2,c2,o3,c3,l3) =>
         lo := bhi1
     [hi, lo, fhi, flo]
 
-// 1PFVG from the 1m candles (charts above 1m and below 15m)
+// 1PFVG from the 1m candles (minute charts above 1m up to fpMaxTf; always above 5m, else with fp1m)
 // (simple: also selects the timeframe of request.security_lower_tf)
-bool fpLowTf = fp1m and timeframe.isminutes and timeframe.in_seconds() > 60 and timeframe.in_seconds() < 900
+bool fpLowTf = timeframe.isminutes and timeframe.in_seconds() > 60 and
+     timeframe.in_seconds() <= timeframe.in_seconds(fpMaxTf) and (fp1m or timeframe.in_seconds() > 300)
 bool fpLow = dofp and fpLowTf
 
 isFPFVG() =>

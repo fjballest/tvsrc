@@ -2,7 +2,7 @@
 // FVGSIFVGOTE - Fair value gaps, 1st presented FVGs, inverse FVGs (IFVG) and ICT OTE, for NinjaTrader 8
 // ---------------------------------------------------------------------------------------------------------------------
 // Port of the TradingView Pine Script v6 indicator "FVGs+IFVG+OTE5" by franjballest
-// (source file FVGS+IFVG+OTE.txt, md5 4ef6a160ae13bc79f50a0bda4a2becbc). Mozilla Public License 2.0, as the original.
+// (source file FVGS+IFVG+OTE.txt, md5 f13f29aa8d6030458e277aebb35d8813). Mozilla Public License 2.0, as the original.
 //
 // What it draws: FVG boxes (or no-fill boxes, or hi / lo / C.E. segments) with C.E. lines, the 1st presented FVG of the
 // session open (New York 09:30, or Madrid 09:00 for DAX) and its optional inverse, wick C.E. segments, IFVG candidates
@@ -345,6 +345,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 
                 Show1PFVGs = true;
                 FpFrom1m = true;
+                FpMaxMinutes = 60;
                 ShowIFVGs = true;
                 ShowWickCE = true;
                 DrawSelection = FioDrawMode.All;
@@ -484,10 +485,11 @@ namespace NinjaTrader.NinjaScript.Indicators
                 AddDataSeries(BarsPeriodType.Minute, 60);   // 3
                 AddDataSeries(BarsPeriodType.Minute, 240);  // 4
                 AddDataSeries(BarsPeriodType.Day, 1);       // 5
-                // 1PFVG from the 1m candles on charts above 1m and below 15m
+                // 1PFVG from the 1m candles on minute charts above 1m up to FpMaxMinutes (always above 5m, else with
+                // FpFrom1m)
                 fp1mIdx = -1;
-                if (Show1PFVGs && FpFrom1m && BarsPeriod.BarsPeriodType == BarsPeriodType.Minute
-                    && BarsPeriod.Value > 1 && BarsPeriod.Value < 15)
+                if (Show1PFVGs && BarsPeriod.BarsPeriodType == BarsPeriodType.Minute && BarsPeriod.Value > 1
+                    && BarsPeriod.Value <= FpMaxMinutes && (FpFrom1m || BarsPeriod.Value > 5))
                 {
                     AddDataSeries(BarsPeriodType.Minute, 1); // 6
                     fp1mIdx = 6;
@@ -3752,8 +3754,13 @@ namespace NinjaTrader.NinjaScript.Indicators
         }
 
         [NinjaScriptProperty]
-        [Display(Name = "From 1m candles", GroupName = "1st Presented FVGs", Order = 312, Description = "On charts above 1m and below 15m, the 1st presented FVG is found on the 1m candles instead of the chart candles. Off: only on 1m to 3m charts, from the chart candles.")]
+        [Display(Name = "From 1m candles", GroupName = "1st Presented FVGs", Order = 312, Description = "On charts above 1m, the 1st presented FVG is found on the 1m candles instead of the chart candles. Off: on 2m to 5m charts only 1m to 3m charts show it, from the chart candles; above 5m the 1m candles are always used.")]
         public bool FpFrom1m { get; set; }
+
+        [NinjaScriptProperty]
+        [Range(2, 1440)]
+        [Display(Name = "Show 1m 1PFVGs up to (minutes)", GroupName = "1st Presented FVGs", Order = 314, Description = "1PFVGs (and inverse 1PFVGs) found on the 1m candles are shown on minute charts at or below this many minutes, so the week / Friday 1PFVGs can be seen on 15m or 1H charts.")]
+        public int FpMaxMinutes { get; set; }
 
         [NinjaScriptProperty]
         [Display(Name = "1PFVG inverse", GroupName = "1st Presented FVGs", Order = 310, Description = "Also draw the first FVG of the opposite bias after the 1PFVG.")]

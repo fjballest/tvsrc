@@ -9,7 +9,7 @@ The indicator works on the chart timeframe. It finds fair value gaps (FVGs) on y
 | Element | What it is | Drawn as |
 | --- | --- | --- |
 | FVG | Three-candle gap on the chart timeframe, bullish or bearish | Box (or box without fill, or high / low / C.E. lines), with a dotted C.E. line when it is large enough |
-| 1st presented FVG (1PFVG) | First FVG after the session open (09:30 New York, 09:00 Madrid for DAX), on minute charts below 15m | Cyan box (blue on Mondays, purple on Fridays, see section 5) extended to the right, with C.E. |
+| 1st presented FVG (1PFVG) | First FVG after the session open (09:30 New York, 09:00 Madrid for DAX), on minute charts up to **Show 1m 1PFVGs up to** (1H) | Cyan box (blue on Mondays, purple on Fridays, see section 5) extended to the right, with C.E. |
 | Inverse 1PFVG | Optional: the first FVG of the opposite bias after the 1PFVG | Dark magenta box extended to the right |
 | Wick C.E. | Midpoint of a large upper or lower candle wick | Short black horizontal segment |
 | IFVG candidate | The latest bullish and bearish FVG, under watch for inversion | The FVG's own box restyled in IFVG colors, thicker border, no label |
@@ -29,7 +29,7 @@ The indicator raises alerts for IFVG signals, OTE IFVG signals and, optionally, 
 ## 2. Quick start
 
 1. Add "FVGs+IFVG+OTE5" to the chart.
-2. Use an intraday execution chart. For the full feature set on NQ or DAX use **1m or 3m** (1PFVGs are tracked on minute charts below 15m) or **5m** (higher timeframe OTE on 15m and 1h).
+2. Use an intraday execution chart. For the full feature set on NQ or DAX use **1m or 3m** (1PFVGs are tracked on minute charts up to 1H by default) or **5m** (higher timeframe OTE on 15m and 1h).
 3. Start with the defaults: all FVGs drawn, 1PFVGs, wick C.E. and IFVGs on, close-mode IFVGs, OTE detection on the chart and the next two higher timeframes, IFVG alerts on, all Delivery Engine features off.
 4. Create one TradingView alert with the condition **"Any alert() function call"** on this indicator (see section 13). That alert delivers the IFVG and OTE IFVG messages.
 5. If the chart is too busy, change **Draw** to `IFVGs` (only IFVG boxes and OTE bands) or `1PFVGs+IFVGs`, or set **FVG filter** to `sweeps`.
@@ -167,7 +167,7 @@ A cyan box (default) for the first FVG after the session open, extended to the r
 
 - **Session time**: **Time** (default `0930`) in the **TZ** time zone. With TZ = `Auto` the script uses 09:30 America/New_York, except for symbols whose ticker or description contains `DAX`, `FDX` or `Germany`, where it uses 09:00 Europe/Madrid (the **Time** input is then ignored). With any other TZ value the **Time** input is used as typed.
 - **Which FVG**: the first FVG whose three candles all opened at or after the session time, detected within the same clock hour as the session time (for 09:30, until 09:59). If no FVG forms in that hour there is no 1PFVG that day.
-- **Charts**: minute charts below 15m. **From 1m candles** (on): on charts above 1m (2m to 14m) the 1PFVG is found on the 1m candles of the chart bars (the same rule, applied to the 1m candles), so it is the same box as on a 1m chart; its left edge can fall inside a chart candle. The 1m candles are read when a chart bar closes. Off: only 1m to 3m charts, from the chart candles. The NinjaTrader port does the same with an added 1m series; the Tradovate port cannot read 1m candles and always uses the chart candles (1m to 3m).
+- **Charts**: minute charts up to **Show 1m 1PFVGs up to** (`60`, i.e. 1H), so the week and Friday 1PFVGs (see the 1PFVG filter) can be seen on 15m and 1H charts. **From 1m candles** (on): on charts above 1m the 1PFVG is found on the 1m candles of the chart bars (the same rule, applied to the 1m candles), so it is the same box as on a 1m chart; its left edge can fall inside a chart candle. The 1m candles are read when a chart bar closes. Off: on 1m to 5m charts only 1m to 3m charts show it, from the chart candles; above 5m the 1m candles are always used. The NinjaTrader port does the same with an added 1m series (**Show 1m 1PFVGs up to (minutes)**, 60); the Tradovate port cannot read 1m candles and always uses the chart candles (1m to 3m).
 - **Week 1PFVG**: on Mondays the 1PFVG, bullish or bearish, is drawn in the week colors (blue).
 - **Friday 1PFVG**: on Fridays the 1PFVG is drawn in the Friday colors (purple).
 - **1PFVG filter** (`all`, next to the FVG filter): `all` keeps every day's 1PFVG; `week` keeps only the week 1PFVGs (Mondays); `week+fridays` keeps the Monday and the Friday ones. On the other days the first FVG is a plain FVG (it goes through the FVG filter like any other) and there is no inverse 1PFVG. **Keep** counts only the kept ones, so with `week` and Keep 6 you see the last six weeks.
@@ -427,6 +427,8 @@ Inputs on one line in the settings dialog are listed together; a field without i
 | Time | `0930` | Session open, as HHMM. Ignored for DAX symbols with TZ `Auto` (09:00 is used). |
 | TZ | `Auto` | Time zone of the session time and of the killzones. `Auto`: 09:00 Europe/Madrid for DAX, 09:30 America/New_York otherwise. Any TradingView time zone string (for example `America/New_York`) can be typed. |
 | Keep | 6 | Number of 1PFVGs kept. |
+| From 1m candles | On | Find the 1PFVG on the 1m candles on charts above 1m (always above 5m). |
+| Show 1m 1PFVGs up to | `60` | Highest chart timeframe that shows 1PFVGs found on the 1m candles. |
 | Day 1PFVG / border | `#00fbff` 90% / `#0097a7` 20% | Day 1PFVG fill and border. |
 | Week 1PFVG / border | `#2962ff` 90% / 20% | Monday 1PFVG fill and border. |
 | Friday 1PFVG / border | `#9c27b0` 90% / 20% | Friday 1PFVG fill and border. |
