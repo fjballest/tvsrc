@@ -9,7 +9,7 @@
  * closed through become IFVGs. Mitigated levels are removed.
  *
  * Port of the TradingView Pine Script v6 indicator ICTcotas.txt
- * (md5 a79fa713ebe9dde803740dce74bcd2f1), (c) franjballest, Mozilla Public
+ * (md5 0970be33a1478396f339ad926aba56d1), (c) franjballest, Mozilla Public
  * License 2.0 (https://mozilla.org/MPL/2.0/). Same logic, same inputs (as
  * camelCase parameters) and the same defaults.
  *
@@ -824,7 +824,7 @@ function drawTs(c, eng, items) {
     for (let i = i0; i <= i1; i++) {
         const col = i - i0;
         const sg = aggs[i].tsSig();
-        const sym = sg > 0 ? "\u25B2" : sg < 0 ? "\u25BC" : "\u00B7";
+        const sym = sg > 0 ? "\u25B2" : sg < 0 ? "\u25BC" : "\u25CB";
         const clr = sg === 1 ? c.tsUp : sg === -1 ? c.tsDn : sg === 0 ? blend(c.tsCt, "#FFFFFF", 0.6) : c.tsCt;
         // columns counted from the corner side, so the lowest timeframe stays first (leftmost)
         const k = h === "right" ? n - 1 - col : h === "center" ? col - (n - 1) / 2 : col;

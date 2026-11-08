@@ -404,7 +404,7 @@ With **Turtle soup / continuation indications** on (General), a row of small tri
 | up | took the previous high and price is back below the previous close (turtle soup down) | bright red ▼ |
 | down | traded above its own open and price is now below the previous close (continuation down) | grey ▼ |
 | up | traded below its own open and price is now above the previous close (continuation up) | grey ▲ |
-| | nothing of the above | faint dot |
+| | nothing of the above | faint circle ○ |
 
 A continuation is cancelled for the rest of the forming candle once a chart bar closes back beyond the previous close. The candles are built from the chart bars. Timeframes, lowest first: 15m, 1H and 4H on charts up to 15m; 1H, 4H and D on charts up to 1H; 4H and D on charts up to 4H; D on daily charts; none above.
 
@@ -414,7 +414,7 @@ A continuation is cancelled for the rest of the forming candle once a chart bar 
 | size | normal | Size of the triangles |
 | timeframe names | on | The timeframe under each triangle |
 | turtle soup: up / down | bright green / bright red | Colors of the turtle soup triangles |
-| continuation | grey | Color of the continuation triangles, the names and (fainter) the dots |
+| continuation | grey | Color of the continuation triangles, the names and (fainter) the circles |
 
 In NinjaTrader the corner is one of the four chart corners and the row is several monospaced texts; with Calculate on bar close the forming candle is updated when each chart bar closes. In Tradovate the triangles are placed by pixel offsets from the corner.
 

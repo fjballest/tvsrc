@@ -262,7 +262,7 @@ string tspos = input.string("bottom right", "position", options = ["bottom right
      + "and the one forming now. Previous candle down: price took its low and is back above its close is a "
      + "turtle soup up (bright up triangle); the forming candle traded above its open and price is now below "
      + "the previous close is a continuation down (grey down triangle), cancelled for the rest of the candle "
-     + "when price goes back above that close. Mirrored for an up candle. Timeframes: 15m, 1H and 4H on charts "
+     + "when price goes back above that close. Mirrored for an up candle. A circle: nothing for that timeframe. Timeframes: 15m, 1H and 4H on charts "
      + "up to 15m; 1H, 4H and D up to 1H; 4H and D on 4H charts, D on daily charts.")
 string tssize = input.string("normal", "size", options = ["tiny", "small", "normal", "large", "huge"], group = G_TS,
      inline = "t1")
@@ -1066,20 +1066,21 @@ if barstate.islast and dots
     if i0 <= i1
         for i = i0 to i1
             int sg = tst.get(i).tsSig()
-            string sym = sg == 1 or sg == 2 ? "▲" : sg == -1 or sg == -2 ? "▼" : "·"
+            string sym = sg == 1 or sg == 2 ? "▲" : sg == -1 or sg == -2 ? "▼" : "○"
             color c = sg == 1 ? tsupcol : sg == -1 ? tsdncol : sg == 0 ? color.new(tsctcol, 60) : tsctcol
             tsTbl.cell(col, 0, sym, text_color = c, text_size = tsz)
             if tsnames
                 tsTbl.cell(col, 1, tsNames.get(i), text_color = color.new(tsctcol, 30), text_size = size.tiny)
             col += 1
 
-var table note = table.new(position.bottom_right, 1, 1)
-var table setNote = table.new(position.top_right, 1, 1)
+// only one table is shown per position: these are created only when they have something to show, so they
+// do not hide the turtle soup table
+var table note = dayOk or wkOk or monOk ? table(na) : table.new(position.bottom_right, 1, 1)
+var table setNote = setOn and setlbl ? table.new(position.top_right, 1, 1) : table(na)
 if barstate.islast and setOn and setlbl and setUsed != ""
     table.cell(setNote, 0, 0, setUsed, text_color = setUsed == "SET on" ? color.orange : color.gray,
          text_size = size.small)
-if barstate.islast
-    table.cell(note, 0, 0, dayOk or wkOk or monOk ? ""
-         : "ICTcotas: use a chart timeframe lower than 1M",
-         text_color = color.orange, text_size = size.small)
+if barstate.islast and not na(note)
+    table.cell(note, 0, 0, "ICTcotas: use a chart timeframe lower than 1M", text_color = color.orange,
+         text_size = size.small)
 

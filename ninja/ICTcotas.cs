@@ -7,7 +7,7 @@
 // FVGs closed through become IFVGs. Mitigated levels are removed.
 //
 // Port of the TradingView Pine Script v6 indicator ICTcotas.txt by franjballest
-// (source md5 a79fa713ebe9dde803740dce74bcd2f1). Mozilla Public License 2.0.
+// (source md5 0970be33a1478396f339ad926aba56d1). Mozilla Public License 2.0.
 //
 // Install:
 //   1. Copy this file to  Documents\NinjaTrader 8\bin\Custom\Indicators\ICTcotas.cs
@@ -1303,7 +1303,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 				int col = i - i0;
 				int sg = TsSig(TsSer[i]);
 				int g = sg == 1 ? 0 : sg == -1 ? 1 : sg != 0 ? 2 : 3;
-				rows[g][col * 4 + 1] = sg > 0 ? '\u25B2' : sg < 0 ? '\u25BC' : '\u00B7';
+				rows[g][col * 4 + 1] = sg > 0 ? '\u25B2' : sg < 0 ? '\u25BC' : '\u25CB';
 				names += (TsNamesTxt[i] + "    ").Substring(0, 4).Replace(' ', sp);
 			}
 			string blank = new string(sp, ncol * 4);
