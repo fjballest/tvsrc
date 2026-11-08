@@ -11,7 +11,7 @@
  *   It draws levels only: no signals, no alerts, no plots.
  *
  *   It is a port of the TradingView Pine Script v6 indicator ICTlevels.txt
- *   (md5 8145a7539cadb43ef480a11c38fde131). Parameter names are the Pine variable names and the
+ *   (md5 103b6b3895d4080bb9b524689ffca7a4). Parameter names are the Pine variable names and the
  *   defaults are the Pine defaults; see "doc/ICTlevels-user-manual.md" for what every level means.
  *
  * How to install
@@ -67,11 +67,20 @@ const C_GREEN = "#4CAF50", C_RED = "#F23645", C_BLUE = "#2962FF", C_BLACK = "#36
     C_ORANGE = "#FF9800", C_MAROON = "#880E4F";
 
 const PARAMS = {
+    // Enable / Filter
+    domonth: ps.bool(true),
+    dotgif: ps.bool(true),
+    doses: ps.bool(true),
+    dogaps: ps.bool(true),
+    dondog: ps.bool(true),
+    donwog: ps.bool(true),
+    dorthog: ps.bool(true),
+    dopremarket: ps.bool(true),
+    doeqhl: ps.bool(true),
     // Time & Settings
     market: ps.enum({ Auto: "Auto", US: "US", EU: "EU" }, "Auto"),
     xoff: ps.number(2, 1, 1),
     // Month Settings
-    domonth: ps.bool(true),
     monmaxcol: ps.color(C_GREEN),
     monmincol: ps.color(C_RED),
     monccol: ps.color(C_BLACK),
@@ -103,7 +112,6 @@ const PARAMS = {
     opwid: ps.number(1, 1, 1),
     opcolor: ps.color(C_BLACK),
     // TGIF
-    dotgif: ps.bool(true),
     tgp1: ps.number(0.2, 0.05, 0.01),
     tgp2: ps.number(0.3, 0.05, 0.01),
     tgnear: ps.number(0.4, 0.05, 0.05),
@@ -113,7 +121,6 @@ const PARAMS = {
     tgwid: ps.number(2, 1, 1),
     tglblsize: ps.enum(SIZES, "normal"),
     // Session Settings
-    doses: ps.bool(true),
     nses: ps.number(20, 1, 3),
     dorect: ps.bool(true),
     rtransp: ps.number(75, 1, 0),
@@ -131,11 +138,7 @@ const PARAMS = {
     londoncolor: ps.color(C_GREEN),
     uscolor: ps.color(C_BLUE),
     // Gaps and Ranges
-    dogaps: ps.bool(true),
     ngaps: ps.number(10, 1, 1),
-    dondog: ps.bool(true),
-    donwog: ps.bool(true),
-    dorthog: ps.bool(true),
     dorthogq: ps.bool(true),
     rthogqmin: ps.number(25.0, 0.25, 0),
     dorthogoct: ps.bool(true),
@@ -161,7 +164,6 @@ const PARAMS = {
     rgappo3lnsty: ps.enum(STYLES, "dotted"),
     extendgaps: ps.bool(false),
     // Premarket Range
-    dopremarket: ps.bool(true),
     pmkeep: ps.number(1, 1, 1),
     pmmode: ps.enum({ Auto: "Auto", Manual: "Manual" }, "Auto"),
     pmsession: ps.text("0700-0900"),
@@ -179,7 +181,6 @@ const PARAMS = {
     pmlblsize: ps.enum(SIZES, "normal"),
     pmctol: ps.number(0.05, 0.01, 0),
     // Equal Highs / Lows
-    doeqhl: ps.bool(true),
     doeqd: ps.bool(true),
     eqlen: ps.number(3, 1, 1),
     eqlenD: ps.number(3, 1, 1),

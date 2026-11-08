@@ -50,6 +50,28 @@ type Sty
     color col
 
 // ============================================================ inputs
+const string G_EN = "Enable / Filter"
+bool domonth = input.bool(true, "Month max/min/close (last 3 months)", group = G_EN)
+bool dotgif = input.bool(true, "TGIF levels", group = G_EN,
+     tooltip = "ICT TGIF: when the week candle made a displacement and has not formed its final wick yet, "
+     + "a retracement of 20% - 30% of the week range is expected on Friday, or on Monday when it did not "
+     + "happen on Friday. The levels are drawn only on those days and only while that applies: from the "
+     + "week high down (bullish week, red) or from the week low up (bearish week, green).")
+bool doses = input.bool(true, "Sessions", group = G_EN,
+     tooltip = "draw Asia, London, NY AM, NY PM sessions and max/min values")
+bool dogaps = input.bool(true, "NDOG/NWOG/RTHOGs", group = G_EN,
+     tooltip = "new day/week opening gaps and regular trading hours opening gaps")
+bool dondog = input.bool(true, "NDOGs", group = G_EN, inline = "xdog")
+bool donwog = input.bool(true, "NWOGs", group = G_EN, inline = "xdog")
+bool dorthog = input.bool(true, "RTHOGs (up to 15m)", group = G_EN, inline = "xdog")
+bool dopremarket = input.bool(true, "PMKT range (m5 or less)", group = G_EN,
+     tooltip = "High and low of the premarket range, with its quadrants and "
+     + "stddevs. Needs a chart timeframe of 5m or lower.")
+bool doeqhl = input.bool(true, "EQH / EQL", group = G_EN,
+     tooltip = "Two or more swing highs (lows) within the tolerance "
+     + "form an EQH (EQL). The level is removed once price " + "trades through it. It is labeled eqH "
+     + "(eqL) when the later swing is higher (lower) than the earlier one, else EQH (EQL).")
+
 const string G_LOCATION = "Time & Settings"
 string TZ = input.string("Auto", "Zone: US / EU / Auto", options = ["Auto", "US", "EU"],
      group = G_LOCATION,
@@ -65,7 +87,6 @@ bool showcap = input.bool(true, "show object cap warning", group = G_LOCATION, i
      + "day/session/gap counts were reduced to fit the 500 object limits.")
 
 const string G_M = "Month Settings"
-bool domonth = input.bool(true, "Draw max/min/close for last 3 months", group = G_M)
 color monmaxcol = input.color(color.green, "max", group = G_M, inline = "mm")
 color monmincol = input.color(color.red, "min", group = G_M, inline = "mm")
 color monccol = input.color(color.black, "close", group = G_M, inline = "mm")
@@ -120,12 +141,7 @@ int opwid = input.int(1, "", options = [1, 2, 3], group = G_DAYS, inline = "open
 color opcolor = input.color(color.black, "", group = G_DAYS, inline = "open")
 
 const string G_TG = "TGIF"
-bool dotgif = input.bool(true, "TGIF levels %", group = G_TG, inline = "tgif",
-     tooltip = "ICT TGIF: when the week candle made a displacement and has not formed its final wick yet, "
-     + "a retracement of 20% - 30% of the week range is expected on Friday, or on Monday when it did not "
-     + "happen on Friday. The levels are drawn only on those days and only while that applies: from the "
-     + "week high down (bullish week, red) or from the week low up (bearish week, green).")
-float tgp1 = input.float(0.2, "", minval = 0.01, maxval = 1.0, step = 0.05, group = G_TG, inline = "tgif")
+float tgp1 = input.float(0.2, "TGIF levels %", minval = 0.01, maxval = 1.0, step = 0.05, group = G_TG, inline = "tgif")
 float tgp2 = input.float(0.3, "", minval = 0.01, maxval = 1.0, step = 0.05, group = G_TG, inline = "tgif")
 float tgnear = input.float(0.4, "TGIF displacement: price within x range of the high / low", minval = 0.05,
      maxval = 0.5, step = 0.05, group = G_TG, inline = "tgif2",
@@ -141,9 +157,7 @@ string tglblsize = input.string("normal", "text size", options = ["tiny", "small
      group = G_TG)
 
 const string G_ZONES = "Session Settings"
-bool doses = input.bool(true, "Draw sessions, keep", group = G_ZONES, inline = "ses",
-     tooltip = "draw Asia, London, NY AM, NY PM sessions and max/min values")
-int nses = input.int(20, "", minval = 3, group = G_ZONES, inline = "ses")
+int nses = input.int(20, "Sessions to keep", minval = 3, group = G_ZONES, inline = "ses")
 bool dorect = input.bool(true, "Draw session rectangles", inline = "transp", group = G_ZONES)
 int rtransp = input.int(75, "transparency", inline = "transp", group = G_ZONES,
      tooltip = "transparency for the session rectangles when drawn")
@@ -168,12 +182,7 @@ color londoncolor = input.color(color.green, "london", group = G_ZONES, inline =
 color uscolor = input.color(color.blue, "NY", group = G_ZONES, inline = "sescol")
 
 const string GRP_DOG = "Gaps and Ranges"
-bool dogaps = input.bool(true, "Draw NDOG/NWOG/RTHOGs", group = GRP_DOG, inline = "gap",
-     tooltip = "new day/week opening gaps and regular trading hours opening gaps")
-int ngaps = input.int(10, "keep", group = GRP_DOG, inline = "gap", minval = 1)
-bool dondog = input.bool(true, "NDOGs", inline = "xdog", group = GRP_DOG)
-bool donwog = input.bool(true, "NWOGs", inline = "xdog", group = GRP_DOG)
-bool dorthog = input.bool(true, "RTHOGs (timeframes up to 15m)", inline = "xdog", group = GRP_DOG)
+int ngaps = input.int(10, "Gaps to keep", group = GRP_DOG, inline = "gap", minval = 1)
 bool dorthogq = input.bool(true, "RTHOG quadrants", group = GRP_DOG, inline = "rq")
 float rthogqmin = input.float(25.0, "min size", group = GRP_DOG, inline = "rq",
      tooltip = "min size between quadrants to draw them")
@@ -224,9 +233,6 @@ bool extendgaps = input.bool(false, "extend old RTHOG lines", group = GRP_DOG,
      tooltip = "extend to the right the lines of old RTHOGs")
 
 const string G_PM = "Premarket Range"
-bool dopremarket = input.bool(true, "Draw premarket range (m5 or less)", group = G_PM,
-     inline = "pm0", tooltip = "High and low of the premarket range, with its quadrants and "
-     + "stddevs. Needs a chart timeframe of 5m or lower.")
 int pmkeep = input.int(1, "quadrants/stddevs for the last", minval = 1, maxval = 5,
      group = G_PM, inline = "pm0", tooltip = "Number of most recent ranges that get quadrant "
      + "and stddev lines (as with RTHOG, only the latest by default). Older ranges keep "
@@ -266,10 +272,6 @@ float pmctol = input.float(0.05, "combine RTHOG labels, tolerance x daily ATR", 
      + "like RTHOG +2 PMKT +3")
 
 const string G_EQ = "Equal Highs / Lows"
-bool doeqhl = input.bool(true, "Draw EQH / EQL", group = G_EQ, inline = "eq1",
-     tooltip = "Two or more swing highs (lows) within the tolerance "
-     + "form an EQH (EQL). The level is removed once price " + "trades through it. It is labeled eqH "
-     + "(eqL) when the later swing is higher (lower) than the earlier one, else EQH (EQL).")
 bool doeqd = input.bool(true, "also from the daily chart", group = G_EQ, inline = "eq1",
      tooltip = "Also computes EQH/EQL on daily swings (labels end with "
      + "D). Uses completed daily bars only, no repaint.")

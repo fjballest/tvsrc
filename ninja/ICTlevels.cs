@@ -4,7 +4,7 @@
 // quadrants and standard deviations, premarket range, EQH/EQL, PO3 lines, TGIF levels, macros,
 // silver bullet and a session/macro status text. Draws levels only: no plots, no signals, no alerts.
 //
-// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 8145a7539cadb43ef480a11c38fde131),
+// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 103b6b3895d4080bb9b524689ffca7a4),
 // © franjballest, Mozilla Public License 2.0 (https://mozilla.org/MPL/2.0/).
 //
 // Install:
@@ -2279,7 +2279,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 		public bool ShowCap { get; set; }
 
 		[NinjaScriptProperty]
-		[Display(Name = "Draw max/min/close for last 3 months", GroupName = "Month Settings", Order = 201)]
+		[Display(Name = "Month max/min/close (last 3 months)", GroupName = "Enable / Filter", Order = 1)]
 		public bool DoMonth { get; set; }
 
 		[NinjaScriptProperty]
@@ -2471,7 +2471,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 		}
 
 		[NinjaScriptProperty]
-		[Display(Name = "TGIF levels %", GroupName = "TGIF", Order = 401)]
+		[Display(Name = "TGIF levels", GroupName = "Enable / Filter", Order = 2)]
 		public bool DoTgif { get; set; }
 
 		[NinjaScriptProperty]
@@ -2527,7 +2527,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 		public ICTlevelsTextSize TgLabelSize { get; set; }
 
 		[NinjaScriptProperty]
-		[Display(Name = "Draw sessions", GroupName = "Session Settings", Order = 501)]
+		[Display(Name = "Sessions", GroupName = "Enable / Filter", Order = 3)]
 		public bool DoSessions { get; set; }
 
 		[NinjaScriptProperty]
@@ -2639,7 +2639,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 		}
 
 		[NinjaScriptProperty]
-		[Display(Name = "Draw NDOG/NWOG/RTHOGs", GroupName = "Gaps and Ranges", Order = 601)]
+		[Display(Name = "NDOG/NWOG/RTHOGs", GroupName = "Enable / Filter", Order = 4)]
 		public bool DoGaps { get; set; }
 
 		[NinjaScriptProperty]
@@ -2648,15 +2648,15 @@ namespace NinjaTrader.NinjaScript.Indicators
 		public int NGaps { get; set; }
 
 		[NinjaScriptProperty]
-		[Display(Name = "NDOGs", GroupName = "Gaps and Ranges", Order = 603)]
+		[Display(Name = "NDOGs", GroupName = "Enable / Filter", Order = 5)]
 		public bool DoNdog { get; set; }
 
 		[NinjaScriptProperty]
-		[Display(Name = "NWOGs", GroupName = "Gaps and Ranges", Order = 604)]
+		[Display(Name = "NWOGs", GroupName = "Enable / Filter", Order = 6)]
 		public bool DoNwog { get; set; }
 
 		[NinjaScriptProperty]
-		[Display(Name = "RTHOGs (timeframes up to 15m)", GroupName = "Gaps and Ranges", Order = 605)]
+		[Display(Name = "RTHOGs (timeframes up to 15m)", GroupName = "Enable / Filter", Order = 7)]
 		public bool DoRthog { get; set; }
 
 		[NinjaScriptProperty]
@@ -2796,7 +2796,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 		public bool ExtendGaps { get; set; }
 
 		[NinjaScriptProperty]
-		[Display(Name = "Draw premarket range (m5 or less)", GroupName = "Premarket Range", Order = 701)]
+		[Display(Name = "PMKT range (m5 or less)", GroupName = "Enable / Filter", Order = 8)]
 		public bool DoPremarket { get; set; }
 
 		[NinjaScriptProperty]
@@ -2878,7 +2878,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 		public double PmCTol { get; set; }
 
 		[NinjaScriptProperty]
-		[Display(Name = "Draw EQH / EQL", GroupName = "Equal Highs / Lows", Order = 801)]
+		[Display(Name = "EQH / EQL", GroupName = "Enable / Filter", Order = 9)]
 		public bool DoEqhl { get; set; }
 
 		[NinjaScriptProperty]
