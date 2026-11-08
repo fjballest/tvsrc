@@ -9,7 +9,7 @@
  * closed through become IFVGs. Mitigated levels are removed.
  *
  * Port of the TradingView Pine Script v6 indicator ICTcotas.txt
- * (md5 0970be33a1478396f339ad926aba56d1), (c) franjballest, Mozilla Public
+ * (md5 33bfa88e4b2f219d65c790090f592d1d), (c) franjballest, Mozilla Public
  * License 2.0 (https://mozilla.org/MPL/2.0/). Same logic, same inputs (as
  * camelCase parameters) and the same defaults.
  *
@@ -807,7 +807,7 @@ function drawMfMargin(c, l, eng, lastIdx, items) {
 
 // turtle soup / continuation triangles in a chart corner, one column per timeframe (lowest first), with the
 // timeframe names below. Offsets are in pixels from the chosen corner.
-function drawTs(c, eng, items) {
+function drawTs(c, eng, items, tk, idx) {
     if (!c.tsShow) return;
     const tfs = eng.tfsecs();
     const i0 = tfs <= 900 ? 0 : tfs <= 3600 ? 1 : tfs <= 14400 ? 2 : tfs <= 86400 ? 3 : 4;
@@ -816,6 +816,22 @@ function drawTs(c, eng, items) {
     const A = eng.S.aggs;
     const aggs = [A.m15, A.h1, A.h4, A.d];
     const names = ["15m", "1H", "4H", "D"];
+    // the candle of the chart timeframe is the forming chart bar: chart bar closes cannot tell whether a
+    // continuation was cancelled within it, so its own ticks (tk, kept across ticks) decide that
+    const ik = [900, 3600, 14400, 86400].indexOf(tfs);
+    if (tk && ik >= 0) {
+        const a = aggs[ik], p = a.tsPrev(), cu = a.cur;
+        if (tk.bar !== idx) {
+            tk.bar = idx;
+            tk.armed = false;
+            tk.inv = false;
+        }
+        if (p) {
+            if (tk.armed && (p.c < p.o ? cu.c > p.c : cu.c < p.c)) tk.inv = true;
+            if (a.tsCont()) tk.armed = true;
+            if (tk.inv) cu.inv = true;
+        }
+    }
     const pos = c.tsPos;
     const h = pos === "bottomLeft" || pos === "topLeft" ? "left" : pos === "bottomCenter" ? "center" : "right";
     const v = pos === "topRight" || pos === "topLeft" ? "top" : pos === "middleRight" ? "middle" : "bottom";
@@ -841,7 +857,7 @@ function drawTs(c, eng, items) {
     }
 }
 
-function drawAll(c, eng, lastIdx, lastBar) {
+function drawAll(c, eng, lastIdx, lastBar, tk) {
     const x = lastIdx + c.xOff;
     const items = [];
     const lbls = [];
@@ -857,7 +873,7 @@ function drawAll(c, eng, lastIdx, lastBar) {
         else drawLvl(c, l, x, items, eng.S.datr, lbls);
     }
     drawLbls(c, x, items, eng.S.datr, lbls);
-    drawTs(c, eng, items);
+    drawTs(c, eng, items, tk, lastIdx);
     const tfs = eng.tfsecs();
     const any = (c.doDaily && tfs < 86400) || (c.doWeekly && tfs < 604800) || (c.doMonthly && tfs < 2592000);
     if (!any) {
@@ -929,6 +945,7 @@ class ICTcotasClass {
         this.committed = -1;
         this.lastOut = null;
         this.lastOutIdx = -1;
+        this.tsTk = { bar: -1, armed: false, inv: false };
     }
 
     setup() {
@@ -1007,7 +1024,7 @@ class ICTcotasClass {
         let items = [];
         try {
             eng.applyBar(i, b);
-            items = drawAll(this.cfg, eng, i, b);
+            items = drawAll(this.cfg, eng, i, b, this.tsTk);
         } catch (e) {
             // skip the forming bar's update rather than stop the indicator
         }

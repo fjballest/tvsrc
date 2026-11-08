@@ -7,7 +7,7 @@
 // FVGs closed through become IFVGs. Mitigated levels are removed.
 //
 // Port of the TradingView Pine Script v6 indicator ICTcotas.txt by franjballest
-// (source md5 0970be33a1478396f339ad926aba56d1). Mozilla Public License 2.0.
+// (source md5 33bfa88e4b2f219d65c790090f592d1d). Mozilla Public License 2.0.
 //
 // Install:
 //   1. Copy this file to  Documents\NinjaTrader 8\bin\Custom\Indicators\ICTcotas.cs
@@ -1234,8 +1234,13 @@ namespace NinjaTrader.NinjaScript.Indicators
 		// candle traded above its open and price is below the previous close is a continuation down, cancelled
 		// for the rest of the candle once price closes a chart bar back above that close. Mirrored for up.
 		// Returns 1 TS up, -1 TS down, 2 continuation up, -2 continuation down, 0 nothing.
-		private int TsSig(int k)
+		private int tkBar = -1;
+		private bool tkArmed, tkInv;
+		private static readonly int[] TsSecs = { 900, 3600, 14400, 86400 };
+
+		private int TsSig(int i)
 		{
+			int k = TsSer[i];
 			if (CurrentBars[k] < 1)
 				return 0;
 			DateTime t0 = Times[0][0];
@@ -1263,6 +1268,22 @@ namespace NinjaTrader.NinjaScript.Indicators
 				cont = down ? h > o && cb < pc : l < o && cb > pc;
 				if (cont)
 					armed = true;
+			}
+			// the candle of the chart timeframe is the forming chart bar: chart bar closes cannot tell whether a
+			// continuation was cancelled within it, so its own ticks decide that
+			if (State == State.Realtime && Calculate != Calculate.OnBarClose && tfsecs == TsSecs[i])
+			{
+				if (tkBar != CurrentBars[0])
+				{
+					tkBar = CurrentBars[0];
+					tkArmed = false;
+					tkInv = false;
+				}
+				if (tkArmed && (down ? c > pc : c < pc))
+					tkInv = true;
+				if (cont)
+					tkArmed = true;
+				inv = inv || tkInv;
 			}
 			if (down && l < pl && c > pc)
 				return 1;
@@ -1301,7 +1322,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 			for (int i = i0; i <= i1; i++)
 			{
 				int col = i - i0;
-				int sg = TsSig(TsSer[i]);
+				int sg = TsSig(i);
 				int g = sg == 1 ? 0 : sg == -1 ? 1 : sg != 0 ? 2 : 3;
 				rows[g][col * 4 + 1] = sg > 0 ? '\u25B2' : sg < 0 ? '\u25BC' : '\u25CB';
 				names += (TsNamesTxt[i] + "    ").Substring(0, 4).Replace(' ', sp);

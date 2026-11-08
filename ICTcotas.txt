@@ -1046,6 +1046,25 @@ if dots
     for i = 0 to 3
         tst.get(i).tsStep(tsNew.get(i))
 
+// the candle of the chart timeframe is the forming chart bar: chart bar closes cannot tell whether a
+// continuation was cancelled within it, so its own ticks (varip, not rolled back) decide that
+varip int tsTkBar = -1
+varip bool tsTkArm = false
+varip bool tsTkInv = false
+int tsTk = tfsecs == 900 ? 0 : tfsecs == 3600 ? 1 : tfsecs == 14400 ? 2 : tfsecs == 86400 ? 3 : -1
+if dots and tsTk >= 0
+    TSt s = tst.get(tsTk)
+    if bar_index != tsTkBar
+        tsTkBar := bar_index
+        tsTkArm := false
+        tsTkInv := false
+    if not na(s.pc)
+        if tsTkArm and (s.pc < s.po ? close > s.pc : close < s.pc)
+            tsTkInv := true
+        if s.tsCont()
+            tsTkArm := true
+    s.inv := s.inv or tsTkInv
+
 tsPos(string p) =>
     switch p
         "bottom left" => position.bottom_left
