@@ -61,8 +61,8 @@ Inputs are grouped by module, and related controls share a row with `inline`. Co
 
 | Group | Inputs and effect |
 | --- | --- |
-| Enable / Filter | The feature switches, first in the dialog: months (`domonth`), TGIF (`dotgif`), sessions (`doses`) and EQH / EQL (`doeqhl`) on one row; NDOG / NWOG / RTHOG (`dondog` / `donwog` / `dorthog`) on another; premarket range (`dopremarket`). `dogaps` is no longer an input: it is `dondog or donwog or dorthog` (NinjaTrader `DoGaps` getter, Tradovate the same expression). Their groups below keep the other settings of each feature |
-| Time & Settings | Zone (Auto, US, EU); compute for historic data use (`visible`); offset for margin labels (`xoff`, bars between the last bar and the labels); show object cap warning (`showcap`) |
+| Enable / Filter | The feature switches, first in the dialog: months (`domonth`), TGIF (`dotgif`), sessions (`doses`) and EQH / EQL (`doeqhl`) on one row; NDOG / NWOG / RTHOG (`dondog` / `donwog` / `dorthog`) on another; premarket range (`dopremarket`) and flag macros (`domacrobg`, on, color `macrobgcolor` in Macros and Events) on another; attenuation (`attLvl`, 0 to 4, first). `dogaps` is no longer an input: it is `dondog or donwog or dorthog` (NinjaTrader `DoGaps` getter, Tradovate the same expression). Their groups below keep the other settings of each feature |
+| Time & Settings | Compute for historic data use (`visible`); zone (Auto, US, EU); offset for margin labels (`xoff`, bars between the last bar and the labels); show object cap warning (`showcap`) |
 | Month Settings | Colors for max, min and close; line style and width |
 | Day Settings | Number of days (`ndays`, capped by the object budget); day and week vertical lines; day max/min colors, style and width; label unbroken day max/min and its size; REH/REL labels with a tolerance in daily ATR; equilibrium line; day open (midnight open) line |
 | TGIF | The two retracement fractions (`tgp1` / `tgp2`, 0.2 / 0.3); how near price must be to the week high / low for a displacement (`tgnear`, 0.4 of the range); up / down colors, style and width; text size (`tglblsize`, normal) |
@@ -292,6 +292,14 @@ The design choices that keep it fast:
 
 `tools/mklevelsderiv.py` generates `ICTgaps.txt` ("ICTgaps") and `ICTday.txt` ("ICTday") from `ICTlevels.txt`; rerun it after every change to ICTlevels and never edit the outputs. Both keep the whole ICTlevels code: every feature is already gated by its switch, so a derivative only turns the inputs it does not show into constants (shared helper `derive()` of `tools/mkfvgderiv.py`).
 
-- ICTgaps shows Enable / Filter (gap and premarket switches only), Time & Settings, Gaps and Ranges and Premarket Range; the switches of the other features are constants off (`domonth`, `dolines`, `dodmaxmin`, `dodaylbl`, `doreh`, `doeq`, `doopen`, `dotgif`, `doses`, `dorect`, `doeqhl`, `doeqd`, `dozones`, `domacros`, `domacrobg`, `dosilver`). `dosmaxmin` / `doseslbl` keep their defaults (on) because the premarket zone uses them, with the session styles, `nses` and the day line style.
+- Both keep `attLvl`. ICTgaps shows Enable / Filter (gap and premarket switches only), Time & Settings, Gaps and Ranges and Premarket Range; the switches of the other features are constants off (`domonth`, `dolines`, `dodmaxmin`, `dodaylbl`, `doreh`, `doeq`, `doopen`, `dotgif`, `doses`, `dorect`, `doeqhl`, `doeqd`, `dozones`, `domacros`, `domacrobg`, `dosilver`). `dosmaxmin` / `doseslbl` keep their defaults (on) because the premarket zone uses them, with the session styles, `nses` and the day line style.
 - ICTday shows everything but Gaps and Ranges and Premarket Range; `dondog`, `donwog`, `dorthog` and `dopremarket` are constants off.
+
+## Attenuation
+
+`attLvl` (0 to 4) dims the drawings by rank, `[ATT]` in the code. `attE(rank)` gives the dimming steps of a rank (0 important, 1 normal, 2 minor): 0 at level 0; important 0, 1, 1, 2; normal 1 to 4; minor 2 to 5 for levels 1 to 4. `attL(c, rank)` takes `min(e * 0.18, 0.9)` of the remaining opacity from a color, `attW(w, rank)` lowers a width by 1 from 2 steps on (never below 1) and `attT(t, rank)` raises a fill transparency by `e * 20%` of what is left.
+
+- Ranks are fixed per drawing (styles and call sites), except the gaps and RTHOGs: `gsty()` restyles a gap on the last bar (NWOG and the gap flagged `imp` important, other NDOGs minor; `imp` is the newest NDOG, passed on to the gap that shows it when gaps are combined), and `right(g, c, rk)` restyles the current (rank 0) and previous (rank 1) RTHOG, with quadrants, octants and stddevs minor. Old compact RTHOGs (`setOld`) are minor.
+- Session rectangles: `rtrF` (fill) is lighter at level 1; from level 2 on `rbord` forces the outline with `rtrB`, fainter each level, width 1 from level 3.
+- The NinjaTrader and Tradovate ports do not have attenuation yet; they will get it once the levels are settled.
 

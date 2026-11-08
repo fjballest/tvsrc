@@ -11,7 +11,7 @@
  *   It draws levels only: no signals, no alerts, no plots.
  *
  *   It is a port of the TradingView Pine Script v6 indicator ICTlevels.txt
- *   (md5 23e47e0f513a483be1a7e89271b805a8). Parameter names are the Pine variable names and the
+ *   (md5 26a1b694383e338e719c03795ae4f583). Parameter names are the Pine variable names and the
  *   defaults are the Pine defaults; see "doc/ICTlevels-user-manual.md" for what every level means.
  *
  * How to install
@@ -76,6 +76,7 @@ const PARAMS = {
     dorthog: ps.bool(true),
     dopremarket: ps.bool(true),
     doeqhl: ps.bool(true),
+    domacrobg: ps.bool(true),
     // Time & Settings
     market: ps.enum({ Auto: "Auto", US: "US", EU: "EU" }, "Auto"),
     xoff: ps.number(2, 1, 1),
@@ -145,7 +146,7 @@ const PARAMS = {
     rthogpo3min: ps.number(25.0, 0.25, 0),
     rthogpo3num: ps.number(4, 1, 0),
     rthogauto: ps.bool(false),
-    dogrect: ps.bool(false),
+    dogrect: ps.bool(true),
     grtransp: ps.number(90, 1, 0),
     combgaps: ps.bool(true),
     combtol: ps.number(0.05, 0.01, 0),
@@ -197,7 +198,6 @@ const PARAMS = {
     zonecolor: ps.color(C_BLUE),
     domacros: ps.bool(true),
     macrocolor: ps.color(C_ORANGE),
-    domacrobg: ps.bool(false),
     macrobgcolor: ps.color("#000000"),
     macrobgtransp: ps.number(90, 1, 0),
     dosilver: ps.bool(true),

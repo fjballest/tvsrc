@@ -268,7 +268,7 @@ A small table at the top right of the chart, updated on the last bar:
 
 Rows are empty when nothing is active. The premarket range is not shown in the table.
 
-Optionally ("flag macros with background color", off by default) the chart background is tinted during every macro window, on all bars, so you can see past macros on the chart. The tint is only drawn on charts below 15m; on 15m and above the macros are shorter than a bar.
+Optionally ("Flag macros" in Enable / Filter, on by default) the chart background is tinted during every macro window, on all bars, so you can see past macros on the chart. The tint is only drawn on charts below 15m; on 15m and above the macros are shorter than a bar.
 
 **How to use it**
 
@@ -315,6 +315,7 @@ The first group: one switch per feature, so you can turn features on and off wit
 
 | Label in dialog | Default | What it does |
 | --- | --- | --- |
+| Attenuation | 0 (0 to 4) | Dims the drawings: 0 as configured, 4 the most dimmed. See below. |
 | Month max/min/close (last 3 months) | on | Draws the high, low and close of the last three completed months. |
 | TGIF levels | on | Draws the TGIF levels on Friday, or on Monday, while they apply. |
 | Sessions | on | Draws the Asia, London, NY AM and NY PM sessions and their high and low. |
@@ -323,13 +324,30 @@ The first group: one switch per feature, so you can turn features on and off wit
 | NWOGs | on | Draws new week opening gaps. |
 | RTHOGs (up to 15m) | on | Draws regular trading hours opening gaps (15m or lower charts). |
 | PMKT range (m5 or less) | on | Draws the premarket range on 5m or lower charts. |
+| Flag macros | on | Tints the chart background during every macro window (charts below 15m only). The color is in Macros and Events. |
+
+Attenuation dims the drawings without changing their settings. Drawings have three ranks:
+
+- Important: month lines, TGIF levels, NWOGs, the last NDOG and the current RTHOG.
+- Normal: day and session max/min, week vertical lines, the previous RTHOG, the PMKT high and low, EQH / EQL and the macro background.
+- Minor: day vertical lines, eq, M.O., older NDOGs, old RTHOGs, and the RTHOG and PMKT quadrants, octants and deviations.
+
+| Level | Important | Normal | Minor | Session rectangles |
+| --- | --- | --- | --- | --- |
+| 0 | as configured | as configured | as configured | as configured |
+| 1 | as configured | 18% fainter | 36% fainter, width -1 | filled, lighter |
+| 2 | 18% fainter | 36% fainter, width -1 | 54% fainter, width -1 | outline only |
+| 3 | 18% fainter | 54% fainter, width -1 | 72% fainter, width -1 | outline only, fainter, width 1 |
+| 4 | 36% fainter, width -1 | 72% fainter, width -1 | 90% fainter, width -1 | outline only, fainter, width 1 |
+
+"Fainter" is the share of the remaining opacity that is taken away, for lines and label text. Widths never go below 1. Gap rectangles fade with the rank of their gap (20% per step), so the rectangles of older NDOGs are gone at level 4. In NinjaTrader and Tradovate attenuation is not available yet.
 
 ### 5.2 Time & Settings
 
 | Label in dialog | Default | What it does |
 | --- | --- | --- |
-| Zone: US / EU / Auto | Auto | US uses New York times (NQ), EU uses Madrid times (DAX). Auto picks EU when the symbol looks like DAX (see Quick start), otherwise US. Changes every time window in section 3. |
 | compute for historic data use | off | Off: levels are computed up to the last bar, for live trading. On: levels are computed up to the rightmost visible bar, so you can scroll back and see the levels as they were at that point. The script recomputes every time you scroll. |
+| Zone: US / EU / Auto | Auto | US uses New York times (NQ), EU uses Madrid times (DAX). Auto picks EU when the symbol looks like DAX (see Quick start), otherwise US. Changes every time window in section 3. |
 | offset for margin labels | 2 (min 1) | Number of bars to the right of the last bar where margin labels and line ends are placed: gaps, RTHOG, premarket quadrants and deviations, TGIF, EQH/EQL and month labels. Day, session and premarket high/low labels and the eq and M.O. labels are always 2 bars to the right. |
 | show object cap warning | on | Shows "object cap: N days" in the table when the day, session or gap counts were reduced to fit the 500-object limits. The day cap on 5m and lower charts is not warned about. |
 
@@ -417,7 +435,7 @@ The first group: one switch per feature, so you can turn features on and off wit
 | RTHOG stddevs | on | Draws standard deviation projections of the current RTHOG. |
 | min size | 25.0 | Minimum step in points; the step is the first of gap/8, gap/4, gap/2 or the whole gap that is larger than this, otherwise none are drawn. |
 | number of stddevs to draw above/below | 4 | Deviation lines per side. Keep it at 1 or more; to hide them, turn off "RTHOG stddevs". |
-| Draw gap rectangles | off | Draws shaded boxes for NDOG, NWOG and RTHOG gaps. |
+| Draw gap rectangles | on | Draws shaded boxes for NDOG, NWOG and RTHOG gaps. |
 | transp | 90 | Transparency of the gap boxes. |
 | Combine gaps at similar levels | on | Draws nearby NDOGs (NWOGs) once with their outer levels ("NDOGx3"), and merges NDOGs into a NWOG at the same levels ("NWOG+NDOG"). |
 | tolerance x daily ATR | 0.05 | Maximum distance between levels to be combined, as a fraction of the daily ATR(14). Also decides when a gap is so small that it gets a single label in the middle. |
@@ -480,8 +498,7 @@ The first group: one switch per feature, so you can turn features on and off wit
 | (no label, color) | blue | Text color of the session name. |
 | Show current macro name | on | Shows the active macro name in the table. |
 | (no label, color) | orange | Text color of the macro name. |
-| flag macros with background color | off | Tints the chart background during every macro window (charts below 15m only). |
-| (no label, color) | black, 90% transparent | Background tint color. |
+| Macro background | black, 90% transparent | Background tint color for "Flag macros". |
 | Show active silver bullet | on | Shows "S.Bullet" in the table during a silver bullet window. |
 | (no label, color) | red | Text color of the silver bullet note. |
 

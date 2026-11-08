@@ -33,6 +33,24 @@ type Sty
 
 // ============================================================ inputs
 const string G_EN = "Enable / Filter"
+int attLvl = input.int(0, "Attenuation", minval = 0, maxval = 4, group = G_EN,
+     tooltip = "Dims the drawings, 0: as configured, 4: the most dimmed. Levels have three ranks: important "
+     + "(months, TGIF, NWOGs, the last NDOG, the current RTHOG), normal (day and session max/min, week lines, "
+     + "the previous RTHOG, PMKT high / low, EQH / EQL, macro background) and minor (day lines, eq, M.O., older "
+     + "NDOGs, old RTHOGs, RTHOG and PMKT quadrants, octants and stddevs). Each level dims minor drawings the "
+     + "most and important ones the least; widths go down by 1 when dimmed enough. Session rectangles: filled "
+     + "and lighter at 1, outline only from 2 on. Gap rectangles fade with the rank of their gap.")
+// [ATT] dimming steps of a rank (0 important, 1 normal, 2 minor) at the attenuation level
+attE(int rank) =>
+    attLvl == 0 ? 0 : rank == 0 ? (attLvl >= 4 ? 2 : attLvl >= 2 ? 1 : 0) : rank == 1 ? attLvl : attLvl + 1
+// line / text color, width and fill transparency of a rank
+attL(color c, int rank) =>
+    int e = attE(rank)
+    e == 0 ? c : color.new(c, color.t(c) + (100 - color.t(c)) * math.min(e * 0.18, 0.9))
+attW(int w, int rank) =>
+    math.max(1, w - (attE(rank) >= 2 ? 1 : 0))
+attT(int t, int rank) =>
+    int(math.min(100, t + (100 - t) * attE(rank) * 0.2))
 bool domonth = false
 bool dotgif = false
 bool doses = false
@@ -41,19 +59,20 @@ bool dondog = input.bool(true, "NDOGs", group = G_EN, inline = "xdog")
 bool donwog = input.bool(true, "NWOGs", group = G_EN, inline = "xdog")
 bool dorthog = input.bool(true, "RTHOGs (up to 15m)", group = G_EN, inline = "xdog")
 bool dogaps = dondog or donwog or dorthog // some opening gap kind is on
-bool dopremarket = input.bool(true, "PMKT range (m5 or less)", group = G_EN,
+bool dopremarket = input.bool(true, "PMKT range (m5 or less)", group = G_EN, inline = "en3",
      tooltip = "High and low of the premarket range, with its quadrants and "
      + "stddevs. Needs a chart timeframe of 5m or lower.")
+bool domacrobg = false
 
 const string G_LOCATION = "Time & Settings"
-string TZ = input.string("Auto", "Zone: US / EU / Auto", options = ["Auto", "US", "EU"],
-     group = G_LOCATION,
-     tooltip = "US = NQ (New York times), EU = DAX (Madrid times), Auto "
-     + "selects by symbol. Set the platform timezone to match.")
 bool visible = input.bool(false, "compute for historic data use", group = G_LOCATION,
      tooltip = "When disabled, objects are computed up to the last bar "
      + "for real-time use. When enabled, objects are computed "
      + "up to the rightmost visible bar (recomputes when you scroll).")
+string TZ = input.string("Auto", "Zone: US / EU / Auto", options = ["Auto", "US", "EU"],
+     group = G_LOCATION,
+     tooltip = "US = NQ (New York times), EU = DAX (Madrid times), Auto "
+     + "selects by symbol. Set the platform timezone to match.")
 int xoff = input.int(2, "offset for margin labels", group = G_LOCATION, minval = 1, inline = "loc")
 bool showcap = input.bool(true, "show object cap warning", group = G_LOCATION, inline = "loc",
      tooltip = "Shows a small note in the top-right table when the "
@@ -140,7 +159,7 @@ bool rthogauto = input.bool(false, "auto", group = GRP_DOG, inline = "rn",
      tooltip = "Latest RTHOG only, from the open until the market close: more stddevs are drawn when price "
      + "goes beyond them, so there are always at least the number above and also the next stddev to be hit "
      + "on each side (at most 40 per side).")
-bool dogrect = input.bool(false, "Draw gap rectangles", inline = "gtransp", group = GRP_DOG)
+bool dogrect = input.bool(true, "Draw gap rectangles", inline = "gtransp", group = GRP_DOG)
 int grtransp = input.int(90, "transp", inline = "gtransp", group = GRP_DOG,
      tooltip = "transparency for the gap rectangles when drawn")
 bool combgaps = input.bool(true, "Combine gaps at similar levels", group = GRP_DOG,
@@ -232,7 +251,6 @@ bool dozones = false
 color zonecolor = color.blue
 bool domacros = false
 color macrocolor = color.orange
-bool domacrobg = false
 color macrobgcolor = color.new(color.black, 90)
 bool dosilver = false
 color silvercolor = color.red
@@ -382,6 +400,7 @@ type Gap
     int n = 1          // gaps grouped into this one (combine gaps)
     int nd = 0         // NDOGs merged into this NWOG (combine gaps)
     bool show = true
+    bool imp = false   // [ATT] last NDOG (or the gap that shows it when combined)
     float uhi = na
     float ulo = na
     int ut = na
@@ -466,10 +485,12 @@ mkLL(int x1, int x2, float p, color c, string sty, int w, string txt, color tc,
          color = transparent, textcolor = tc, size = sz)
     [l, b]
 
-setR(line l, label b, int x, color c) =>
+setR(line l, label b, int x, color c, int w = na) =>
     if not na(l)
         l.set_x2(x)
         l.set_color(c)
+        if not na(w)
+            l.set_width(w)
     if not na(b)
         b.set_x(x)
         b.set_textcolor(c)
@@ -511,16 +532,20 @@ method ends(ZoneInfo z) =>
     (z.es - tsec + 86400) % 86400 < tfsecs or (z.inside(tsecPrev) and not z.inside(tsec))
 
 // ============================================================ styles and definitions
-var Sty daysty = Sty.new(daylnsty, daywid, daycol)
-var Sty daymaxsty = Sty.new(daymlnsty, daymwid, daymmaxcol)
-var Sty dayminsty = Sty.new(daymlnsty, daymwid, daymmincol)
-var Sty sesmaxsty = Sty.new(sesmlnsty, sesmwid, sesmmaxcol)
-var Sty sesminsty = Sty.new(sesmlnsty, sesmwid, sesmmincol)
+var Sty daysty = Sty.new(daylnsty, attW(daywid, 2), attL(daycol, 2))
+var Sty daymaxsty = Sty.new(daymlnsty, attW(daymwid, 1), attL(daymmaxcol, 1))
+var Sty dayminsty = Sty.new(daymlnsty, attW(daymwid, 1), attL(daymmincol, 1))
+var Sty sesmaxsty = Sty.new(sesmlnsty, attW(sesmwid, 1), attL(sesmmaxcol, 1))
+var Sty sesminsty = Sty.new(sesmlnsty, attW(sesmwid, 1), attL(sesmmincol, 1))
 var Sty gapsty = Sty.new(gaplnsty, gapwid, gapcolor)
 var Sty wgapsty = Sty.new(wgaplnsty, wgapwid, wgapcolor)
-var Sty nysty = Sty.new(daylnsty, 1, color.new(uscolor, rtransp))
-var Sty londonsty = Sty.new(daylnsty, 1, color.new(londoncolor, rtransp))
-var Sty asiasty = Sty.new(daylnsty, 1, color.new(asiacolor, rtransp))
+// [ATT] session rectangles: filled and lighter at attenuation 1, outline only from 2 on (fainter each level)
+int rtrF = attLvl == 1 ? attT(rtransp, 1) : rtransp
+bool rbord = rectbord or attLvl >= 2
+int rtrB = attLvl >= 2 ? int(math.min(100, rtransp / 2 + (100 - rtransp / 2) * (attLvl - 1) * 0.2)) : int(rtransp / 2)
+var Sty nysty = Sty.new(daylnsty, 1, color.new(uscolor, rtrF))
+var Sty londonsty = Sty.new(daylnsty, 1, color.new(londoncolor, rtrF))
+var Sty asiasty = Sty.new(daylnsty, 1, color.new(asiacolor, rtrF))
 
 var ZoneInfo market = mkZoneInfo("market", mktstr)
 var ZoneInfo asia = mkZoneInfo("Asia", asiastr, asiasty)
@@ -618,8 +643,8 @@ method pmdraw(Zone z, bool auto = false) =>
                 z.qlabels := array.new<label>()
             for k = 1 to 3
                 string pt = k == 1 ? "dq" : k == 2 ? "ce" : "uq"
-                [l1, b1] = mkLL(x0, x1, z.lo + k * r / 4.0, pmcolor, k == 2 ? pmcesty : pmqsty,
-                     pmwid, "PMKT " + pt + " " + nm, pmcolor, pmlsz)
+                [l1, b1] = mkLL(x0, x1, z.lo + k * r / 4.0, attL(pmcolor, 2), k == 2 ? pmcesty : pmqsty,
+                     attW(pmwid, 2), "PMKT " + pt + " " + nm, attL(pmcolor, 2), pmlsz)
                 z.qlines.push(l1)
                 z.qlabels.push(b1)
         if dopmpo3
@@ -642,14 +667,14 @@ method pmdraw(Zone z, bool auto = false) =>
                 int nd = sdCount(pmpo3num, auto, z.lo, u, z.xlo, -1)
                 for i = 1 to math.max(nu, nd)
                     if i <= nu
-                        [l2, b2] = mkLL(x0, x1, z.hi + i * u, pmcolor, pmpo3sty, pmwid,
-                             "PMKT" + sdName(i, u, r, 1), pmcolor, pmlsz)
+                        [l2, b2] = mkLL(x0, x1, z.hi + i * u, attL(pmcolor, 2), pmpo3sty, attW(pmwid, 2),
+                             "PMKT" + sdName(i, u, r, 1), attL(pmcolor, 2), pmlsz)
                         z.sdlines.push(l2)
                         z.sdlabels.push(b2)
                         z.sdnames.push(sdName(i, u, r, 1))
                     if i <= nd
-                        [l3, b3] = mkLL(x0, x1, z.lo - i * u, pmcolor, pmpo3sty, pmwid,
-                             "PMKT" + sdName(i, u, r, -1), pmcolor, pmlsz)
+                        [l3, b3] = mkLL(x0, x1, z.lo - i * u, attL(pmcolor, 2), pmpo3sty, attW(pmwid, 2),
+                             "PMKT" + sdName(i, u, r, -1), attL(pmcolor, 2), pmlsz)
                         z.sdlines.push(l3)
                         z.sdlabels.push(b3)
                         z.sdnames.push(sdName(i, u, r, -1))
@@ -660,10 +685,12 @@ method pmdraw(Zone z, bool auto = false) =>
             if na(z.qlines)
                 z.qlines := array.new<line>()
                 z.qlabels := array.new<label>()
-            [lh, bh] = mkLL(x0, x1, z.hi, pmcolor, line.style_solid, pmwid, "PMKT hi " + nm, pmcolor, pmlsz)
+            [lh, bh] = mkLL(x0, x1, z.hi, attL(pmcolor, 1), line.style_solid, attW(pmwid, 1), "PMKT hi " + nm, attL(pmcolor, 1),
+                 pmlsz)
             z.qlines.push(lh)
             z.qlabels.push(bh)
-            [ll, bl] = mkLL(x0, x1, z.lo, pmcolor, line.style_solid, pmwid, "PMKT lo " + nm, pmcolor, pmlsz)
+            [ll, bl] = mkLL(x0, x1, z.lo, attL(pmcolor, 1), line.style_solid, attW(pmwid, 1), "PMKT lo " + nm, attL(pmcolor, 1),
+                 pmlsz)
             z.qlines.push(ll)
             z.qlabels.push(bl)
     true
@@ -693,8 +720,8 @@ method refresh(Zone z) =>
         if na(z.vline)
             z.vline := line.new(z.tstart, z.lo, z.tstart, z.hi + syminfo.mintick,
                  extend = extend.both, xloc = xloc.bar_time,
-                 color = z.lnsty.col, style = z.isweek ? wdaylnsty : z.lnsty.sty, width = z.isweek
-                 ? wdaywid : z.lnsty.wid)
+                 color = z.isweek ? attL(daycol, 1) : z.lnsty.col, style = z.isweek ? wdaylnsty : z.lnsty.sty,
+                 width = z.isweek ? attW(wdaywid, 1) : z.lnsty.wid)
         if z.drawvlines and not na(z.tend) and na(z.vline2)
             int x2 = z.tend + tfms
             z.vline2 := line.new(x2, z.lo, x2, z.hi + syminfo.mintick, extend = extend.both,
@@ -735,28 +762,28 @@ method refresh(Zone z) =>
         int ex = na(z.extendt) ? re : z.extendt
         int x0 = math.min(z.hit, z.lot)
         if na(z.eqln)
-            z.eqln := line.new(x0, eq, ex, eq, xloc = xloc.bar_time, color = eqcolor, width = eqwid,
+            z.eqln := line.new(x0, eq, ex, eq, xloc = xloc.bar_time, color = attL(eqcolor, 2), width = attW(eqwid, 2),
                  style = eqlnsty)
             z.eqlabel := label.new(ex, eq, "eq", xloc = xloc.bar_time,
-                 style = label.style_label_left, color = transparent, textcolor = eqcolor)
+                 style = label.style_label_left, color = transparent, textcolor = attL(eqcolor, 2))
         else
             z.eqln.set_xy1(x0, eq)
             z.eqln.set_xy2(ex, eq)
             z.eqlabel.set_xy(ex, eq)
     if z.isday and doopen
         if na(z.opln)
-            z.opln := line.new(z.tstart, z.op, xe, z.op, xloc = xloc.bar_time, color = opcolor,
-                 width = opwid, style = oplnsty)
+            z.opln := line.new(z.tstart, z.op, xe, z.op, xloc = xloc.bar_time, color = attL(opcolor, 2),
+                 width = attW(opwid, 2), style = oplnsty)
             z.oplabel := label.new(xe, z.op, "M.O.", xloc = xloc.bar_time,
-                 style = label.style_label_left, color = transparent, textcolor = opcolor)
+                 style = label.style_label_left, color = transparent, textcolor = attL(opcolor, 2))
         else
             z.opln.set_x2(xe)
             z.oplabel.set_x(xe)
     if z.drawrect
         if na(z.rect)
             z.rect := box.new(z.tstart, z.hi, xe, z.lo, xloc = xloc.bar_time,
-                 border_color = rectbord ? color.new(z.lnsty.col, rtransp / 2) : transparent,
-                 border_width = rectbord ? 2 : 1, bgcolor = rectbord ? transparent : z.lnsty.col)
+                 border_color = rbord ? color.new(z.lnsty.col, rtrB) : transparent,
+                 border_width = rbord and attLvl < 3 ? 2 : 1, bgcolor = rbord ? transparent : z.lnsty.col)
         else
             z.rect.set_right(xe)
             z.rect.set_top(z.hi)
@@ -976,12 +1003,12 @@ if inWin and tfok and dotgif
             tgR := twH - twL
         float v1 = tgX - tgDir * tgp1 * tgR
         float v2 = tgX - tgDir * tgp2 * tgR
-        color c = tgDir == 1 ? tgdncol : tgupcol
+        color c = attL(tgDir == 1 ? tgdncol : tgupcol, 0)
         int x1 = tright(xoff)
         if na(tgL1)
-            [l1, b1] = mkLL(tgT0, x1, v1, c, tgsty, tgwid, "TGIF" + str.tostring(tgp1 * 100, "#.#"), c,
+            [l1, b1] = mkLL(tgT0, x1, v1, c, tgsty, attW(tgwid, 0), "TGIF" + str.tostring(tgp1 * 100, "#.#"), c,
                  tglsz)
-            [l2, b2] = mkLL(tgT0, x1, v2, c, tgsty, tgwid, "TGIF" + str.tostring(tgp2 * 100, "#.#"), c,
+            [l2, b2] = mkLL(tgT0, x1, v2, c, tgsty, attW(tgwid, 0), "TGIF" + str.tostring(tgp2 * 100, "#.#"), c,
                  tglsz)
             tgL1 := l1
             tgB1 := b1
@@ -1015,6 +1042,25 @@ method gmake(Gap g) =>
     if dogrect
         g.rect := box.new(g.tstart, g.hi, x, g.lo, xloc = xloc.bar_time, border_color = transparent,
              bgcolor = color.new(st.col, grtransp))
+    true
+
+// [ATT] colors and widths of the gap by its rank (last bar)
+method gsty(Gap g) =>
+    int rk = g.isw or g.imp ? 0 : 2
+    Sty st = g.isw ? wgapsty : gapsty
+    color c = attL(st.col, rk)
+    int w = attW(st.wid, rk)
+    if not na(g.hiln)
+        g.hiln.set_color(c)
+        g.hiln.set_width(w)
+        g.loln.set_color(c)
+        g.loln.set_width(w)
+    if not na(g.hilbl)
+        g.hilbl.set_textcolor(c)
+    if not na(g.lolbl)
+        g.lolbl.set_textcolor(c)
+    if not na(g.rect)
+        g.rect.set_bgcolor(color.new(st.col, attT(grtransp, rk)))
     true
 
 method gend(Gap g, float xe) =>
@@ -1062,6 +1108,7 @@ method gright(Gap g, float tol) =>
         g.glabels(g.hi, g.lo, tol, x)
     if not na(g.rect)
         g.rect.set_right(x)
+    g.gsty()
 
 method kill(Gap g) =>
     rmLine(g.hiln)
@@ -1091,6 +1138,7 @@ method gcomb(Gap g, float tol) =>
         if not na(g.rect)
             g.rect.set_lefttop(g.ut, g.uhi)
             g.rect.set_rightbottom(x, g.ulo)
+        g.gsty()
     true
 
 // gaps whose ranges overlap or are within tol are one group: the oldest draws the
@@ -1136,6 +1184,7 @@ gcluster(array<Gap> arr, float tol) =>
                 rep.n += 1
                 rep.uhi := math.max(rep.uhi, g.hi)
                 rep.ulo := math.min(rep.ulo, g.lo)
+                rep.imp := rep.imp or g.imp
                 g.show := false
 
     true
@@ -1148,6 +1197,7 @@ combineGaps(array<Gap> dg, array<Gap> wg, float tol) =>
             for d in dg
                 if d.show and math.abs(d.uhi - w.uhi) <= tol and math.abs(d.ulo - w.ulo) <= tol
                     w.nd += d.n
+                    w.imp := w.imp or d.imp
                     d.show := false
     for g in dg
         g.gcomb(tol)
@@ -1235,10 +1285,10 @@ method rstarts(RTHOG g, float c, int t) =>
     g.cl := c
     g.tstart := t
     int x = tright(xoff)
-    g.cline := line.new(t, c, x, c, xloc = xloc.bar_time, color = lrgapcolor, width = rgapwid,
+    g.cline := line.new(t, c, x, c, xloc = xloc.bar_time, color = attL(lrgapcolor, 0), width = attW(rgapwid, 0),
          style = rgaplnsty)
     g.clabel := label.new(x, c, "new RTHOG settlement", xloc = xloc.bar_time,
-         style = label.style_label_left, color = transparent, textcolor = lrgapcolor)
+         style = label.style_label_left, color = transparent, textcolor = attL(lrgapcolor, 0))
 
 method rquads(RTHOG g) =>
     g.killq()
@@ -1248,12 +1298,12 @@ method rquads(RTHOG g) =>
         int x0 = g.tend - tfms * rdx
         int x1 = tright(xoff)
         string nm = timestr()
-        [l1, b1] = mkLL(x0, x1, p + qdy, lrgapcolor, rgapqlnsty, rgapwid, "RTHOG dq " + nm,
-             lrgapcolor)
+        [l1, b1] = mkLL(x0, x1, p + qdy, attL(lrgapcolor, 2), rgapqlnsty, attW(rgapwid, 2), "RTHOG dq " + nm,
+             attL(lrgapcolor, 2))
         g.dqline := l1
         g.dqlabel := b1
-        [l2, b2] = mkLL(x0, x1, p + 3 * qdy, lrgapcolor, rgapqlnsty, rgapwid, "RTHOG uq " + nm,
-             lrgapcolor)
+        [l2, b2] = mkLL(x0, x1, p + 3 * qdy, attL(lrgapcolor, 2), rgapqlnsty, attW(rgapwid, 2), "RTHOG uq " + nm,
+             attL(lrgapcolor, 2))
         g.uqline := l2
         g.uqlabel := b2
 
@@ -1271,8 +1321,8 @@ method roct(RTHOG g) =>
         float p = math.min(g.cl, g.op)
         string nm = timestr()
         for k in array.from(1, 3, 5, 7)
-            [l, b] = mkLL(x0, x1, p + k * ody, lrgapcolor, rgapqlnsty, 1, "RTHOG " + str.tostring(k) + "/8 "
-                 + nm, lrgapcolor)
+            [l, b] = mkLL(x0, x1, p + k * ody, attL(lrgapcolor, 2), rgapqlnsty, 1, "RTHOG " + str.tostring(k)
+                 + "/8 " + nm, attL(lrgapcolor, 2))
             g.oclines.push(l)
             g.oclabels.push(b)
 
@@ -1313,14 +1363,14 @@ method rpo3(RTHOG g) =>
         int nd = sdCount(rthogpo3num, rthogauto, pd0, u, g.xlo, -1)
         for i = 1 to math.max(nu, nd)
             if i <= nu
-                [l1, b1] = mkLL(x0, x1, pu0 + i * u, lrgapcolor, rgappo3lnsty, rgapwid, "RTHOG"
-                     + sdName(i, u, gap, 1), lrgapcolor)
+                [l1, b1] = mkLL(x0, x1, pu0 + i * u, attL(lrgapcolor, 2), rgappo3lnsty, attW(rgapwid, 2),
+                     "RTHOG" + sdName(i, u, gap, 1), attL(lrgapcolor, 2))
                 g.po3lines.push(l1)
                 g.po3labels.push(b1)
                 g.po3names.push(sdName(i, u, gap, 1))
             if i <= nd
-                [l2, b2] = mkLL(x0, x1, pd0 - i * u, lrgapcolor, rgappo3lnsty, rgapwid, "RTHOG"
-                     + sdName(i, u, gap, -1), lrgapcolor)
+                [l2, b2] = mkLL(x0, x1, pd0 - i * u, attL(lrgapcolor, 2), rgappo3lnsty, attW(rgapwid, 2),
+                     "RTHOG" + sdName(i, u, gap, -1), attL(lrgapcolor, 2))
                 g.po3lines.push(l2)
                 g.po3labels.push(b2)
                 g.po3names.push(sdName(i, u, gap, -1))
@@ -1343,18 +1393,19 @@ method rends(RTHOG g, float opv) =>
     rmLabel(g.oplabel)
     rmBox(g.rect)
     g.rect := na
-    [l1, b1] = mkLL(x0, x1, mid, lrgapcolor, rgaplnsty, rgapwid, "RTHOG ce " + nm, lrgapcolor)
+    [l1, b1] = mkLL(x0, x1, mid, attL(lrgapcolor, 0), rgaplnsty, attW(rgapwid, 0), "RTHOG ce " + nm,
+         attL(lrgapcolor, 0))
     g.mline := l1
     g.mlabel := b1
-    [l2, b2] = mkLL(g.tend, x1, g.op, lrgapcolor, rgaplnsty, rgapwid,
-         (up ? "RTHOG hi " : "RTHOG lo ") + nm, lrgapcolor)
+    [l2, b2] = mkLL(g.tend, x1, g.op, attL(lrgapcolor, 0), rgaplnsty, attW(rgapwid, 0),
+         (up ? "RTHOG hi " : "RTHOG lo ") + nm, attL(lrgapcolor, 0))
     g.opline := l2
     g.oplabel := b2
     if not na(g.clabel)
         g.clabel.set_text((up ? "RTHOG lo " : "RTHOG hi ") + nm)
     if dogrect
         g.rect := box.new(x0, g.op, x1, g.cl, xloc = xloc.bar_time, border_color = transparent,
-             bgcolor = color.new(lrgapcolor, grtransp))
+             bgcolor = color.new(lrgapcolor, attT(grtransp, 0)))
     g.killq()
     g.killpo3()
     g.killoct()
@@ -1373,20 +1424,20 @@ method setOld(RTHOG g) =>
     if complete
         int d = tfms * rdx
         float mid = math.avg(g.cl, g.op)
-        [l1, b1] = mkLL(g.tstart - d, g.tstart + d, g.cl, rgapcolor, rgaplnsty, rgapwid, "rthog.cl",
-             color.black)
+        [l1, b1] = mkLL(g.tstart - d, g.tstart + d, g.cl, attL(rgapcolor, 2), rgaplnsty, attW(rgapwid, 2), "rthog.cl",
+             attL(color.black, 2))
         g.cline := l1
         g.clabel := b1
-        [l2, b2] = mkLL(g.tend - d, g.tend + d, g.cl, rgapcolor, rgaplnsty, rgapwid, "rthog.cl",
-             color.black)
+        [l2, b2] = mkLL(g.tend - d, g.tend + d, g.cl, attL(rgapcolor, 2), rgaplnsty, attW(rgapwid, 2), "rthog.cl",
+             attL(color.black, 2))
         g.cline2 := l2
         g.clabel2 := b2
-        [l3, b3] = mkLL(g.tend - d, g.tend + d, mid, rgapcolor, rgaplnsty, rgapwid, "rthog.ce",
-             color.black)
+        [l3, b3] = mkLL(g.tend - d, g.tend + d, mid, attL(rgapcolor, 2), rgaplnsty, attW(rgapwid, 2), "rthog.ce",
+             attL(color.black, 2))
         g.mline := l3
         g.mlabel := b3
-        [l4, b4] = mkLL(g.tend - d, g.tend + d, g.op, rgapcolor, rgaplnsty, rgapwid, "rthog.op",
-             color.black)
+        [l4, b4] = mkLL(g.tend - d, g.tend + d, g.op, attL(rgapcolor, 2), rgaplnsty, attW(rgapwid, 2), "rthog.op",
+             attL(color.black, 2))
         g.opline := l4
         g.oplabel := b4
         if extendgaps
@@ -1395,23 +1446,28 @@ method setOld(RTHOG g) =>
             g.opline.set_extend(extend.right)
 
 // right-edge update, last bar only
-method right(RTHOG g, color c) =>
+// [ATT] rk: rank of the gap (0 current, 1 previous); quadrants and stddevs are minor
+method right(RTHOG g, color c0, int rk) =>
     if not g.isold
         int x = tright(xoff)
-        setR(g.cline, g.clabel, x, c)
-        setR(g.mline, g.mlabel, x, c)
-        setR(g.opline, g.oplabel, x, c)
-        setR(g.uqline, g.uqlabel, x, c)
-        setR(g.dqline, g.dqlabel, x, c)
+        color c = attL(c0, rk)
+        color cm = attL(c0, 2)
+        int w = attW(rgapwid, rk)
+        setR(g.cline, g.clabel, x, c, w)
+        setR(g.mline, g.mlabel, x, c, w)
+        setR(g.opline, g.oplabel, x, c, w)
+        setR(g.uqline, g.uqlabel, x, cm)
+        setR(g.dqline, g.dqlabel, x, cm)
         if not na(g.rect)
             g.rect.set_right(x)
+            g.rect.set_bgcolor(color.new(lrgapcolor, attT(grtransp, rk)))
         if not na(g.po3lines)
             for l in g.po3lines
                 l.set_x2(x)
-                l.set_color(c)
+                l.set_color(cm)
             for b in g.po3labels
                 b.set_x(x)
-                b.set_textcolor(c)
+                b.set_textcolor(cm)
 
 bool mktEnds = market.ends()
 bool mktClose = mktEnds and not mktEnds[1]
@@ -1516,7 +1572,7 @@ drawEq(array<Piv> arr, bool isHigh, string sfx, color c) =>
             string txt = (up ? (isHigh ? "eqH" : "eqL") : (isHigh ? "EQH" : "EQL")) + sfx
             if na(v.ln)
                 v.ln := line.new(v.t, v.p, x, v.p, xloc = xloc.bar_time, color = c, style = eqhlsty,
-                     width = eqhlwid)
+                     width = attW(eqhlwid, 1))
                 v.lb := label.new(x, v.p, txt, xloc = xloc.bar_time, style = label.style_label_left,
                      color = transparent, textcolor = c, size = lblsz,
                      text_formatting = text.format_bold)
@@ -1613,10 +1669,10 @@ if inWin and tfok and doeqhl and doeqd
 // ============================================================ months
 getm(MonLn m, int t, float p, color c, string txt) =>
     if na(m.ln)
-        m.ln := line.new(t, p, t + tfms, p, xloc = xloc.bar_time, extend = extend.right, color = c,
-             width = monwid, style = monsty)
+        m.ln := line.new(t, p, t + tfms, p, xloc = xloc.bar_time, extend = extend.right, color = attL(c, 0),
+             width = attW(monwid, 0), style = monsty)
         m.lbl := label.new(tright(xoff), p, txt, xloc = xloc.bar_time,
-             style = label.style_label_left, color = transparent, textcolor = c)
+             style = label.style_label_left, color = transparent, textcolor = attL(c, 0))
     else
         m.ln.set_xy1(t, p)
         m.ln.set_xy2(t + tfms, p)
@@ -1667,7 +1723,7 @@ if domacrobg and tfok and tfsecs < 900  // not on 15m and above
         if m.inside(tsec)
             inMacro := true
             break
-bgcolor(inMacro ? macrobgcolor : na)
+bgcolor(inMacro ? attL(macrobgcolor, 1) : na)
 
 if finalBar and tfok
     if doreh and dodaylbl and dodmaxmin
@@ -1689,6 +1745,8 @@ if finalBar and tfok
             else
                 z.pmclear()
     float gtol = combtol * nz(datr, 0.0)
+    for [i, g] in dgaps
+        g.imp := i == dgaps.size() - 1
     if combgaps
         combineGaps(dgaps, wgaps, gtol)
     else
@@ -1702,18 +1760,18 @@ if finalBar and tfok
             lg.rpo3()
     for [i, g] in rthogs
         if i == rthogs.size() - 1
-            g.right(lrgapcolor)
-            g.octRight(lrgapcolor)    // octants: latest RTHOG only (removed at the close, like the quadrants)
+            g.right(lrgapcolor, 0)
+            g.octRight(attL(lrgapcolor, 2))    // octants: latest RTHOG only (removed at the close, like the quadrants)
         else if i == rthogs.size() - 2
-            g.right(rgapcolor)
+            g.right(rgapcolor, 1)
     if preOn and rthogs.size() > 0 and premarkets.size() > 0
         combinePo3(rthogs.last(), premarkets.last(), pmctol * nz(datr, 0.0))
     if doeqhl
-        drawEq(hpv, true, "", eqhcol)
-        drawEq(lpv, false, "", eqlcol)
+        drawEq(hpv, true, "", attL(eqhcol, 1))
+        drawEq(lpv, false, "", attL(eqlcol, 1))
         if doeqd
-            drawEq(hpvD, true, " D", eqhcol)
-            drawEq(lpvD, false, " D", eqlcol)
+            drawEq(hpvD, true, " D", attL(eqhcol, 1))
+            drawEq(lpvD, false, " D", attL(eqlcol, 1))
     if domonth
         drawMonth(0, mh1, ml1, mc1, mt1, mtc1)
         drawMonth(1, mh2, ml2, mc2, mt2, mtc2)

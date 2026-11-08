@@ -4,7 +4,7 @@
 // quadrants and standard deviations, premarket range, EQH/EQL, PO3 lines, TGIF levels, macros,
 // silver bullet and a session/macro status text. Draws levels only: no plots, no signals, no alerts.
 //
-// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 23e47e0f513a483be1a7e89271b805a8),
+// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 26a1b694383e338e719c03795ae4f583),
 // © franjballest, Mozilla Public License 2.0 (https://mozilla.org/MPL/2.0/).
 //
 // Install:
@@ -332,7 +332,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 				RthogPo3Min = 25.0;
 				RthogPo3Num = 4;
 				RthogAuto = false;
-				DoGapRect = false;
+				DoGapRect = true;
 				GapRectTransparency = 90;
 				CombGaps = true;
 				CombTol = 0.05;
@@ -383,7 +383,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 				ZoneColor = PineBlue;
 				DoMacros = true;
 				MacroColor = PineOrange;
-				DoMacroBg = false;
+				DoMacroBg = true;
 				MacroBgColor = Rgb(54, 58, 69, 25);
 				DoSilver = true;
 				SilverColor = PineRed;
@@ -2261,11 +2261,11 @@ namespace NinjaTrader.NinjaScript.Indicators
 		#region Properties
 
 		[NinjaScriptProperty]
-		[Display(Name = "Zone: US / EU / Auto", GroupName = "Time & Settings", Order = 101)]
+		[Display(Name = "Zone: US / EU / Auto", GroupName = "Time & Settings", Order = 102)]
 		public ICTlevelsZoneMode ZoneMode { get; set; }
 
 		[NinjaScriptProperty]
-		[Display(Name = "compute for historic data use (no effect in NT8)", GroupName = "Time & Settings", Order = 102)]
+		[Display(Name = "compute for historic data use (no effect in NT8)", GroupName = "Time & Settings", Order = 101)]
 		public bool ComputeVisible { get; set; }
 
 		[NinjaScriptProperty]
@@ -2982,7 +2982,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 		}
 
 		[NinjaScriptProperty]
-		[Display(Name = "flag macros with background color", GroupName = "Macros and Events", Order = 905)]
+		[Display(Name = "Flag macros", GroupName = "Enable / Filter", Order = 9)]
 		public bool DoMacroBg { get; set; }
 
 		[NinjaScriptProperty]
