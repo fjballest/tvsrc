@@ -122,7 +122,7 @@ REH/REL labels need "label unbroken day max/min" and the day max/min lines to be
 
 Three lines for each of the last three completed months: **max**, **min** and **close** (green, red, black, solid, width 3), labelled for example "max Sep", "min Sep", "close Sep". The high and low lines start at the start of their month, the close line at the start of the following month, and all extend to the right. The current month is not drawn. The lines roll over automatically when a new month starts.
 
-A month max (min) is **taken** once a completed day candle after that month opens and closes above it (below it): a body beyond the level, not just a wick. A taken max or min is then drawn in the close color (black) and dimmed one rank (minor instead of normal attenuation, so also 1 px thinner from attenuation 1 on). In TradingView the test uses the full daily history; in NinjaTrader it uses the loaded daily bars, and in Tradovate the day candles built from the loaded chart bars.
+A month max (min) is **taken** once a completed day after that month closes above it (below it) and at least one 15m candle of that same day opens above it (below it): price spent time beyond the level, it did not just poke through near the close. A taken max or min is then drawn in the close color (black) and dimmed one rank (minor instead of normal attenuation, so also 1 px thinner from attenuation 1 on). In TradingView the test uses the full daily history (with the 15m candles of each day); in NinjaTrader it uses the loaded 15m bars, and in Tradovate the loaded chart bars (chart candles instead of 15m ones on charts above 15m).
 
 **How to use it**
 

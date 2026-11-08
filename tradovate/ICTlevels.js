@@ -11,7 +11,7 @@
  *   It draws levels only: no signals, no alerts, no plots.
  *
  *   It is a port of the TradingView Pine Script v6 indicator ICTlevels.txt
- *   (md5 8ae6e30348bcf2cfe3637af7ab51ae4a). Parameter names are the Pine variable names and the
+ *   (md5 7c12c385240acc3946aee79303debe8d). Parameter names are the Pine variable names and the
  *   defaults are the Pine defaults; see "doc/ICTlevels-user-manual.md" for what every level means.
  *
  * How to install
@@ -700,15 +700,15 @@ class ICTlevels {
                 newDBar = true;
                 const db = S.dcur;
                 S.dbars.push({ h: db.h, l: db.l, i0: db.i0 });
-                // [MON] the completed day takes a previous month high (low) when it opened and closed above (below)
-                // it, after that month
+                // [MON] the completed day takes a previous month high (low) when it closed above (below) it and one
+                // of its 15m candles (chart candles above 15m) opened above (below) it, after that month
                 const dmk = Math.floor(db.key / 100);
                 for (const m of S.mbars) {
                     if (m.key < dmk) {
-                        if (Math.min(db.o, db.c) > m.h) {
+                        if (db.c > m.h && db.xo > m.h) {
                             m.tkH = true;
                         }
-                        if (Math.max(db.o, db.c) < m.l) {
+                        if (db.c < m.l && db.mo < m.l) {
                             m.tkL = true;
                         }
                     }
@@ -719,7 +719,7 @@ class ICTlevels {
                 atrPush(S.datrS, db.h, db.l, db.c);
                 S.datr = S.datrS.val;
             }
-            S.dcur = { key: dkey, o: open, h: high, l: low, c: close, i0: i };
+            S.dcur = { key: dkey, o: open, h: high, l: low, c: close, i0: i, mo: open, xo: open };
         } else {
             S.dcur.h = Math.max(S.dcur.h, high);
             S.dcur.l = Math.min(S.dcur.l, low);
@@ -761,6 +761,9 @@ class ICTlevels {
             B.id = bkCur;
             B.N += 1;
             bkNew = true;
+            // [MON] lowest / highest 15m open of the day
+            S.dcur.mo = Math.min(S.dcur.mo, open);
+            S.dcur.xo = Math.max(S.dcur.xo, open);
             B.H.push(high);
             B.L.push(low);
             B.O.push(open);

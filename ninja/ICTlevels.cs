@@ -4,7 +4,7 @@
 // quadrants and standard deviations, premarket range, EQH/EQL, PO3 lines, TGIF levels, macros,
 // silver bullet and a session/macro status text. Draws levels only: no plots, no signals, no alerts.
 //
-// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 8ae6e30348bcf2cfe3637af7ab51ae4a),
+// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 7c12c385240acc3946aee79303debe8d),
 // © franjballest, Mozilla Public License 2.0 (https://mozilla.org/MPL/2.0/).
 //
 // Install:
@@ -249,6 +249,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 		// [MON] previous months (year * 12 + month) whose high / low was taken by a completed day candle that opened
 		// and closed beyond it
 		private HashSet<int> mTkH = new HashSet<int>(), mTkL = new HashSet<int>();
+		private double dMo = double.NaN, dXo = double.NaN;  // lowest / highest 15m open of the current day
 		private bool flatHi, flatLo;  // [LVL] flat top / bottom of this chart candle and the previous one
 		private SimpleFont fTg, fPm, fEq, fNormal, fTable;
 
@@ -429,6 +430,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 				// higher timeframe data, completed bars only (no repainting)
 				AddDataSeries(BarsPeriodType.Day, 1);    // BarsArray[1]: daily ATR(14) and daily swings
 				AddDataSeries(BarsPeriodType.Month, 1);  // BarsArray[2]: month high / low / close
+				AddDataSeries(BarsPeriodType.Minute, 15); // BarsArray[3]: 15m opens for the taken month levels
 			}
 			else if (State == State.DataLoaded)
 			{
@@ -571,6 +573,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 			bkRng = double.NaN;
 			mTkH.Clear();
 			mTkL.Clear();
+			dMo = dXo = double.NaN;
 
 			atrC = ATR(BarsArray[0], 14);
 			atrD = ATR(BarsArray[1], 14);
@@ -612,6 +615,11 @@ namespace NinjaTrader.NinjaScript.Indicators
 
 		protected override void OnBarUpdate()
 		{
+			if (BarsInProgress == 3)
+			{
+				On15mBar();
+				return;
+			}
 			if (BarsInProgress == 1)
 			{
 				OnDailyBar();
@@ -962,7 +970,6 @@ namespace NinjaTrader.NinjaScript.Indicators
 			if (CurrentBars[1] < 0)
 				return;
 			datr = atrD[0];
-			MonTaken();
 			dph = double.NaN;
 			dpl = double.NaN;
 			int L = EqLenD;
@@ -975,15 +982,33 @@ namespace NinjaTrader.NinjaScript.Indicators
 			dailySeq++;
 		}
 
-		// [MON] the daily bar that just completed takes a previous month high (low) when it opened and closed above
-		// (below) it, after that month
-		private void MonTaken()
+		// [MON] a previous month high (low) is taken once a completed day after that month closes above (below) it
+		// and at least one of its 15m candles opens above (below) it. Checked on the first 15m bar of each session,
+		// for the day that just ended (its last 15m close, its lowest / highest 15m open).
+		private void On15mBar()
 		{
-			if (BarsArray.Length < 3 || CurrentBars[2] < 0)
+			if (CurrentBars[3] < 1)
+			{
+				dMo = dXo = Opens[3][0];
 				return;
-			DateTime dt = Times[1][0];
-			double bt = Math.Min(Opens[1][0], Closes[1][0]);
-			double bb = Math.Max(Opens[1][0], Closes[1][0]);
+			}
+			if (BarsArray[3].IsFirstBarOfSession)
+			{
+				if (!double.IsNaN(dMo))
+					MonTaken(Times[3][1], Closes[3][1], dMo, dXo);
+				dMo = dXo = Opens[3][0];
+			}
+			else
+			{
+				dMo = Math.Min(dMo, Opens[3][0]);
+				dXo = Math.Max(dXo, Opens[3][0]);
+			}
+		}
+
+		private void MonTaken(DateTime dt, double dc, double mo, double xo)
+		{
+			if (BarsArray.Length < 4 || CurrentBars[2] < 0)
+				return;
 			for (int k = 0; k < 3 && k <= CurrentBars[2]; k++)
 			{
 				DateTime mt = Times[2][k];
@@ -991,9 +1016,9 @@ namespace NinjaTrader.NinjaScript.Indicators
 				if (dt < ms.AddMonths(1))
 					continue;
 				int key = ms.Year * 12 + ms.Month;
-				if (bt > Highs[2][k])
+				if (dc > Highs[2][k] && xo > Highs[2][k])
 					mTkH.Add(key);
-				if (bb < Lows[2][k])
+				if (dc < Lows[2][k] && mo < Lows[2][k])
 					mTkL.Add(key);
 			}
 		}
