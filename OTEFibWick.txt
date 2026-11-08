@@ -16,6 +16,9 @@ var visible = input.bool(false, "compute for historic data use", group=GS,
 var dowick = input.bool(true, "draw wick CE", group=GS, inline="en")
 var dofib = input.bool(true, "mark fib retracements for OTE", group=GS, inline="en")
 var dohtf = input.bool(false, "HTF OTEs", group=GS, inline="en")
+var badatr = input.float(6, "ignore wicks longer than (daily ATRs)", minval = 0, step = 0.5, group = GS,
+    tooltip = "Bad data: for the fib retracements and the HTF OTEs, a wick longer than this many daily ATRs is taken "+
+        "as a bad print and the candle's high or low is taken at its body. 0: off.")
 
 wick_width = input.int(2, "Wick Width", group = GW, minval=1, maxval=10, inline="w")
 wick_color = input.color(color.gray, "color", group = GW, inline = "w")
@@ -87,6 +90,31 @@ max_bars_back(dO, 5000)
 max_bars_back(dH, 5000)
 max_bars_back(dL, 5000)
 max_bars_back(dC, 5000)
+
+// bad data: daily ATR(14) as an RMA of the true range of daily candles cleaned with it (so a bad print does not
+// inflate it), for the last completed day; a wick longer than badatr of it is a bad print, the body is used instead
+dAtrC() =>
+    var float a = na
+    float bt = math.max(open, close)
+    float bb = math.min(open, close)
+    float lim = badatr > 0 and not na(a) ? badatr * a : na
+    float h = not na(lim) and high - bt > lim ? bt : high
+    float l = not na(lim) and bb - low > lim ? bb : low
+    float tr = na(close[1]) ? h - l : math.max(h, close[1]) - math.min(l, close[1])
+    a := na(a) ? tr : (a * 13 + tr) / 14
+    a[1]
+float fAtr = request.security(dataSym, "D", dAtrC(), lookahead = barmerge.lookahead_on)
+clH(float o, float h, float c) =>
+    float b = math.max(o, c)
+    badatr > 0 and not na(fAtr) and h - b > badatr * fAtr ? b : h
+clL(float o, float l, float c) =>
+    float b = math.min(o, c)
+    badatr > 0 and not na(fAtr) and b - l > badatr * fAtr ? b : l
+// cleaned highs / lows for the fib retracements
+float fH = clH(dO, dH, dC)
+float fL = clL(dO, dL, dC)
+max_bars_back(fH, 5000)
+max_bars_back(fL, 5000)
 
 
 if autootetf
@@ -358,8 +386,8 @@ var debug = false
 var int swhit = na
 var int swlot = na
 if compute and dofib and fibswing
-    float xswlo  = ta.pivotlow(dL, oteswingleft, oteswingright)
-    float xswhi = ta.pivothigh(dH, oteswingleft, oteswingright)
+    float xswlo  = ta.pivotlow(fL, oteswingleft, oteswingright)
+    float xswhi = ta.pivothigh(fH, oteswingleft, oteswingright)
     chg = false
     if not  na(xswlo)
         swlo := xswlo
@@ -369,12 +397,12 @@ if compute and dofib and fibswing
         swhi := xswhi
         swhit := bar_index[oteswingright]
         chg := true
-    else if not na(swhi) and dH > swhi
-        swhi := dH
+    else if not na(swhi) and fH > swhi
+        swhi := fH
         swhit := bar_index
         chg := true
-    else if not na(swlo) and dL < swlo
-        swlo := dL
+    else if not na(swlo) and fL < swlo
+        swlo := fL
         swlot := bar_index
         chg := true
 
@@ -385,10 +413,10 @@ if compute and dofib and fibswing
         if debug
             line.new(swlot, swlo, swlot, swlo+1, extend = extend.both)
 else if compute and dofib and barstate.isnew and bar_index > lookival
-    hi = math.abs(ta.highestbars(dH, lookival))
-    hh = dH[hi]
-    li = math.abs(ta.lowestbars(dL, lookival))
-    ll = dL[li]
+    hi = math.abs(ta.highestbars(fH, lookival))
+    hh = fH[hi]
+    li = math.abs(ta.lowestbars(fL, lookival))
+    ll = fL[li]
     updatefibs(hh, ll, bar_index[hi], bar_index[li])
  
 type OTE
@@ -413,8 +441,10 @@ method started(OTE ote) =>
         ote.otes.push(ote.otebox)
         ote.otebox := na
     ote.start := time
-    [o, c, h, l] = request.security(dataSym, ote.tf,
+    [o, c, h0, l0] = request.security(dataSym, ote.tf,
         [open[1], close[1], high[1], low[1]], lookahead = barmerge.lookahead_on)
+    float h = clH(o, h0, c)
+    float l = clL(o, l0, c)
     oteh = 0.0
     otel = 0.0
     ote.isshort := c < o
