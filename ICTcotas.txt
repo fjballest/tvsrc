@@ -61,6 +61,8 @@ attW(int w, int rank) =>
     math.max(1, w - (attE(rank) >= 2 ? 1 : 0))
 attT(int t, int rank) =>
     int(math.min(100, t + (100 - t) * attE(rank) * 0.2))
+bool dots = input.bool(true, "Turtle soup / continuation indications", group = G_GEN,
+     tooltip = "Small up / down triangles in a chart corner (see the Turtle soup / continuation section)")
 
 const string G_COL = "Colors (by timeframe)"
 color dbull = input.color(color.green, "daily: bull", group = G_COL, inline = "c1")
@@ -252,6 +254,22 @@ int mfextn = input.int(20, "candles", minval = 1, maxval = 500, group = G_MF, in
      + "\"for\" this many candles before the last one, \"to start\" the start of the FVG, or "
      + "\"to creation\" the end of its third candle, when the FVG was formed (so the third candle's "
      + "own prices are not taken as reactions to the FVG).")
+
+const string G_TS = "Turtle soup / continuation"
+string tspos = input.string("bottom right", "position", options = ["bottom right", "bottom left", "bottom center",
+     "middle right", "top right", "top left"], group = G_TS, inline = "t1",
+     tooltip = "One triangle per timeframe, lowest first, for the previous completed candle of that timeframe "
+     + "and the one forming now. Previous candle down: price took its low and is back above its close is a "
+     + "turtle soup up (bright up triangle); the forming candle traded above its open and price is now below "
+     + "the previous close is a continuation down (grey down triangle), cancelled for the rest of the candle "
+     + "when price goes back above that close. Mirrored for an up candle. Timeframes: 15m, 1H and 4H on charts "
+     + "up to 15m; 1H, 4H and D up to 1H; 4H and D on 4H charts, D on daily charts.")
+string tssize = input.string("normal", "size", options = ["tiny", "small", "normal", "large", "huge"], group = G_TS,
+     inline = "t1")
+bool tsnames = input.bool(true, "timeframe names", group = G_TS, inline = "t1")
+color tsupcol = input.color(#00E676, "turtle soup: up", group = G_TS, inline = "t2")
+color tsdncol = input.color(#FF1744, "down", group = G_TS, inline = "t2")
+color tsctcol = input.color(color.gray, "continuation", group = G_TS, inline = "t2")
 
 const string G_DAY = "Daily Settings"
 string setmode = input.string("auto", "Use settlement (SET) on daily", options = ["auto", "on", "off"],
@@ -966,6 +984,94 @@ if barstate.islast
                 l.lolb := rmLbl(l.lolb)
             if not l.lsce
                 l.celb := rmLbl(l.celb)
+
+// ============================================================ turtle soup / continuation
+// per timeframe (15m, 1H, 4H, D): the previous completed candle and the forming one, built from chart bars
+type TSt
+    float po = na
+    float ph = na
+    float pl = na
+    float pc = na
+    float o = na
+    float h = na
+    float l = na
+    bool armed = false   // a continuation was seen in the forming candle
+    bool inv = false     // and then price went back beyond the previous close: no continuation for this candle
+
+var array<TSt> tst = array.from(TSt.new(), TSt.new(), TSt.new(), TSt.new())
+var array<string> tsNames = array.from("15m", "1H", "4H", "D")
+array<bool> tsNew = array.from(timeframe.change("15"), timeframe.change("60"), timeframe.change("240"),
+     timeframe.change("D"))
+
+// continuation of the previous candle's direction now: price traded against it from the forming open and is
+// back beyond the previous close
+method tsCont(TSt s) =>
+    s.pc < s.po ? s.h > s.o and close < s.pc : s.pc > s.po ? s.l < s.o and close > s.pc : false
+
+method tsStep(TSt s, bool nw) =>
+    if nw or na(s.o)
+        if not na(s.o)
+            s.po := s.o
+            s.ph := s.h
+            s.pl := s.l
+            s.pc := close[1]
+        s.o := open
+        s.h := high
+        s.l := low
+        s.armed := false
+        s.inv := false
+    else
+        s.h := math.max(s.h, high)
+        s.l := math.min(s.l, low)
+    if not na(s.pc)
+        if s.armed and (s.pc < s.po ? close > s.pc : close < s.pc)
+            s.inv := true
+        if s.tsCont()
+            s.armed := true
+    true
+
+// 1 turtle soup up, -1 turtle soup down, 2 continuation up, -2 continuation down, 0 nothing
+method tsSig(TSt s) =>
+    int r = 0
+    if not na(s.pc)
+        if s.pc < s.po and s.l < s.pl and close > s.pc
+            r := 1
+        else if s.pc > s.po and s.h > s.ph and close < s.pc
+            r := -1
+        else if not s.inv and s.tsCont()
+            r := s.pc < s.po ? -2 : 2
+    r
+
+if dots
+    for i = 0 to 3
+        tst.get(i).tsStep(tsNew.get(i))
+
+tsPos(string p) =>
+    switch p
+        "bottom left" => position.bottom_left
+        "bottom center" => position.bottom_center
+        "middle right" => position.middle_right
+        "top right" => position.top_right
+        "top left" => position.top_left
+        => position.bottom_right
+
+var table tsTbl = table.new(tsPos(tspos), 4, 2)
+if barstate.islast and dots
+    // 15m, 1H, 4H up to 15m; 1H, 4H, D up to 1H; then 4H and D when not below the chart timeframe
+    int i0 = tfsecs <= 900 ? 0 : tfsecs <= 3600 ? 1 : tfsecs <= 14400 ? 2 : tfsecs <= 86400 ? 3 : 4
+    int i1 = tfsecs <= 900 ? 2 : 3
+    tsTbl.clear(0, 0, 3, 1)
+    string tsz = getsize(tssize)
+    int col = 0
+    if i0 <= i1
+        for i = i0 to i1
+            int sg = tst.get(i).tsSig()
+            string sym = sg == 1 or sg == 2 ? "▲" : sg == -1 or sg == -2 ? "▼" : "·"
+            color c = sg == 1 ? tsupcol : sg == -1 ? tsdncol : sg == 0 ? color.new(tsctcol, 60) : tsctcol
+            tsTbl.cell(col, 0, sym, text_color = c, text_size = tsz)
+            if tsnames
+                tsTbl.cell(col, 1, tsNames.get(i), text_color = color.new(tsctcol, 30), text_size = size.tiny)
+            col += 1
 
 var table note = table.new(position.bottom_right, 1, 1)
 var table setNote = table.new(position.top_right, 1, 1)

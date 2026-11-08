@@ -9,7 +9,7 @@
  * closed through become IFVGs. Mitigated levels are removed.
  *
  * Port of the TradingView Pine Script v6 indicator ICTcotas.txt
- * (md5 7e14b8ffcf0c64477a906fcc05b73a0e), (c) franjballest, Mozilla Public
+ * (md5 a79fa713ebe9dde803740dce74bcd2f1), (c) franjballest, Mozilla Public
  * License 2.0 (https://mozilla.org/MPL/2.0/). Same logic, same inputs (as
  * camelCase parameters) and the same defaults.
  *
@@ -49,6 +49,8 @@
  *     the live bar is provisional and final when the bar closes, as in Pine.
  *   - No 500 object limit; nothing is deleted by the platform.
  *   - sessionStartHour is an extra parameter (no Pine equivalent).
+ *   - Turtle soup / continuation: the triangles are global texts placed by pixel offsets from the chosen
+ *     corner of the chart (origin grid), one per timeframe, with the names below.
  */
 
 const predef = require("./tools/predef");
@@ -129,13 +131,42 @@ class HtfAgg {
                 if (this.done.length > 3) this.done.pop();
             }
             this.cur = { k, o: b.o, h: b.h, l: b.l, c: b.c, t: idx, partial: false };
+            this.tsStep();
             return true;
         }
         const c = this.cur;
         if (b.h > c.h) c.h = b.h;
         if (b.l < c.l) c.l = b.l;
         c.c = b.c;
+        this.tsStep();
         return false;
+    }
+    // turtle soup / continuation: previous completed candle (done[0], when the one just before) and the forming
+    // one. A continuation seen in the forming candle (armed) is cancelled (inv) once a chart bar closes back
+    // beyond the previous close.
+    tsPrev() {
+        const p = this.done[0];
+        return p && this.cur && !this.cur.partial ? p : null;
+    }
+    tsCont() {
+        const p = this.tsPrev(), c = this.cur;
+        if (!p) return false;
+        return p.c < p.o ? c.h > c.o && c.c < p.c : p.c > p.o ? c.l < c.o && c.c > p.c : false;
+    }
+    tsStep() {
+        const p = this.tsPrev(), c = this.cur;
+        if (!p) return;
+        if (c.armed && (p.c < p.o ? c.c > p.c : c.c < p.c)) c.inv = true;
+        if (this.tsCont()) c.armed = true;
+    }
+    // 1 turtle soup up, -1 turtle soup down, 2 continuation up, -2 continuation down, 0 nothing
+    tsSig() {
+        const p = this.tsPrev(), c = this.cur;
+        if (!p) return 0;
+        if (p.c < p.o && c.l < p.l && c.c > p.c) return 1;
+        if (p.c > p.o && c.h > p.h && c.c < p.c) return -1;
+        if (!c.inv && this.tsCont()) return p.c < p.o ? -2 : 2;
+        return 0;
     }
     // completed candle n (1 newest .. 3), or an all-NaN candle (Pine na)
     get(n) {
@@ -458,6 +489,11 @@ function buildConfig(p, chart) {
         wExtra: clamp(Math.round(num(p.wExtra, 1)), 0, 2),
         mmode: mit === "ce" ? 1 : mit === "wick" ? 2 : mit === "close" ? 3 : 0,
         sessHour: clamp(num(p.sessionStartHour, 18), 0, 23),
+        tsShow: bool(p.tsShow, true),
+        tsPos: str(p.tsPos, "bottomRight"),
+        tsFont: font(p.tsSize, "normal"),
+        tsNames: bool(p.tsNames, true),
+        tsUp: str(p.tsUpColor, "#00E676"), tsDn: str(p.tsDownColor, "#FF1744"), tsCt: str(p.tsContColor, "#787B86"),
         attLvl: clamp(Math.round(num(p.attLvl, 2)), 0, 4),
         attbg: str(p.attbg, "#FFFFFF"),
 
@@ -769,6 +805,42 @@ function drawMfMargin(c, l, eng, lastIdx, items) {
     }
 }
 
+// turtle soup / continuation triangles in a chart corner, one column per timeframe (lowest first), with the
+// timeframe names below. Offsets are in pixels from the chosen corner.
+function drawTs(c, eng, items) {
+    if (!c.tsShow) return;
+    const tfs = eng.tfsecs();
+    const i0 = tfs <= 900 ? 0 : tfs <= 3600 ? 1 : tfs <= 14400 ? 2 : tfs <= 86400 ? 3 : 4;
+    const i1 = tfs <= 900 ? 2 : 3;
+    if (i0 > i1) return;
+    const A = eng.S.aggs;
+    const aggs = [A.m15, A.h1, A.h4, A.d];
+    const names = ["15m", "1H", "4H", "D"];
+    const pos = c.tsPos;
+    const h = pos === "bottomLeft" || pos === "topLeft" ? "left" : pos === "bottomCenter" ? "center" : "right";
+    const v = pos === "topRight" || pos === "topLeft" ? "top" : pos === "middleRight" ? "middle" : "bottom";
+    const n = i1 - i0 + 1;
+    const cw = Math.round(c.tsFont * 2.2);
+    for (let i = i0; i <= i1; i++) {
+        const col = i - i0;
+        const sg = aggs[i].tsSig();
+        const sym = sg > 0 ? "\u25B2" : sg < 0 ? "\u25BC" : "\u00B7";
+        const clr = sg === 1 ? c.tsUp : sg === -1 ? c.tsDn : sg === 0 ? blend(c.tsCt, "#FFFFFF", 0.6) : c.tsCt;
+        // columns counted from the corner side, so the lowest timeframe stays first (leftmost)
+        const k = h === "right" ? n - 1 - col : h === "center" ? col - (n - 1) / 2 : col;
+        const x = 10 + k * cw;
+        const ysym = v === "top" ? 8 : v === "middle" ? 0 : 8 + (c.tsNames ? c.tsFont + 4 : 0);
+        const ynam = v === "top" ? 8 + c.tsFont + 6 : 8;
+        const origin = { cs: "grid", h, v };
+        items.push({ tag: "Text", key: "ictcts" + i, point: { x: px(x), y: px(ysym) }, text: sym,
+            style: { fontSize: c.tsFont, fill: clr }, textAlignment: "centerMiddle", global: true, origin });
+        if (c.tsNames) {
+            items.push({ tag: "Text", key: "ictctsn" + i, point: { x: px(x), y: px(ynam) }, text: names[i],
+                style: { fontSize: Math.max(7, c.tsFont - 3), fill: c.tsCt }, textAlignment: "centerMiddle", global: true, origin });
+        }
+    }
+}
+
 function drawAll(c, eng, lastIdx, lastBar) {
     const x = lastIdx + c.xOff;
     const items = [];
@@ -785,6 +857,7 @@ function drawAll(c, eng, lastIdx, lastBar) {
         else drawLvl(c, l, x, items, eng.S.datr, lbls);
     }
     drawLbls(c, x, items, eng.S.datr, lbls);
+    drawTs(c, eng, items);
     const tfs = eng.tfsecs();
     const any = (c.doDaily && tfs < 86400) || (c.doWeekly && tfs < 604800) || (c.doMonthly && tfs < 2592000);
     if (!any) {
@@ -965,6 +1038,7 @@ module.exports = {
             never: "Never", ce: "CE touched", wick: "Fully filled (wick)", close: "Fully filled (close)"
         }, "wick"),
         sessionStartHour: int(18, 0),
+        tsShow: predef.paramSpecs.bool(true),
         attLvl: predef.paramSpecs.number(2, 1, 0),
         attbg: predef.paramSpecs.color("#FFFFFF"),
         // Colors (by timeframe)
@@ -1076,7 +1150,17 @@ module.exports = {
         mfMW: int(4, 1),
         mfExt: predef.paramSpecs.bool(true),
         mfExtTo: predef.paramSpecs.enum({ for: "for", start: "to start", creation: "to creation" }, "creation"),
-        mfExtN: int(20, 1)
+        mfExtN: int(20, 1),
+        // Turtle soup / continuation
+        tsPos: predef.paramSpecs.enum({
+            bottomRight: "bottom right", bottomLeft: "bottom left", bottomCenter: "bottom center",
+            middleRight: "middle right", topRight: "top right", topLeft: "top left"
+        }, "bottomRight"),
+        tsSize: sizeEnum("normal"),
+        tsNames: predef.paramSpecs.bool(true),
+        tsUpColor: predef.paramSpecs.color("#00E676"),
+        tsDownColor: predef.paramSpecs.color("#FF1744"),
+        tsContColor: predef.paramSpecs.color("#787B86")
     },
     inputType: meta.InputType.BARS,
     areaChoice: meta.AreaChoice.OVERLAY,

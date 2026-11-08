@@ -7,7 +7,7 @@
 // FVGs closed through become IFVGs. Mitigated levels are removed.
 //
 // Port of the TradingView Pine Script v6 indicator ICTcotas.txt by franjballest
-// (source md5 7e14b8ffcf0c64477a906fcc05b73a0e). Mozilla Public License 2.0.
+// (source md5 a79fa713ebe9dde803740dce74bcd2f1). Mozilla Public License 2.0.
 //
 // Install:
 //   1. Copy this file to  Documents\NinjaTrader 8\bin\Custom\Indicators\ICTcotas.cs
@@ -40,6 +40,9 @@
 //     2628003 s as in Pine, so monthly levels are off on a 1-month chart.
 //   - The Daily Settings settlement option (daily candles with or without the settlement as close) is
 //     not ported: NinjaTrader daily bars come as the data provider builds them.
+//   - Turtle soup / continuation: the corner is one of the four TextPosition corners and the row is one
+//     monospaced TextFixed per color, padded with no-break spaces. The previous candle comes from the
+//     15m / 60m / 240m / daily series and the forming one from the chart bars after it.
 
 #region Using declarations
 using System;
@@ -108,6 +111,14 @@ public enum ICTcotasExtendTo
 	ToCreation
 }
 
+public enum ICTcotasTsPosition
+{
+	BottomRight,
+	BottomLeft,
+	TopRight,
+	TopLeft
+}
+
 public enum ICTcotasLabelAnchor
 {
 	High,
@@ -127,6 +138,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 		private const string GFvg = "Fair Value Gaps";
 		private const string GVi = "Volume Imbalances";
 		private const string GWk = "Wick CE";
+		private const string GTs = "Turtle soup / continuation";
 		private const string GMf = "FVGs and wick CE by timeframe (15m / 1H / 4H / D / W / M)";
 
 		// series indexes (order of AddDataSeries in State.Configure)
@@ -323,6 +335,15 @@ namespace NinjaTrader.NinjaScript.Indicators
 				MfMarginWidth = 4;
 				MfExtend = true;
 				MfExtendBars = 20;
+
+				// Turtle soup / continuation
+				TsShow = true;
+				TsPosition = ICTcotasTsPosition.BottomRight;
+				TsSize = ICTcotasLabelSize.Normal;
+				TsNames = true;
+				TsUpColor = MakeBrush(0x00, 0xE6, 0x76);
+				TsDownColor = MakeBrush(0xFF, 0x17, 0x44);
+				TsContColor = Brushes.Gray;
 				MfExtendTo = ICTcotasExtendTo.ToCreation;
 			}
 			else if (State == State.Configure)
@@ -444,6 +465,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 				DrawAll();
 				dirty = false;
 			}
+			if (atEnd)
+				DrawTs();
 		}
 
 		// A higher timeframe bar closed: process the completed triple 1 = [off], 2 = [off+1], 3 = [off+2]
@@ -1203,6 +1226,104 @@ namespace NinjaTrader.NinjaScript.Indicators
 
 		#endregion
 
+		#region Turtle soup / continuation
+
+		// Per timeframe (15m, 1H, 4H, D): the previous completed candle of its series and the forming one, built
+		// from the chart bars after it (the chart bar being formed included with OnEachTick / OnPriceChange).
+		// Previous candle down: its low taken and price back above its close is a turtle soup up; the forming
+		// candle traded above its open and price is below the previous close is a continuation down, cancelled
+		// for the rest of the candle once price closes a chart bar back above that close. Mirrored for up.
+		// Returns 1 TS up, -1 TS down, 2 continuation up, -2 continuation down, 0 nothing.
+		private int TsSig(int k)
+		{
+			if (CurrentBars[k] < 1)
+				return 0;
+			DateTime t0 = Times[0][0];
+			int j = t0 > Times[k][0] ? 0 : 1;
+			double po = Opens[k][j], ph = Highs[k][j], pl = Lows[k][j], pc = Closes[k][j];
+			DateTime ps = Times[k][j];
+			if (pc == po)
+				return 0;
+			bool down = pc < po;
+			// chart bars of the forming candle, oldest first
+			int n = 0;
+			while (n <= CurrentBars[0] && Times[0][n] > ps)
+				n++;
+			if (n == 0)
+				return 0;
+			double o = Opens[0][n - 1], h = double.MinValue, l = double.MaxValue, c = Closes[0][0];
+			bool armed = false, inv = false, cont = false;
+			for (int b = n - 1; b >= 0; b--)
+			{
+				h = Math.Max(h, Highs[0][b]);
+				l = Math.Min(l, Lows[0][b]);
+				double cb = Closes[0][b];
+				if (armed && (down ? cb > pc : cb < pc))
+					inv = true;
+				cont = down ? h > o && cb < pc : l < o && cb > pc;
+				if (cont)
+					armed = true;
+			}
+			if (down && l < pl && c > pc)
+				return 1;
+			if (!down && h > ph && c < pc)
+				return -1;
+			if (!inv && cont)
+				return down ? -2 : 2;
+			return 0;
+		}
+
+		private static readonly string[] TsNamesTxt = { "15m", "1H", "4H", "D" };
+		private static readonly int[] TsSer = { Ser15, Ser60, Ser240, SerDay };
+
+		// one TextFixed per color, monospaced and padded with no-break spaces so the columns line up
+		private void DrawTs()
+		{
+			string[] tags = { "ICTc_tsu", "ICTc_tsd", "ICTc_tsc", "ICTc_ts0", "ICTc_tsn" };
+			int i0 = tfsecs <= 900 ? 0 : tfsecs <= 3600 ? 1 : tfsecs <= 14400 ? 2 : tfsecs <= 86400 ? 3 : 4;
+			int i1 = tfsecs <= 900 ? 2 : 3;
+			if (!TsShow || i0 > i1)
+			{
+				foreach (string t in tags)
+					RemoveDrawObject(t);
+				return;
+			}
+			const char sp = '\u00A0';
+			int ncol = i1 - i0 + 1;
+			char[][] rows = new char[5][];
+			for (int g = 0; g < 5; g++)
+			{
+				rows[g] = new char[ncol * 4];
+				for (int x = 0; x < rows[g].Length; x++)
+					rows[g][x] = sp;
+			}
+			string names = "";
+			for (int i = i0; i <= i1; i++)
+			{
+				int col = i - i0;
+				int sg = TsSig(TsSer[i]);
+				int g = sg == 1 ? 0 : sg == -1 ? 1 : sg != 0 ? 2 : 3;
+				rows[g][col * 4 + 1] = sg > 0 ? '\u25B2' : sg < 0 ? '\u25BC' : '\u00B7';
+				names += (TsNamesTxt[i] + "    ").Substring(0, 4).Replace(' ', sp);
+			}
+			string blank = new string(sp, ncol * 4);
+			TextPosition pos = TsPosition == ICTcotasTsPosition.BottomLeft ? TextPosition.BottomLeft
+				: TsPosition == ICTcotasTsPosition.TopRight ? TextPosition.TopRight
+				: TsPosition == ICTcotasTsPosition.TopLeft ? TextPosition.TopLeft : TextPosition.BottomRight;
+			SimpleFont f = new SimpleFont("Consolas", FontSize(TsSize));
+			Brush[] cols = { TsUpColor, TsDownColor, TsContColor, Frz(TsContColor.Clone()), TsContColor };
+			cols[3] = cols[3].Clone();
+			cols[3].Opacity = 0.4;
+			cols[3].Freeze();
+			for (int g = 0; g < 5; g++)
+			{
+				string txt = g < 4 ? new string(rows[g]) + "\n" + (TsNames ? blank : "") : blank + "\n" + (TsNames ? names : "");
+				Draw.TextFixed(this, tags[g], txt, pos, cols[g], f, Brushes.Transparent, Brushes.Transparent, 0);
+			}
+		}
+
+		#endregion
+
 		#region Properties
 
 		// ---------------------------------------------------------------- General
@@ -1798,6 +1919,59 @@ namespace NinjaTrader.NinjaScript.Indicators
 		[Range(1, 500)]
 		[Display(Name = "Extend: candles", GroupName = GMf, Order = 44)]
 		public int MfExtendBars { get; set; }
+
+		// ---------------------------------------------------------------- Turtle soup / continuation
+		[NinjaScriptProperty]
+		[Display(Name = "Turtle soup / continuation indications", Description = "Small up / down triangles in a chart corner, one per timeframe (15m, 1H, 4H on charts up to 15m; 1H, 4H, D up to 1H; 4H and D on 4H charts; D on daily charts). Previous candle down: its low taken and price back above its close is a turtle soup up (bright up triangle); the forming candle traded above its open and price is below the previous close is a continuation down (grey down triangle), cancelled for the rest of the candle when price goes back above that close. Mirrored for up candles.", GroupName = GGen, Order = 7)]
+		public bool TsShow { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "TS position", GroupName = GTs, Order = 1)]
+		public ICTcotasTsPosition TsPosition { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "TS size", GroupName = GTs, Order = 2)]
+		public ICTcotasLabelSize TsSize { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "TS timeframe names", GroupName = GTs, Order = 3)]
+		public bool TsNames { get; set; }
+
+		[NinjaScriptProperty]
+		[XmlIgnore]
+		[Display(Name = "Turtle soup: up", GroupName = GTs, Order = 4)]
+		public Brush TsUpColor { get; set; }
+
+		[Browsable(false)]
+		public string TsUpColorSerializable
+		{
+			get { return Serialize.BrushToString(TsUpColor); }
+			set { TsUpColor = Serialize.StringToBrush(value); }
+		}
+
+		[NinjaScriptProperty]
+		[XmlIgnore]
+		[Display(Name = "Turtle soup: down", GroupName = GTs, Order = 5)]
+		public Brush TsDownColor { get; set; }
+
+		[Browsable(false)]
+		public string TsDownColorSerializable
+		{
+			get { return Serialize.BrushToString(TsDownColor); }
+			set { TsDownColor = Serialize.StringToBrush(value); }
+		}
+
+		[NinjaScriptProperty]
+		[XmlIgnore]
+		[Display(Name = "Continuation", GroupName = GTs, Order = 6)]
+		public Brush TsContColor { get; set; }
+
+		[Browsable(false)]
+		public string TsContColorSerializable
+		{
+			get { return Serialize.BrushToString(TsContColor); }
+			set { TsContColor = Serialize.StringToBrush(value); }
+		}
 
 		#endregion
 	}

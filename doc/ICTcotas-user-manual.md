@@ -241,6 +241,7 @@ The tables follow the order of the settings dialog. Several controls often share
 | Monthly | on | Levels from monthly candles. Chart timeframe must be lower than 1M |
 | extra line width per timeframe step | 1 (0 to 2) | Extra width added to weekly lines (1 step) and monthly lines (2 steps) over daily ones. 0 makes all timeframes the same width. Does not affect the by-timeframe layer |
 | remove when | Fully filled (wick) | Mitigation rule for all levels (see table below). FVGs follow the IFVG rule instead while it is enabled; IFVGs, VIs and wick CEs always follow this rule |
+| Turtle soup / continuation indications | on | Small up / down triangles in a chart corner, one per timeframe (see Turtle soup / continuation below) |
 | Attenuation | 2 (0 to 4) | Dims the drawings without changing their settings. 0 draws everything as configured; 4 is the most dimmed (see below) |
 
 Mitigation rules (tested on every chart bar):
@@ -392,6 +393,30 @@ Fills use these colors with the transparency set in each section.
 | candles | 20 | How far back the extended lines go with **for**, in candles before the last one |
 
 The by-timeframe timeframe names in labels (15m, 1H, 4H, D, W, M) are fixed; the **text: daily / weekly / monthly** inputs do not change them.
+
+### Turtle soup / continuation
+
+With **Turtle soup / continuation indications** on (General), a row of small triangles in a chart corner shows, for a few timeframes, what price is doing with the previous completed candle of that timeframe:
+
+| Previous candle | Forming candle and price now | Triangle |
+| ------- | ----- | -------------- |
+| down | took the previous low and price is back above the previous close (turtle soup up) | bright green ▲ |
+| up | took the previous high and price is back below the previous close (turtle soup down) | bright red ▼ |
+| down | traded above its own open and price is now below the previous close (continuation down) | grey ▼ |
+| up | traded below its own open and price is now above the previous close (continuation up) | grey ▲ |
+| | nothing of the above | faint dot |
+
+A continuation is cancelled for the rest of the forming candle once a chart bar closes back beyond the previous close. The candles are built from the chart bars. Timeframes, lowest first: 15m, 1H and 4H on charts up to 15m; 1H, 4H and D on charts up to 1H; 4H and D on charts up to 4H; D on daily charts; none above.
+
+| Setting | Default | What it does |
+|---|---|---|
+| position | bottom right | Corner of the triangles (bottom right / left / center, middle right, top right / left) |
+| size | normal | Size of the triangles |
+| timeframe names | on | The timeframe under each triangle |
+| turtle soup: up / down | bright green / bright red | Colors of the turtle soup triangles |
+| continuation | grey | Color of the continuation triangles, the names and (fainter) the dots |
+
+In NinjaTrader the corner is one of the four chart corners and the row is several monospaced texts; with Calculate on bar close the forming candle is updated when each chart bar closes. In Tradovate the triangles are placed by pixel offsets from the corner.
 
 ### Daily Settings
 
