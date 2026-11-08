@@ -7,22 +7,23 @@ indicator("OTEFibWick", overlay=true, max_boxes_count=500, max_lines_count=500)
 // added stuff to draw the last wick CEs.
 
 GW = "Wicks"
-GS = "Settings"
+GS = "Settings / Enable"
 var visible = input.bool(false, "compute for historic data use", group=GS,
     tooltip="When disabled computes and keeps always the last objects for use in real time. " +
          " This permits scrolling back/forward and keeps them always as they are, but discards very old ones. "+
          "When enabled computes them up to the rightmost visible time. " +
          "Good for use in historic data but worse when scrolling forward as it takes time to recompute and redraw.")
+var dowick = input.bool(true, "draw wick CE", group=GS, inline="en")
+var dofib = input.bool(true, "mark fib retracements for OTE", group=GS, inline="en")
+var dohtf = input.bool(false, "HTF OTEs", group=GS, inline="en")
 
 wick_width = input.int(2, "Wick Width", group = GW, minval=1, maxval=10, inline="w")
 wick_color = input.color(color.gray, "color", group = GW, inline = "w")
-var dowick = input.bool(true,"draw wick  CE", inline="wick", group = GW)
-var minwick = input.float(20, "sz", inline = "wick", group = GW)
+var minwick = input.float(20, "wick CE sz", inline = "wick", group = GW)
 var wickdx = input.int(1, "bars",  inline = "wick", group=GW, 
      tooltip="0 for auto or number of bars for segment width")
 
 GF = "Fib"
-var dofib = input.bool(true, "mark fib retracements for OTE", group=GF)
 var fibswing = input.bool(true, "use swings to locate 0/100", group=GF, tooltip="retrace in swing highs/lows")
 var oteswingleft=input.int(10, "bars left for swing", group=GF)
 var oteswingright=input.int(3, "bars right for swing", group=GF)
@@ -49,7 +50,7 @@ var textcol = input.color(color.blue, "text color", group=GF)
 GH="HTF OTE"
 var hotelvl0 = input.float(0.62, "from", group = GH, inline="otel")
 var hotelvl1 = input.float(0.79, "to", group=GH, inline="otel")
-var notes = input.int(2, "nb. of kept OTEs (0 to draw no boxes)", group=GH)
+var notes = input.int(2, "nb. of kept OTEs", group=GH)
 var domarginotes = input.bool(true, "draw margin box to reflect OTEs", group=GH)
 var moteoff = input.int(6, "margin box offset", group=GH, tooltip="added to last bar index to start it", inline="mfo")
 var motewid = input.int(12, "width", group=GH, tooltip="margix box width in bars", inline="mfo")
@@ -354,12 +355,12 @@ method updateote(OTE ote) =>
 
 var OTE theote = OTE.new(hotetf)
 var OTE theote2 = OTE.new(hotetf2)
-if compute and dohote and theote.isok() and theote.starts()
+if compute and dohtf and dohote and theote.isok() and theote.starts()
     theote.started()
-if compute and dohote and theote.isok()
+if compute and dohtf and dohote and theote.isok()
     theote.updateote()
-if compute and dohote2 and theote2.isok() and theote2.starts()
+if compute and dohtf and dohote2 and theote2.isok() and theote2.starts()
     theote2.started()
-if compute and dohote2 and theote2.isok()
+if compute and dohtf and dohote2 and theote2.isok()
     theote2.updateote()
  
