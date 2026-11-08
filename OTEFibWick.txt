@@ -200,7 +200,6 @@ wextend(array<WCE> ws, array<float> lens) =>
         for j = 0 to math.min(wnext, idx.size()) - 1
             w = ws.get(idx.get(j))
             w.ln.set_x2(bar_index + 1)
-            w.ln.set_width(2)
 
 dtr = math.max(dH - dL, math.abs(dH - nz(dC[1], dO)), math.abs(dL - nz(dC[1], dO)))
 datr = ta.rma(dtr, 14)
@@ -261,7 +260,6 @@ if dowick and compute and barstate.isconfirmed and bar_index > 2
                 if na(w.ln)
                     w.ln := line.new(w.b, w.ce, w.b + wdx(), w.ce)
                 w.ln.set_x2(w.b + wdx())
-                w.ln.set_width(1)
                 if wnext > 0 and wreach > 0 and not w.dead and math.abs(w.ce - dC) <= reach
                     if w.ce >= dC
                         xa.push(w)
