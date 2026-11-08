@@ -1948,12 +1948,14 @@ method zSide(Zone z, bool hi) =>
     color c0 = z.isday ? (hi ? daymmaxcol : daymmincol) : (hi ? sesmmaxcol : sesmmincol)
     int w0 = z.isday ? daymwid : sesmwid
     string sz0 = z.isday ? dlblsz : slblsz
+    // an important REH / REL (15m or chart candles) stands out one more step than a plain swing
+    bool rel = rk == 0 and (hi ? z.hrel or z.hrelc : z.lrel or z.lrelc)
     if not na(ln)
         ln.set_color(attL(c0, rk))
-        ln.set_width(rk == 0 ? math.min(4, attW(w0, 0) + 1) : attW(w0, rk))
+        ln.set_width(rk == 0 ? math.min(4, attW(w0, 0) + (rel ? 2 : 1)) : attW(w0, rk))
     if not na(lb)
         lb.set_textcolor(attL(c0, rk))
-        lb.set_size(rk == 0 ? sizeUp(sz0) : sz0)
+        lb.set_size(rk == 0 ? (rel ? sizeUp(sizeUp(sz0)) : sizeUp(sz0)) : sz0)
     true
 
 // body level of side hi of z (want: draw it), returns whether it is drawn
