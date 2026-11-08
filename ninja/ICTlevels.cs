@@ -4,7 +4,7 @@
 // quadrants and standard deviations, premarket range, EQH/EQL, PO3 lines, TGIF levels, macros,
 // silver bullet and a session/macro status text. Draws levels only: no plots, no signals, no alerts.
 //
-// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 7c12c385240acc3946aee79303debe8d),
+// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 248ebaf1d2d800845b7636dc116c5eb9),
 // © franjballest, Mozilla Public License 2.0 (https://mozilla.org/MPL/2.0/).
 //
 // Install:
@@ -155,6 +155,10 @@ namespace NinjaTrader.NinjaScript.Indicators
 			// [LVL] REH / REL with another day / session level, text of that combined label ("": shown by another)
 			public bool hx, lx, bhx, blx;
 			public string hxt = "", lxt = "", bhxt = "", blxt = "";
+			// [LVL] the same level as the high / low (body level) of other zones: one level, not a REH / REL; its group
+			// and the rank to use (the most important one of the group, -1 none)
+			public bool hc, lc, bhc, blc;
+			public int hcg = -1, lcg = -1, hfrk = -1, lfrk = -1;
 			public bool bhOn, blOn;  // [LVL] body levels drawn (last final bar)
 			public string sig = "";  // [LVL] state the levels were last drawn with
 		}
@@ -1039,6 +1043,12 @@ namespace NinjaTrader.NinjaScript.Indicators
 				z.lx = false;
 				z.bhx = false;
 				z.blx = false;
+				z.hc = false;
+				z.lc = false;
+				z.bhc = false;
+				z.blc = false;
+				z.hcg = -1;
+				z.lcg = -1;
 			}
 			double xtol = Math.Max(2 * TickSize, 0.1 * Nz(bkRng));
 			XMark(true, xtol);
@@ -1053,13 +1063,40 @@ namespace NinjaTrader.NinjaScript.Indicators
 					z.blOn = BodyOk(z, false) && nbl < BodyMax;
 					nbh += z.bhOn ? 1 : 0;
 					nbl += z.blOn ? 1 : 0;
-					string sig = string.Join("|", z.hsw, z.lsw, z.hrel, z.lrel, z.hrelc, z.lrelc, z.hx, z.lx, z.hxt, z.lxt,
-						z.bhOn, z.blOn, z.bhx, z.blx, z.bhxt, z.blxt, z.bhi, z.blo, z.hmode, z.lmode);
-					if (sig != z.sig)
-					{
-						z.sig = sig;
-						z.dirty = true;
-					}
+				}
+			}
+			// [LVL] a high / low shared with other zones takes the most important rank of them
+			Dictionary<string, int> grk = new Dictionary<string, int>();
+			foreach (IZone z in zones.Concat(days))
+			{
+				z.hfrk = -1;
+				z.lfrk = -1;
+				foreach (bool hi in new[] { true, false })
+				{
+					int g = hi ? z.hcg : z.lcg;
+					if (g < 0 || !z.drawmaxmin)
+						continue;
+					Brush c; DashStyleHelper st; int w; ICTlevelsTextSize sz;
+					int rk = ZSide(z, hi, hi ? z.bhOn : z.blOn, ICTlevelsTextSize.Tiny, -1, out c, out st, out w, out sz);
+					string key = (hi ? "h" : "l") + g;
+					int cur;
+					grk[key] = grk.TryGetValue(key, out cur) ? Math.Min(cur, rk) : rk;
+				}
+			}
+			foreach (IZone z in zones.Concat(days))
+			{
+				int r;
+				if (z.hcg >= 0 && grk.TryGetValue("h" + z.hcg, out r))
+					z.hfrk = r;
+				if (z.lcg >= 0 && grk.TryGetValue("l" + z.lcg, out r))
+					z.lfrk = r;
+				string sig = string.Join("|", z.hsw, z.lsw, z.hrel, z.lrel, z.hrelc, z.lrelc, z.hx, z.lx, z.hxt, z.lxt,
+					z.bhOn, z.blOn, z.bhx, z.blx, z.bhxt, z.blxt, z.bhi, z.blo, z.hmode, z.lmode, z.hc, z.lc, z.bhc, z.blc,
+					z.hfrk, z.lfrk);
+				if (sig != z.sig)
+				{
+					z.sig = sig;
+					z.dirty = true;
 				}
 			}
 			RefreshList(days);
@@ -1286,8 +1323,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 				ICTlevelsTextSize hsz = sz0, lsz = sz0;
 				if (z.islvl)
 				{
-					ZSide(z, true, z.bhOn, sz0, out hc, out hs, out hw, out hsz);
-					ZSide(z, false, z.blOn, sz0, out lc, out ls, out lw, out lsz);
+					ZSide(z, true, z.bhOn, sz0, z.hfrk, out hc, out hs, out hw, out hsz);
+					ZSide(z, false, z.blOn, sz0, z.lfrk, out lc, out ls, out lw, out lsz);
 				}
 				DLine(tg + "hi", z.hit, z.hi, hx, z.hi, hc, hs, hw);
 				DLine(tg + "lo", z.lot, z.lo, lx, z.lo, lc, ls, lw);
@@ -1299,19 +1336,19 @@ namespace NinjaTrader.NinjaScript.Indicators
 					string hb = ZName(z, true), lb0 = ZName(z, false);
 					string hn = z.hrel ? "REH " + hb : z.hrelc ? "reh " + hb : hb + (z.isday ? " high" : " hi");
 					string ln = z.lrel ? "REL " + lb0 : z.lrelc ? "rel " + lb0 : lb0 + (z.isday ? " low" : " lo");
-					if (z.hx)
+					if (z.hx || z.hc)
 						hn = z.hxt;
-					if (z.lx)
+					if (z.lx || z.lc)
 						ln = z.lxt;
 					if (z.isday)
 					{
-						if (z.hmode == 1 && !z.hx)
+						if (z.hmode == 1 && !(z.hx || z.hc))
 							hn = "day REHs";
-						if (z.lmode == 1 && !z.lx)
+						if (z.lmode == 1 && !(z.lx || z.lc))
 							ln = "day RELs";
 					}
-					TinyLbl(tg + "hiL", !z.hidonet.HasValue && (z.hmode != 2 || z.hx) && hn.Length > 0, re, z.hi, hn, hc, FontOf(hsz));
-					TinyLbl(tg + "loL", !z.lodonet.HasValue && (z.lmode != 2 || z.lx) && ln.Length > 0, re, z.lo, ln, lc, FontOf(lsz));
+					TinyLbl(tg + "hiL", !z.hidonet.HasValue && (z.hmode != 2 || z.hx || z.hc) && hn.Length > 0, re, z.hi, hn, hc, FontOf(hsz));
+					TinyLbl(tg + "loL", !z.lodonet.HasValue && (z.lmode != 2 || z.lx || z.lc) && ln.Length > 0, re, z.lo, ln, lc, FontOf(lsz));
 				}
 			}
 			if (z.isday && DoEq)
@@ -1361,7 +1398,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 		// 0 (important: line 1 wider, label 1 size up; 2 and 2 for a REH / REL), not known yet 1, not a swing 1
 		// (sessions) or 2 (days); a taken one is 1. A body level drawn below (above) it takes the importance: the
 		// high (low) is dotted meanwhile.
-		private void ZSide(IZone z, bool hi, bool bodyShown, ICTlevelsTextSize sz0, out Brush c, out DashStyleHelper sty,
+		// frk: rank to use instead (the most important one of a level shared with other zones), -1 none; returns the rank
+		private int ZSide(IZone z, bool hi, bool bodyShown, ICTlevelsTextSize sz0, int frk, out Brush c, out DashStyleHelper sty,
 			out int w, out ICTlevelsTextSize sz)
 		{
 			bool isrel = hi ? z.hrel || z.hrelc || z.hx : z.lrel || z.lrelc || z.lx;
@@ -1370,6 +1408,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 			int rk = taken ? 1 : sw > 0 || isrel ? 0 : sw == 0 ? 1 : z.isday ? 2 : 1;
 			if (bodyShown)
 				rk = Math.Max(rk, 1);
+			if (frk >= 0)
+				rk = frk;
 			Brush c0 = z.isday ? (hi ? DayMaxColor : DayMinColor) : (hi ? SesMaxColor : SesMinColor);
 			int w0 = z.isday ? DayMaxMinWidth : SesWidth;
 			bool rel = rk == 0 && isrel;
@@ -1377,6 +1417,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 			sty = bodyShown ? DashStyleHelper.Dot : (z.isday ? DayMaxMinStyle : SesStyle);
 			w = rk == 0 ? Math.Min(4, AttW(w0, 0) + (rel ? 2 : 1)) : AttW(w0, rk);
 			sz = rk == 0 ? (rel ? SizeUp(SizeUp(sz0)) : SizeUp(sz0)) : sz0;
+			return rk;
 		}
 
 		// [LVL] body level of side hi (want: draw it): important, solid (wider, label 1 size up; 2 and 2 when it is
@@ -1397,7 +1438,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 			ICTlevelsTextSize bsz = SizeUp(z.isday ? DayLabelSize : SesLabelSize);
 			if (bx)
 				bsz = SizeUp(bsz);
-			string txt = bx ? (hi ? z.bhxt : z.blxt) : (z.isday ? "day" : z.name) + (hi ? " body hi" : " body lo");
+			bool bc = hi ? z.bhc : z.blc;
+			string txt = bx || bc ? (hi ? z.bhxt : z.blxt) : (z.isday ? "day" : z.name) + (hi ? " body hi" : " body lo");
 			DLine(tg, hi ? z.bht : z.blt, p, x, p, c, DashStyleHelper.Solid, w);
 			if (txt.Length > 0)
 				DText(tg + "L", txt, x, p, c, FontOf(bsz), 0);
@@ -1406,12 +1448,15 @@ namespace NinjaTrader.NinjaScript.Indicators
 		}
 
 		// [LVL] untaken highs (lows) of days and sessions, and their body levels, within tol of another one are REHs
-		// (RELs): hx / lx, bhx / blx; the outermost level of a group carries the combined label, the others none
+		// (RELs): hx / lx, bhx / blx; the outermost level of a group carries the combined label, the others none.
+		// Levels of different zones from the same candle at the same price (the Asia low that is also the week low)
+		// are one level, not a REH / REL by themselves: hc / lc, bhc / blc, one label "Asia / week low".
 		private void XMark(bool hi, double tol)
 		{
 			List<double> v = new List<double>();
 			List<IZone> zs = new List<IZone>();
 			List<bool> isb = new List<bool>();
+			List<DateTime> ot = new List<DateTime>();
 			foreach (List<IZone> arr in new[] { zones, days })
 			{
 				foreach (IZone z in arr)
@@ -1421,12 +1466,14 @@ namespace NinjaTrader.NinjaScript.Indicators
 						v.Add(hi ? z.hi : z.lo);
 						zs.Add(z);
 						isb.Add(false);
+						ot.Add(hi ? z.hit : z.lot);
 					}
 					if (BodyOk(z, hi))
 					{
 						v.Add(hi ? z.bhi : z.blo);
 						zs.Add(z);
 						isb.Add(true);
+						ot.Add(hi ? z.bht : z.blt);
 					}
 				}
 			}
@@ -1449,27 +1496,65 @@ namespace NinjaTrader.NinjaScript.Indicators
 					}
 				}
 			}
+			// origin of each level: the first one of its group from the same candle at the same price
+			int[] org = new int[n];
+			for (int k = 0; k < n; k++)
+			{
+				int o = k;
+				for (int j = 0; j < k && o == k; j++)
+					if (cid[j] == cid[k] && isb[j] == isb[k] && ot[j] == ot[k] && v[j] == v[k])
+						o = j;
+				org[k] = o;
+			}
 			for (int c = 0; c < n; c++)
 			{
-				int lead = -1, nm = 0;
-				bool multi = false;
+				int lead = -1, no = 0;
+				bool multi = false, anyday = false, grel = false, grelc = false;
 				IZone z0 = null;
-				string txt = hi ? "REH" : "REL";
 				for (int k = 0; k < n; k++)
 				{
 					if (cid[k] != c)
 						continue;
-					nm += 1;
 					if (z0 == null)
 						z0 = zs[k];
 					else if (zs[k] != z0)
 						multi = true;
+					if (org[k] == k)
+						no += 1;
 					if (lead < 0 || (hi ? v[k] > v[lead] : v[k] < v[lead]))
 						lead = k;
-					txt += (nm == 1 ? " " : " + ") + ZName(zs[k], hi) + (isb[k] ? " body" : "");
+					anyday = anyday || zs[k].isday;
+					if (!isb[k])
+					{
+						grel = grel || (hi ? zs[k].hrel : zs[k].lrel);
+						grelc = grelc || (hi ? zs[k].hrelc : zs[k].lrelc);
+					}
 				}
 				if (!multi)
 					continue;
+				// names of each origin joined with " / ", origins with " + "
+				string parts = "";
+				for (int o = 0; o < n; o++)
+				{
+					if (cid[o] != c || org[o] != o)
+						continue;
+					string nms = "";
+					for (int k = 0; k < n; k++)
+						if (cid[k] == c && org[k] == o)
+							nms += (nms.Length == 0 ? "" : " / ") + ZName(zs[k], hi);
+					parts += (parts.Length == 0 ? "" : " + ") + nms + (isb[o] ? " body" : "");
+				}
+				bool rel = no > 1;
+				string txt;
+				if (rel)
+					txt = (hi ? "REH " : "REL ") + parts;
+				else if (isb[lead])
+					txt = parts + (hi ? " hi" : " lo");
+				else
+				{
+					string pfx = grel ? (hi ? "REH " : "REL ") : grelc ? (hi ? "reh " : "rel ") : "";
+					txt = pfx + parts + (pfx.Length > 0 ? "" : anyday ? (hi ? " high" : " low") : (hi ? " hi" : " lo"));
+				}
 				for (int k = 0; k < n; k++)
 				{
 					if (cid[k] != c)
@@ -1478,11 +1563,11 @@ namespace NinjaTrader.NinjaScript.Indicators
 					string t = k == lead ? txt : "";
 					if (isb[k])
 					{
-						if (hi) { z.bhx = true; z.bhxt = t; }
-						else { z.blx = true; z.blxt = t; }
+						if (hi) { z.bhx = rel; z.bhc = !rel; z.bhxt = t; }
+						else { z.blx = rel; z.blc = !rel; z.blxt = t; }
 					}
-					else if (hi) { z.hx = true; z.hxt = t; }
-					else { z.lx = true; z.lxt = t; }
+					else if (hi) { z.hx = rel; z.hc = !rel; z.hcg = rel ? -1 : c; z.hxt = t; }
+					else { z.lx = rel; z.lc = !rel; z.lcg = rel ? -1 : c; z.lxt = t; }
 				}
 			}
 		}

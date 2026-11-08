@@ -11,7 +11,7 @@
  *   It draws levels only: no signals, no alerts, no plots.
  *
  *   It is a port of the TradingView Pine Script v6 indicator ICTlevels.txt
- *   (md5 7c12c385240acc3946aee79303debe8d). Parameter names are the Pine variable names and the
+ *   (md5 248ebaf1d2d800845b7636dc116c5eb9). Parameter names are the Pine variable names and the
  *   defaults are the Pine defaults; see "doc/ICTlevels-user-manual.md" for what every level means.
  *
  * How to install
@@ -1147,7 +1147,9 @@ class ICTlevels {
             // day / session level and the text of that combined label ("" when another level shows it)
             bhi: null, bht: null, blo: null, blt: null, bhtk: false, bltk: false, hbk: null, lbk: null,
             hsw: 0, lsw: 0, hrel: false, lrel: false, hrelc: false, lrelc: false,
-            hx: false, lx: false, bhx: false, blx: false, hxt: "", lxt: "", bhxt: "", blxt: ""
+            hx: false, lx: false, bhx: false, blx: false, hxt: "", lxt: "", bhxt: "", blxt: "",
+            // the same level as the high / low (body level) of other zones: one level, not a REH / REL, and its group
+            hc: false, lc: false, bhc: false, blc: false, hcg: -1, lcg: -1
         };
     }
 
@@ -1356,6 +1358,12 @@ class ICTlevels {
             z.lx = false;
             z.bhx = false;
             z.blx = false;
+            z.hc = false;
+            z.lc = false;
+            z.bhc = false;
+            z.blc = false;
+            z.hcg = -1;
+            z.lcg = -1;
         }
         const xtol = Math.max(2 * C.tick, 0.1 * nz(S.bk.rng, 0));
         this.xMark(true, xtol);
@@ -1374,6 +1382,23 @@ class ICTlevels {
             }
         }
         const lastDay = S.days.length > 0 ? S.days[S.days.length - 1] : null;
+        // [LVL] a high / low shared with other zones takes the most important rank of them
+        const grk = new Map();
+        for (const z of S.zones.concat(S.days)) {
+            const bo = bodyOn.get(z);
+            for (const hi of [true, false]) {
+                const g = hi ? z.hcg : z.lcg;
+                if (g >= 0 && bo && z.drawmaxmin) {
+                    const k = (hi ? "h" : "l") + g;
+                    const rk = this.zSide(z, hi, hi ? bo.h : bo.l, "tiny").rk;
+                    grk.set(k, grk.has(k) ? Math.min(grk.get(k), rk) : rk);
+                }
+            }
+        }
+        const frkOf = (z, hi) => {
+            const g = hi ? z.hcg : z.lcg;
+            return g >= 0 && grk.has((hi ? "h" : "l") + g) ? grk.get((hi ? "h" : "l") + g) : -1;
+        };
 
         // ---- zones
         const drawZone = z => {
@@ -1398,8 +1423,10 @@ class ICTlevels {
                 const lsz0 = z.isday ? P.dlblsize : P.slblsize;
                 // [LVL] days and sessions: style by importance (zSide), with their body levels
                 const bo = bodyOn.get(z);
-                const hs = bo ? this.zSide(z, true, bo.h, lsz0) : { col: maxsty.col, sty: maxsty.sty, wid: maxsty.wid, sz: lsz0 };
-                const ls = bo ? this.zSide(z, false, bo.l, lsz0) : { col: minsty.col, sty: minsty.sty, wid: minsty.wid, sz: lsz0 };
+                const hs = bo ? this.zSide(z, true, bo.h, lsz0, frkOf(z, true))
+                    : { col: maxsty.col, sty: maxsty.sty, wid: maxsty.wid, sz: lsz0 };
+                const ls = bo ? this.zSide(z, false, bo.l, lsz0, frkOf(z, false))
+                    : { col: minsty.col, sty: minsty.sty, wid: minsty.wid, sz: lsz0 };
                 G.line(z.hit, hx, z.hi, hs.col, hs.sty, hs.wid);
                 G.line(z.lot, lx, z.lo, ls.col, ls.sty, ls.wid);
                 if (bo && bo.h) {
@@ -1413,24 +1440,24 @@ class ICTlevels {
                     const hb = zName(z, true), lb0 = zName(z, false);
                     let hn = z.hrel ? "REH " + hb : z.hrelc ? "reh " + hb : hb + (z.isday ? " high" : " hi");
                     let ln = z.lrel ? "REL " + lb0 : z.lrelc ? "rel " + lb0 : lb0 + (z.isday ? " low" : " lo");
-                    if (z.hx) {
+                    if (z.hx || z.hc) {
                         hn = z.hxt;
                     }
-                    if (z.lx) {
+                    if (z.lx || z.lc) {
                         ln = z.lxt;
                     }
                     if (z.isday) {
-                        if (z.hmode === 1 && !z.hx) {
+                        if (z.hmode === 1 && !(z.hx || z.hc)) {
                             hn = "day REHs";
                         }
-                        if (z.lmode === 1 && !z.lx) {
+                        if (z.lmode === 1 && !(z.lx || z.lc)) {
                             ln = "day RELs";
                         }
                     }
-                    if (z.hidonet === null && (z.hmode !== 2 || z.hx)) {
+                    if (z.hidonet === null && (z.hmode !== 2 || z.hx || z.hc)) {
                         G.text(re, z.hi, hn, hs.col, fs(hs.sz));
                     }
-                    if (z.lodonet === null && (z.lmode !== 2 || z.lx)) {
+                    if (z.lodonet === null && (z.lmode !== 2 || z.lx || z.lc)) {
                         G.text(re, z.lo, ln, ls.col, fs(ls.sz));
                     }
                 }
@@ -1625,7 +1652,8 @@ class ICTlevels {
     // (REH / REL) 0 (important: line 1 wider, label 1 size up; 2 and 2 for a REH / REL), not known yet 1, not a
     // swing 1 (sessions) or 2 (days); a taken one is 1. A body level drawn below (above) it takes the importance:
     // the high (low) is dotted meanwhile.
-    zSide(z, hi, bodyShown, sz0) {
+    // frk: rank to use instead (the most important one of a level shared with other zones), -1 none
+    zSide(z, hi, bodyShown, sz0, frk = -1) {
         const P = this.P;
         const isrel = hi ? z.hrel || z.hrelc || z.hx : z.lrel || z.lrelc || z.lx;
         const sw = hi ? z.hsw : z.lsw;
@@ -1633,6 +1661,9 @@ class ICTlevels {
         let rk = taken ? 1 : sw > 0 || isrel ? 0 : sw === 0 ? 1 : z.isday ? 2 : 1;
         if (bodyShown) {
             rk = Math.max(rk, 1);
+        }
+        if (frk >= 0) {
+            rk = frk;
         }
         const c0 = z.isday ? (hi ? P.daymmaxcol : P.daymmincol) : (hi ? P.sesmmaxcol : P.sesmmincol);
         const w0 = z.isday ? P.daymwid : P.sesmwid;
@@ -1642,7 +1673,8 @@ class ICTlevels {
             col: attL(P, c0, rk),
             sty: bodyShown ? "dotted" : sty0,
             wid: rk === 0 ? Math.min(4, attW(P, w0, 0) + (rel ? 2 : 1)) : attW(P, w0, rk),
-            sz: rk === 0 ? (rel ? sizeUp(sizeUp(sz0)) : sizeUp(sz0)) : sz0
+            sz: rk === 0 ? (rel ? sizeUp(sizeUp(sz0)) : sizeUp(sz0)) : sz0,
+            rk
         };
     }
 
@@ -1656,16 +1688,19 @@ class ICTlevels {
         const w = Math.min(4, attW(P, 2, 0) + (bx ? 1 : 0));
         let bsz = sizeUp(z.isday ? P.dlblsize : P.slblsize);
         bsz = bx ? sizeUp(bsz) : bsz;
-        const txt = bx ? (hi ? z.bhxt : z.blxt) : (z.isday ? "day" : z.name) + (hi ? " body hi" : " body lo");
+        const bc = hi ? z.bhc : z.blc;
+        const txt = bx || bc ? (hi ? z.bhxt : z.blxt) : (z.isday ? "day" : z.name) + (hi ? " body hi" : " body lo");
         G.line(hi ? z.bht : z.blt, x, p, c, "solid", w);
         G.text(x, p, txt, c, FONT[bsz] || 12);
     }
 
     // untaken highs (lows) of days and sessions, and their body levels, within tol of another one are REHs
-    // (RELs): hx / lx, bhx / blx; the outermost level of a group carries the combined label, the others none
+    // (RELs): hx / lx, bhx / blx; the outermost level of a group carries the combined label, the others none.
+    // Levels of different zones from the same candle at the same price (the Asia low that is also the week low)
+    // are one level, not a REH / REL by themselves: hc / lc, bhc / blc, one label "Asia / week low".
     xMark(hi, tol) {
         const S = this.S;
-        const v = [], zs = [], isb = [], ids = [];
+        const v = [], zs = [], isb = [], ids = [], ot = [];
         for (const arr of [S.zones, S.days]) {
             for (const z of arr) {
                 const id = z.tstart * 2 + (z.isday ? 1 : 0);
@@ -1674,12 +1709,14 @@ class ICTlevels {
                     zs.push(z);
                     isb.push(false);
                     ids.push(id);
+                    ot.push(hi ? z.hit : z.lot);
                 }
                 if (this.bodyOk(z, hi)) {
                     v.push(hi ? z.bhi : z.blo);
                     zs.push(z);
                     isb.push(true);
                     ids.push(id);
+                    ot.push(hi ? z.bht : z.blt);
                 }
             }
         }
@@ -1703,44 +1740,93 @@ class ICTlevels {
                 }
             }
         }
-        for (let c = 0; c < n; c++) {
-            let lead = -1, nm = 0, multi = false, id0 = null;
-            let txt = hi ? "REH" : "REL";
-            for (let k = 0; k < n; k++) {
-                if (cid[k] === c) {
-                    nm += 1;
-                    if (id0 === null) {
-                        id0 = ids[k];
-                    } else if (ids[k] !== id0) {
-                        multi = true;
-                    }
-                    if (lead < 0 || (hi ? v[k] > v[lead] : v[k] < v[lead])) {
-                        lead = k;
-                    }
-                    txt += (nm === 1 ? " " : " + ") + zName(zs[k], hi) + (isb[k] ? " body" : "");
+        // origin of each level: the first one of its group from the same candle at the same price
+        const org = [];
+        for (let k = 0; k < n; k++) {
+            let o = k;
+            for (let j = 0; j < k && o === k; j++) {
+                if (cid[j] === cid[k] && isb[j] === isb[k] && ot[j] === ot[k] && v[j] === v[k]) {
+                    o = j;
                 }
             }
-            if (multi) {
-                for (let k = 0; k < n; k++) {
-                    if (cid[k] === c) {
-                        const z = zs[k];
-                        const t = k === lead ? txt : "";
-                        if (isb[k]) {
-                            if (hi) {
-                                z.bhx = true;
-                                z.bhxt = t;
-                            } else {
-                                z.blx = true;
-                                z.blxt = t;
-                            }
-                        } else if (hi) {
-                            z.hx = true;
-                            z.hxt = t;
-                        } else {
-                            z.lx = true;
-                            z.lxt = t;
+            org.push(o);
+        }
+        for (let c = 0; c < n; c++) {
+            let lead = -1, multi = false, id0 = null, no = 0, anyday = false, grel = false, grelc = false;
+            for (let k = 0; k < n; k++) {
+                if (cid[k] !== c) {
+                    continue;
+                }
+                if (id0 === null) {
+                    id0 = ids[k];
+                } else if (ids[k] !== id0) {
+                    multi = true;
+                }
+                if (org[k] === k) {
+                    no += 1;
+                }
+                if (lead < 0 || (hi ? v[k] > v[lead] : v[k] < v[lead])) {
+                    lead = k;
+                }
+                const zk = zs[k];
+                anyday = anyday || zk.isday;
+                if (!isb[k]) {
+                    grel = grel || (hi ? zk.hrel : zk.lrel);
+                    grelc = grelc || (hi ? zk.hrelc : zk.lrelc);
+                }
+            }
+            if (!multi) {
+                continue;
+            }
+            // names of each origin joined with " / ", origins with " + "
+            let parts = "";
+            for (let o = 0; o < n; o++) {
+                if (cid[o] === c && org[o] === o) {
+                    let nms = "";
+                    for (let k = 0; k < n; k++) {
+                        if (cid[k] === c && org[k] === o) {
+                            nms += (nms === "" ? "" : " / ") + zName(zs[k], hi);
                         }
                     }
+                    parts += (parts === "" ? "" : " + ") + nms + (isb[o] ? " body" : "");
+                }
+            }
+            const rel = no > 1;
+            let txt;
+            if (rel) {
+                txt = (hi ? "REH " : "REL ") + parts;
+            } else if (isb[lead]) {
+                txt = parts + (hi ? " hi" : " lo");
+            } else {
+                const pfx = grel ? (hi ? "REH " : "REL ") : grelc ? (hi ? "reh " : "rel ") : "";
+                txt = pfx + parts + (pfx !== "" ? "" : anyday ? (hi ? " high" : " low") : (hi ? " hi" : " lo"));
+            }
+            for (let k = 0; k < n; k++) {
+                if (cid[k] !== c) {
+                    continue;
+                }
+                const z = zs[k];
+                const t = k === lead ? txt : "";
+                if (isb[k]) {
+                    if (hi) {
+                        z.bhx = rel;
+                        z.bhc = !rel;
+                        z.bhxt = t;
+                    } else {
+                        z.blx = rel;
+                        z.blc = !rel;
+                        z.blxt = t;
+                    }
+                } else if (hi) {
+                    z.hx = rel;
+                    z.hc = !rel;
+                    z.hcg = rel ? -1 : c;
+                    z.hxt = t;
+                } else {
+                    z.lx = rel;
+                    z.lc = !rel;
+                    z.lcg = rel ? -1 : c;
+                    z.lxt = t;
                 }
             }
         }

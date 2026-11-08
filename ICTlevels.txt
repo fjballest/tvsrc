@@ -457,6 +457,14 @@ type Zone
     bool lx = false
     bool bhx = false
     bool blx = false
+    bool hc = false     // [LVL] the same level as the high / low (body level) of other zones (Asia low is the week low):
+    bool lc = false     // one level, not a REH / REL; combined label text in hxt / lxt / bhxt / blxt
+    bool bhc = false
+    bool blc = false
+    int hcg = -1        // [LVL] group of such a high / low (the most important rank applies to all of it)
+    int lcg = -1
+    int hrk = 1         // [LVL] rank of the high / low from zSide
+    int lrk = 1
     string hxt = ""     // [LVL] label text of a REH / REL between levels: the combined label, or "" (shown by another)
     string lxt = ""
     string bhxt = ""
@@ -954,18 +962,18 @@ method refresh(Zone z) =>
             string lb0 = z.zName(false)
             string hn = z.hrel ? "REH " + hb : z.hrelc ? "reh " + hb : hb + (z.isday ? " high" : " hi")
             string ln = z.lrel ? "REL " + lb0 : z.lrelc ? "rel " + lb0 : lb0 + (z.isday ? " low" : " lo")
-            if z.hx
+            if z.hx or z.hc
                 hn := z.hxt
-            if z.lx
+            if z.lx or z.lc
                 ln := z.lxt
             if z.isday
-                if z.hmode == 1 and not z.hx
+                if z.hmode == 1 and not (z.hx or z.hc)
                     hn := "day REHs"
-                if z.lmode == 1 and not z.lx
+                if z.lmode == 1 and not (z.lx or z.lc)
                     ln := "day RELs"
-            z.maxlbl := tinyLbl(z.maxlbl, na(z.hidonet) and (z.hmode != 2 or z.hx), re, z.hi, hn,
+            z.maxlbl := tinyLbl(z.maxlbl, na(z.hidonet) and (z.hmode != 2 or z.hx or z.hc), re, z.hi, hn,
                  z.maxsty.col, lsz)
-            z.minlbl := tinyLbl(z.minlbl, na(z.lodonet) and (z.lmode != 2 or z.lx), re, z.lo, ln,
+            z.minlbl := tinyLbl(z.minlbl, na(z.lodonet) and (z.lmode != 2 or z.lx or z.lc), re, z.lo, ln,
                  z.minsty.col, lsz)
     if z.isday and doeq
         float eq = math.avg(z.hi, z.lo)
@@ -2024,7 +2032,8 @@ combinePo3(RTHOG g, Zone z, float tol) =>
 lvlRank(Zone z, int sw, bool rel, bool taken) =>
     taken ? 1 : sw > 0 or rel ? 0 : sw == 0 ? 1 : z.isday ? 2 : 1
 
-method zSide(Zone z, bool hi) =>
+// frk: rank to use instead (the most important one of a level shared with other zones)
+method zSide(Zone z, bool hi, int frk = -1) =>
     line ln = hi ? z.maxln : z.minln
     label lb = hi ? z.maxlbl : z.minlbl
     bool isrel = hi ? z.hrel or z.hrelc or z.hx : z.lrel or z.lrelc or z.lx
@@ -2033,6 +2042,12 @@ method zSide(Zone z, bool hi) =>
     bool bodyOn = not na(hi ? z.bhln : z.blln)
     if bodyOn
         rk := math.max(rk, 1)
+    if frk >= 0
+        rk := frk
+    if hi
+        z.hrk := rk
+    else
+        z.lrk := rk
     color c0 = z.isday ? (hi ? daymmaxcol : daymmincol) : (hi ? sesmmaxcol : sesmmincol)
     int w0 = z.isday ? daymwid : sesmwid
     string sz0 = z.isday ? dlblsz : slblsz
@@ -2055,8 +2070,9 @@ method bodyOk(Zone z, bool hi) =>
          : z.drawmaxmin and na(z.lodonet) and z.blo > z.lo and not z.bltk
 
 // [LVL] untaken highs (lows) of days and sessions, and their body levels, that are within tol of another one are
-// REHs (RELs): hx / lx, bhx / blx
-xCollect(array<Zone> arr, array<float> v, array<Zone> zs, array<bool> isb, array<int> ids, bool hi) =>
+// REHs (RELs): hx / lx, bhx / blx. Levels of different zones from the same candle (the Asia low that is also the
+// week low) are one level: not a REH / REL by themselves (hc / lc, bhc / blc, one label "Asia / week low").
+xCollect(array<Zone> arr, array<float> v, array<Zone> zs, array<bool> isb, array<int> ids, array<int> ot, bool hi) =>
     for z in arr
         int id = z.tstart * 2 + (z.isday ? 1 : 0)
         if z.drawmaxmin and na(hi ? z.hidonet : z.lodonet)
@@ -2064,11 +2080,13 @@ xCollect(array<Zone> arr, array<float> v, array<Zone> zs, array<bool> isb, array
             zs.push(z)
             isb.push(false)
             ids.push(id)
+            ot.push(hi ? z.hit : z.lot)
         if dobody and z.bodyOk(hi)
             v.push(hi ? z.bhi : z.blo)
             zs.push(z)
             isb.push(true)
             ids.push(id)
+            ot.push(hi ? z.bht : z.blt)
     true
 
 xMark(bool hi, float tol) =>
@@ -2076,8 +2094,9 @@ xMark(bool hi, float tol) =>
     array<Zone> zs = array.new<Zone>()
     array<bool> isb = array.new<bool>()
     array<int> ids = array.new<int>()
-    xCollect(zones, v, zs, isb, ids, hi)
-    xCollect(days, v, zs, isb, ids, hi)
+    array<int> ot = array.new<int>()    // time of the candle of the level: same time and price, same level
+    xCollect(zones, v, zs, isb, ids, ot, hi)
+    xCollect(days, v, zs, isb, ids, ot, hi)
     int n = v.size()
     if n > 1
         // groups of levels within tol of each other (chains join); a group with two zones or more is a REH / REL
@@ -2092,42 +2111,81 @@ xMark(bool hi, float tol) =>
                     for k = 0 to n - 1
                         if cid.get(k) == from
                             cid.set(k, xto)
+        // origin of each level: the first one of its group from the same candle at the same price
+        array<int> org = array.new<int>()
+        for k = 0 to n - 1
+            int o = k
+            for j = 0 to k
+                if j < k and o == k and cid.get(j) == cid.get(k) and isb.get(j) == isb.get(k) and ot.get(j) == ot.get(k)
+                     and v.get(j) == v.get(k)
+                    o := j
+            org.push(o)
         for c = 0 to n - 1
             // members of group c: the outermost one (highest high, lowest low) carries the combined label
             int lead = -1
-            int nm = 0
             bool multi = false
             int id0 = na
-            string txt = hi ? "REH" : "REL"
+            int no = 0
+            bool anyday = false
+            bool grel = false
+            bool grelc = false
             for k = 0 to n - 1
                 if cid.get(k) == c
-                    nm += 1
                     if na(id0)
                         id0 := ids.get(k)
                     else if ids.get(k) != id0
                         multi := true
+                    if org.get(k) == k
+                        no += 1
                     if lead < 0 or (hi ? v.get(k) > v.get(lead) : v.get(k) < v.get(lead))
                         lead := k
                     Zone zk = zs.get(k)
-                    txt += (nm == 1 ? " " : " + ") + zk.zName(hi) + (isb.get(k) ? " body" : "")
+                    anyday := anyday or zk.isday
+                    if not isb.get(k)
+                        grel := grel or (hi ? zk.hrel : zk.lrel)
+                        grelc := grelc or (hi ? zk.hrelc : zk.lrelc)
             if multi
+                // names of each origin joined with " / ", origins with " + "
+                string parts = ""
+                for o = 0 to n - 1
+                    if cid.get(o) == c and org.get(o) == o
+                        string nms = ""
+                        for k = 0 to n - 1
+                            if cid.get(k) == c and org.get(k) == o
+                                nms += (nms == "" ? "" : " / ") + zs.get(k).zName(hi)
+                        parts += (parts == "" ? "" : " + ") + nms + (isb.get(o) ? " body" : "")
+                bool rel = no > 1
+                string txt = ""
+                if rel
+                    txt := (hi ? "REH " : "REL ") + parts
+                else if isb.get(lead)
+                    txt := parts + (hi ? " hi" : " lo")
+                else
+                    string pfx = grel ? (hi ? "REH " : "REL ") : grelc ? (hi ? "reh " : "rel ") : ""
+                    txt := pfx + parts + (pfx != "" ? "" : anyday ? (hi ? " high" : " low") : (hi ? " hi" : " lo"))
                 for k = 0 to n - 1
                     if cid.get(k) == c
                         Zone z = zs.get(k)
                         string t = k == lead ? txt : ""
                         if isb.get(k)
                             if hi
-                                z.bhx := true
+                                z.bhx := rel
+                                z.bhc := not rel
                                 z.bhxt := t
                             else
-                                z.blx := true
+                                z.blx := rel
+                                z.blc := not rel
                                 z.blxt := t
                         else
                             if hi
-                                z.hx := true
+                                z.hx := rel
+                                z.hc := not rel
+                                z.hcg := rel ? -1 : c
                                 z.hxt := t
                             else
-                                z.lx := true
+                                z.lx := rel
+                                z.lc := not rel
+                                z.lcg := rel ? -1 : c
                                 z.lxt := t
     true
 
@@ -2137,6 +2195,35 @@ xReset(array<Zone> arr) =>
         z.lx := false
         z.bhx := false
         z.blx := false
+        z.hc := false
+        z.lc := false
+        z.bhc := false
+        z.blc := false
+        z.hcg := -1
+        z.lcg := -1
+    true
+
+// [LVL] a high / low shared with other zones takes the most important rank of them: best rank per group (map),
+// then restyle
+xBest(array<Zone> arr, map<int, int> m, bool hi) =>
+    for z in arr
+        int g = hi ? z.hcg : z.lcg
+        if g >= 0
+            int rk = hi ? z.hrk : z.lrk
+            m.put(g, m.contains(g) ? math.min(m.get(g), rk) : rk)
+    true
+xApply(array<Zone> arr, map<int, int> m, bool hi) =>
+    for z in arr
+        int g = hi ? z.hcg : z.lcg
+        if g >= 0 and m.contains(g) and z.drawmaxmin
+            z.zSide(hi, m.get(g))
+    true
+xRank(bool hi) =>
+    map<int, int> m = map.new<int, int>()
+    xBest(zones, m, hi)
+    xBest(days, m, hi)
+    xApply(zones, m, hi)
+    xApply(days, m, hi)
     true
 
 // body level of side hi of z (want: draw it), returns whether it is drawn
@@ -2152,7 +2239,8 @@ method zBody(Zone z, bool hi, bool want) =>
         int w = math.min(4, attW(2, 0) + (bx ? 1 : 0))
         string bsz = sizeUp(z.isday ? dlblsz : slblsz)
         bsz := bx ? sizeUp(bsz) : bsz
-        string txt = bx ? (hi ? z.bhxt : z.blxt) : (z.isday ? "day" : z.name) + (hi ? " body hi" : " body lo")
+        bool bc = hi ? z.bhc : z.blc
+        string txt = bx or bc ? (hi ? z.bhxt : z.blxt) : (z.isday ? "day" : z.name) + (hi ? " body hi" : " body lo")
         if na(ln)
             ln := line.new(hi ? z.bht : z.blt, p, x, p, xloc = xloc.bar_time, color = c, style = line.style_solid,
                  width = w)
@@ -2237,6 +2325,8 @@ if finalBar and tfok
     // [LVL] day / session highs and lows by importance, and the body levels
     [nbh, nbl] = zLevels(zones, 0, 0)
     [nbh2, nbl2] = zLevels(days, nbh, nbl)
+    xRank(true)
+    xRank(false)
     if preOn
         int npm = premarkets.size()
         for [i, z] in premarkets
