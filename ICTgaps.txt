@@ -695,7 +695,7 @@ bkFlat(int i, int j, bool hi) =>
 // a high (low) is a swing when the candles before and after it have lower highs (higher lows); decided when the
 // candle after it completes (a new candle starts two candles after the one of the high)
 // Same time: the high (low) is flat (REH / REL) with the candle before or after it. The body level is the highest
-// (lowest) body around the high (low): its candle and one (days) or two (sessions) candles before and after it,
+// (lowest) body around the high (low): its candle and two candles before and after it,
 // decided when the last of those completes.
 method swTest(Zone z) =>
     int n = bkH.size()
@@ -705,7 +705,7 @@ method swTest(Zone z) =>
     if z.lsw == 0 and z.lbk == bkN - 2
         z.lsw := n >= 4 and bkL.get(n - 4) > z.lo and bkL.get(n - 2) > z.lo ? 1 : -1
         z.lrel := n >= 4 and (bkFlat(n - 4, n - 3, false) or bkFlat(n - 3, n - 2, false))
-    int k = z.isday ? 1 : 2
+    int k = 2
     if z.hbk == bkN - 1 - k and n >= 2
         z.bhi := na
         z.bhtk := false
