@@ -34,22 +34,22 @@ type Sty
 // ============================================================ inputs
 const string G_EN = "Enable / Filter"
 bool domonth = input.bool(true, "Month max/min/close (last 3 months)", group = G_EN)
-bool dotgif = input.bool(true, "TGIF levels", group = G_EN,
+bool dotgif = input.bool(true, "TGIF levels", group = G_EN, inline = "en1",
      tooltip = "ICT TGIF: when the week candle made a displacement and has not formed its final wick yet, "
      + "a retracement of 20% - 30% of the week range is expected on Friday, or on Monday when it did not "
      + "happen on Friday. The levels are drawn only on those days and only while that applies: from the "
      + "week high down (bullish week, red) or from the week low up (bearish week, green).")
-bool doses = input.bool(true, "Sessions", group = G_EN,
+bool doses = input.bool(true, "Sessions", group = G_EN, inline = "en1",
      tooltip = "draw Asia, London, NY AM, NY PM sessions and max/min values")
-bool dogaps = false
-bool dondog = true
-bool donwog = true
-bool dorthog = true
-bool dopremarket = false
-bool doeqhl = input.bool(true, "EQH / EQL", group = G_EN,
+bool doeqhl = input.bool(true, "EQH / EQL", group = G_EN, inline = "en1",
      tooltip = "Two or more swing highs (lows) within the tolerance "
      + "form an EQH (EQL). The level is removed once price " + "trades through it. It is labeled eqH "
      + "(eqL) when the later swing is higher (lower) than the earlier one, else EQH (EQL).")
+bool dondog = false
+bool donwog = false
+bool dorthog = false
+bool dogaps = dondog or donwog or dorthog // some opening gap kind is on
+bool dopremarket = false
 
 const string G_LOCATION = "Time & Settings"
 string TZ = input.string("Auto", "Zone: US / EU / Auto", options = ["Auto", "US", "EU"],

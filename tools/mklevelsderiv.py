@@ -19,7 +19,7 @@ GAPS = re.compile(r"^(dogaps|ngaps|dondog|donwog|dorthog\w*|rthog\w*|dogrect|grt
                   r"gaplnsty|gapwid|gapcolor|wgap\w*|rgap\w*|lrgapcolor|extendgaps|"
                   r"dopremarket|pm\w*|dopmq|dopmpo3)$")
 # feature switches of the other derivative's features
-GAPS_OFF = ["dogaps", "dopremarket"]
+GAPS_OFF = ["dondog", "donwog", "dorthog", "dopremarket"]
 # (dosmaxmin / doseslbl stay at their defaults in ICTgaps: they also draw the premarket high / low and labels,
 # with the session line styles and keep count; sessions themselves are off with doses)
 DAY_OFF = ["domonth", "dolines", "dodmaxmin", "dodaylbl", "doreh", "doeq", "doopen", "dotgif", "doses",

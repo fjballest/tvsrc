@@ -11,7 +11,7 @@
  *   It draws levels only: no signals, no alerts, no plots.
  *
  *   It is a port of the TradingView Pine Script v6 indicator ICTlevels.txt
- *   (md5 103b6b3895d4080bb9b524689ffca7a4). Parameter names are the Pine variable names and the
+ *   (md5 23e47e0f513a483be1a7e89271b805a8). Parameter names are the Pine variable names and the
  *   defaults are the Pine defaults; see "doc/ICTlevels-user-manual.md" for what every level means.
  *
  * How to install
@@ -71,7 +71,6 @@ const PARAMS = {
     domonth: ps.bool(true),
     dotgif: ps.bool(true),
     doses: ps.bool(true),
-    dogaps: ps.bool(true),
     dondog: ps.bool(true),
     donwog: ps.bool(true),
     dorthog: ps.bool(true),
@@ -814,7 +813,7 @@ class ICTlevels {
         }
 
         // ---------------- NDOG / NWOG
-        if (P.dogaps && tfok && pv) {
+        if ((P.dondog || P.donwog || P.dorthog) && tfok && pv) {
             const gapOpenBar = tsec === C.gapStartSec;
             const gapCloseBar = (tsec + tfsecs) % DAY === C.gapStartSec;
             const gapEndBar = tsec === C.gapEndSec;
@@ -849,7 +848,7 @@ class ICTlevels {
         const dOpen = (C.market.ss - tsec + DAY) % DAY;
         const rthStarting = dOpen < tfsecs + 900;
         const rthOpenBar = dOpen < tfsecs;
-        const rthOk = P.dogaps && P.dorthog && tfsecs <= 900 && pv && dow !== SUN;
+        const rthOk = (P.dondog || P.donwog || P.dorthog) && P.dorthog && tfsecs <= 900 && pv && dow !== SUN;
         if (rthOk) {
             const R = S.rthogs;
             if (mktClose) {

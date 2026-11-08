@@ -52,25 +52,24 @@ type Sty
 // ============================================================ inputs
 const string G_EN = "Enable / Filter"
 bool domonth = input.bool(true, "Month max/min/close (last 3 months)", group = G_EN)
-bool dotgif = input.bool(true, "TGIF levels", group = G_EN,
+bool dotgif = input.bool(true, "TGIF levels", group = G_EN, inline = "en1",
      tooltip = "ICT TGIF: when the week candle made a displacement and has not formed its final wick yet, "
      + "a retracement of 20% - 30% of the week range is expected on Friday, or on Monday when it did not "
      + "happen on Friday. The levels are drawn only on those days and only while that applies: from the "
      + "week high down (bullish week, red) or from the week low up (bearish week, green).")
-bool doses = input.bool(true, "Sessions", group = G_EN,
+bool doses = input.bool(true, "Sessions", group = G_EN, inline = "en1",
      tooltip = "draw Asia, London, NY AM, NY PM sessions and max/min values")
-bool dogaps = input.bool(true, "NDOG/NWOG/RTHOGs", group = G_EN,
-     tooltip = "new day/week opening gaps and regular trading hours opening gaps")
-bool dondog = input.bool(true, "NDOGs", group = G_EN, inline = "xdog")
-bool donwog = input.bool(true, "NWOGs", group = G_EN, inline = "xdog")
-bool dorthog = input.bool(true, "RTHOGs (up to 15m)", group = G_EN, inline = "xdog")
-bool dopremarket = input.bool(true, "PMKT range (m5 or less)", group = G_EN,
-     tooltip = "High and low of the premarket range, with its quadrants and "
-     + "stddevs. Needs a chart timeframe of 5m or lower.")
-bool doeqhl = input.bool(true, "EQH / EQL", group = G_EN,
+bool doeqhl = input.bool(true, "EQH / EQL", group = G_EN, inline = "en1",
      tooltip = "Two or more swing highs (lows) within the tolerance "
      + "form an EQH (EQL). The level is removed once price " + "trades through it. It is labeled eqH "
      + "(eqL) when the later swing is higher (lower) than the earlier one, else EQH (EQL).")
+bool dondog = input.bool(true, "NDOGs", group = G_EN, inline = "xdog")
+bool donwog = input.bool(true, "NWOGs", group = G_EN, inline = "xdog")
+bool dorthog = input.bool(true, "RTHOGs (up to 15m)", group = G_EN, inline = "xdog")
+bool dogaps = dondog or donwog or dorthog // some opening gap kind is on
+bool dopremarket = input.bool(true, "PMKT range (m5 or less)", group = G_EN,
+     tooltip = "High and low of the premarket range, with its quadrants and "
+     + "stddevs. Needs a chart timeframe of 5m or lower.")
 
 const string G_LOCATION = "Time & Settings"
 string TZ = input.string("Auto", "Zone: US / EU / Auto", options = ["Auto", "US", "EU"],

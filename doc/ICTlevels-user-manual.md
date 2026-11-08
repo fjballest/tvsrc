@@ -311,19 +311,18 @@ Settings are listed in the order they appear in the settings dialog. Several set
 
 ### 5.1 Enable / Filter
 
-The first group: one switch per feature, so you can turn features on and off without opening their own groups.
+The first group: one switch per feature, so you can turn features on and off without opening their own groups. TGIF levels, Sessions and EQH / EQL share a row, and so do NDOGs, NWOGs and RTHOGs; there is no master switch for the gaps, turn the three off to hide them all.
 
 | Label in dialog | Default | What it does |
 | --- | --- | --- |
 | Month max/min/close (last 3 months) | on | Draws the high, low and close of the last three completed months. |
 | TGIF levels | on | Draws the TGIF levels on Friday, or on Monday, while they apply. |
 | Sessions | on | Draws the Asia, London, NY AM and NY PM sessions and their high and low. |
-| NDOG/NWOG/RTHOGs | on | Master switch for all opening gaps. |
+| EQH / EQL | on | Draws untaken equal highs and lows of the chart timeframe. |
 | NDOGs | on | Draws new day opening gaps. |
 | NWOGs | on | Draws new week opening gaps. |
 | RTHOGs (up to 15m) | on | Draws regular trading hours opening gaps (15m or lower charts). |
 | PMKT range (m5 or less) | on | Draws the premarket range on 5m or lower charts. |
-| EQH / EQL | on | Draws untaken equal highs and lows of the chart timeframe. |
 
 ### 5.2 Time & Settings
 

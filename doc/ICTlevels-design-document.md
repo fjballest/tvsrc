@@ -61,7 +61,7 @@ Inputs are grouped by module, and related controls share a row with `inline`. Co
 
 | Group | Inputs and effect |
 | --- | --- |
-| Enable / Filter | The feature switches, first in the dialog: months (`domonth`), TGIF (`dotgif`), sessions (`doses`), gaps (`dogaps`, with `dondog` / `donwog` / `dorthog` on one row), premarket range (`dopremarket`) and EQH / EQL (`doeqhl`). Their groups below keep the other settings of each feature |
+| Enable / Filter | The feature switches, first in the dialog: months (`domonth`), TGIF (`dotgif`), sessions (`doses`) and EQH / EQL (`doeqhl`) on one row; NDOG / NWOG / RTHOG (`dondog` / `donwog` / `dorthog`) on another; premarket range (`dopremarket`). `dogaps` is no longer an input: it is `dondog or donwog or dorthog` (NinjaTrader `DoGaps` getter, Tradovate the same expression). Their groups below keep the other settings of each feature |
 | Time & Settings | Zone (Auto, US, EU); compute for historic data use (`visible`); offset for margin labels (`xoff`, bars between the last bar and the labels); show object cap warning (`showcap`) |
 | Month Settings | Colors for max, min and close; line style and width |
 | Day Settings | Number of days (`ndays`, capped by the object budget); day and week vertical lines; day max/min colors, style and width; label unbroken day max/min and its size; REH/REL labels with a tolerance in daily ATR; equilibrium line; day open (midnight open) line |
@@ -293,5 +293,5 @@ The design choices that keep it fast:
 `tools/mklevelsderiv.py` generates `ICTgaps.txt` ("ICTgaps") and `ICTday.txt` ("ICTday") from `ICTlevels.txt`; rerun it after every change to ICTlevels and never edit the outputs. Both keep the whole ICTlevels code: every feature is already gated by its switch, so a derivative only turns the inputs it does not show into constants (shared helper `derive()` of `tools/mkfvgderiv.py`).
 
 - ICTgaps shows Enable / Filter (gap and premarket switches only), Time & Settings, Gaps and Ranges and Premarket Range; the switches of the other features are constants off (`domonth`, `dolines`, `dodmaxmin`, `dodaylbl`, `doreh`, `doeq`, `doopen`, `dotgif`, `doses`, `dorect`, `doeqhl`, `doeqd`, `dozones`, `domacros`, `domacrobg`, `dosilver`). `dosmaxmin` / `doseslbl` keep their defaults (on) because the premarket zone uses them, with the session styles, `nses` and the day line style.
-- ICTday shows everything but Gaps and Ranges and Premarket Range; `dogaps` and `dopremarket` are constants off.
+- ICTday shows everything but Gaps and Ranges and Premarket Range; `dondog`, `donwog`, `dorthog` and `dopremarket` are constants off.
 

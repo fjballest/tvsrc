@@ -4,7 +4,7 @@
 // quadrants and standard deviations, premarket range, EQH/EQL, PO3 lines, TGIF levels, macros,
 // silver bullet and a session/macro status text. Draws levels only: no plots, no signals, no alerts.
 //
-// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 103b6b3895d4080bb9b524689ffca7a4),
+// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 23e47e0f513a483be1a7e89271b805a8),
 // © franjballest, Mozilla Public License 2.0 (https://mozilla.org/MPL/2.0/).
 //
 // Install:
@@ -321,7 +321,6 @@ namespace NinjaTrader.NinjaScript.Indicators
 				AsiaColor = PineRed;
 				LondonColor = PineGreen;
 				NYColor = PineBlue;
-				DoGaps = true;
 				NGaps = 10;
 				DoNdog = true;
 				DoNwog = true;
@@ -2638,9 +2637,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 			set { NYColor = Serialize.StringToBrush(value); }
 		}
 
-		[NinjaScriptProperty]
-		[Display(Name = "NDOG/NWOG/RTHOGs", GroupName = "Enable / Filter", Order = 4)]
-		public bool DoGaps { get; set; }
+		// some opening gap kind is on (no switch of its own)
+		private bool DoGaps { get { return DoNdog || DoNwog || DoRthog; } }
 
 		[NinjaScriptProperty]
 		[Range(1, 1000)]
@@ -2878,7 +2876,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 		public double PmCTol { get; set; }
 
 		[NinjaScriptProperty]
-		[Display(Name = "EQH / EQL", GroupName = "Enable / Filter", Order = 9)]
+		[Display(Name = "EQH / EQL", GroupName = "Enable / Filter", Order = 4)]
 		public bool DoEqhl { get; set; }
 
 		[NinjaScriptProperty]
