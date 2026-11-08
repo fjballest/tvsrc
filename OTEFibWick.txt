@@ -25,9 +25,9 @@ var wickdx = input.int(1, "bars",  inline = "wick", group=GW,
 var wswing = input.bool(true, "keep CEs of swing high/low wicks", group=GW,
      tooltip="older candles keep only these. Uses the swing bars left/right from the Fib section")
 var wrecent = input.int(5, "always show CEs of the last candles", group=GW, minval=0)
-var wnext = input.int(2, "extend up to", group=GW, minval=0, maxval=10, inline="wx")
-var wreach = input.float(3, "CEs within x ATR", group=GW, minval=0, inline="wx",
-     tooltip="the CEs nearest to price, not yet crossed by a body, extend to the current bar while price is this close")
+var wreach = input.float(1, "extend CEs within x ATR of price", group=GW, minval=0,
+     tooltip="above and below price, the CE of the longest wick within this distance and not yet crossed by a body " +
+         "extends to the current bar. 0 to disable")
 
 GF = "Fib"
 var fibswing = input.bool(true, "use swings to locate 0/100", group=GF, tooltip="retrace in swing highs/lows")
@@ -159,10 +159,11 @@ plot(rng, title="range", display=display.status_line)
 
 // Wick CEs.
 // The last few candles always show theirs. Older candles keep only those of swing highs/lows.
-// The CEs nearest to price (at most wnext), not yet crossed by a body, extend to the current bar.
+// Above and below price, the CE of the longest wick close to price and not yet crossed by a body extends.
 type WCE
     int b
     float ce
+    float len
     bool up
     line ln = na
     bool swing = false
@@ -214,16 +215,15 @@ if dowick and compute and barstate.isnew and bar_index > 2
 
     // new CEs for the closed candle
     if dH[1] - bodyh > minwick
-        wces.push(WCE.new(i, math.avg(dH[1], bodyh), true))
+        wces.push(WCE.new(i, math.avg(dH[1], bodyh), dH[1] - bodyh, true))
     if bodyl - dL[1] > minwick
-        wces.push(WCE.new(i, math.avg(dL[1], bodyl), false))
+        wces.push(WCE.new(i, math.avg(dL[1], bodyl), bodyl - dL[1], false))
 
-    // draw and forget; pick the nearest live ones
+    // draw and forget; pick the longest live one above and below price
     hold = math.max(wrecent, oteswingright + 1)
     reach = wreach * datr[1]
-    near = array.new<float>()
-    nearb = array.new<int>()
-    nearu = array.new<bool>()
+    WCE xa = na
+    WCE xb = na
     n = wces.size()
     if n > 0
         for k = n - 1 to 0
@@ -238,19 +238,17 @@ if dowick and compute and barstate.isnew and bar_index > 2
                     w.ln := line.new(w.b, w.ce, w.b + wdx(), w.ce)
                 w.ln.set_x2(w.b + wdx())
                 w.ln.set_width(1)
-                d = math.abs(w.ce - dC[1])
-                if wnext > 0 and not w.dead and d <= reach
-                    near.push(d)
-                    nearb.push(w.b)
-                    nearu.push(w.up)
-    if near.size() > 0
-        idx = near.sort_indices()
-        for j = 0 to math.min(wnext, idx.size()) - 1
-            k = idx.get(j)
-            w = wfind(nearb.get(k), nearu.get(k))
-            if not na(w) and not na(w.ln)
-                w.ln.set_x2(bar_index)
-                w.ln.set_width(2)
+                if wreach > 0 and not w.dead and math.abs(w.ce - dC[1]) <= reach
+                    if w.ce >= dC[1] and (na(xa) or w.len > xa.len)
+                        xa := w
+                    if w.ce < dC[1] and (na(xb) or w.len > xb.len)
+                        xb := w
+    if not na(xa)
+        xa.ln.set_x2(bar_index)
+        xa.ln.set_width(2)
+    if not na(xb)
+        xb.ln.set_x2(bar_index)
+        xb.ln.set_width(2)
     while wces.size() > 400
         w = wces.shift()
         w.hide()
