@@ -7,7 +7,7 @@
 // FVGs closed through become IFVGs. Mitigated levels are removed.
 //
 // Port of the TradingView Pine Script v6 indicator ICTcotas.txt by franjballest
-// (source md5 33bfa88e4b2f219d65c790090f592d1d). Mozilla Public License 2.0.
+// (source md5 723034c463360badb10e28dc3497704f). Mozilla Public License 2.0.
 //
 // Install:
 //   1. Copy this file to  Documents\NinjaTrader 8\bin\Custom\Indicators\ICTcotas.cs

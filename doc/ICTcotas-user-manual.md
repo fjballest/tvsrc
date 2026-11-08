@@ -423,7 +423,7 @@ In NinjaTrader the corner is one of the four chart corners and the row is severa
 | Setting | Default | What it does |
 |---|---|---|
 | Use settlement (SET) on daily | auto | Futures only (TradingView only). Which close the daily candles use for the daily FVG, VI, wick CE and ULW CE levels. **on**: the settlement price (TradingView's "use settlement as close"). **off**: the last trade. **auto**: each completed daily candle is read both ways, and the version whose largest volume imbalance or wick is bigger is used; on a tie, off. Weekly, monthly and FVGs by timeframe keep the chart's setting. |
-| show SET label | on | On futures, shows `SET on` (orange) or `SET off` (gray) in the upper right corner, for the version used for the last daily candle. |
+| show SET label | on | On futures, shows `SET on` (orange) or `SET off` (gray) in the upper right corner, for the version used for the last daily candle. When the turtle soup indications are also at top right, it is shown to their left. |
 
 The settlement price usually differs from the last trade of the session, so the body of a daily candle, and with it its volume imbalances and wicks, can change with that setting. In auto mode the indicator picks whichever version shows the clearer imbalance or wick for each day.
 

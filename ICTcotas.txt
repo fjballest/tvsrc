@@ -1074,14 +1074,17 @@ tsPos(string p) =>
         "top left" => position.top_left
         => position.bottom_right
 
-var table tsTbl = table.new(tsPos(tspos), 4, 2)
+// SET label inside this table when both go top right (only one table is shown per position): first column, left
+// of the triangles
+bool setInTs = dots and setOn and setlbl and tspos == "top right"
+var table tsTbl = table.new(tsPos(tspos), 5, 2)
 if barstate.islast and dots
     // 15m, 1H, 4H up to 15m; 1H, 4H, D up to 1H; then 4H and D when not below the chart timeframe
     int i0 = tfsecs <= 900 ? 0 : tfsecs <= 3600 ? 1 : tfsecs <= 14400 ? 2 : tfsecs <= 86400 ? 3 : 4
     int i1 = tfsecs <= 900 ? 2 : 3
-    tsTbl.clear(0, 0, 3, 1)
+    tsTbl.clear(0, 0, 4, 1)
     string tsz = getsize(tssize)
-    int col = 0
+    int col = setInTs ? 1 : 0
     if i0 <= i1
         for i = i0 to i1
             int sg = tst.get(i).tsSig()
@@ -1091,12 +1094,14 @@ if barstate.islast and dots
             if tsnames
                 tsTbl.cell(col, 1, tsNames.get(i), text_color = color.new(tsctcol, 30), text_size = size.tiny)
             col += 1
+    if setInTs and setUsed != ""
+        tsTbl.cell(0, 0, setUsed, text_color = setUsed == "SET on" ? color.orange : color.gray, text_size = size.small)
 
 // only one table is shown per position: these are created only when they have something to show, so they
 // do not hide the turtle soup table
 var table note = dayOk or wkOk or monOk ? table(na) : table.new(position.bottom_right, 1, 1)
-var table setNote = setOn and setlbl ? table.new(position.top_right, 1, 1) : table(na)
-if barstate.islast and setOn and setlbl and setUsed != ""
+var table setNote = setOn and setlbl and not setInTs ? table.new(position.top_right, 1, 1) : table(na)
+if barstate.islast and not na(setNote) and setUsed != ""
     table.cell(setNote, 0, 0, setUsed, text_color = setUsed == "SET on" ? color.orange : color.gray,
          text_size = size.small)
 if barstate.islast and not na(note)
