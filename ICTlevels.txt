@@ -1983,9 +1983,10 @@ method zSide(Zone z, bool hi) =>
 
 // the body level of side hi is shown: high (low) untaken and beyond the body, body not taken later (also for the
 // current day / session, once its body level is decided)
+// (the dobody input is tested by the callers: with it a constant false, as in ICTgaps, z and hi would be unused)
 method bodyOk(Zone z, bool hi) =>
-    bool ok = z.drawmaxmin and dobody
-    hi ? ok and na(z.hidonet) and z.bhi < z.hi and not z.bhtk : ok and na(z.lodonet) and z.blo > z.lo and not z.bltk
+    hi ? z.drawmaxmin and na(z.hidonet) and z.bhi < z.hi and not z.bhtk
+         : z.drawmaxmin and na(z.lodonet) and z.blo > z.lo and not z.bltk
 
 // [LVL] untaken highs (lows) of days and sessions, and their body levels, that are within tol of another one are
 // REHs (RELs): hx / lx, bhx / blx
@@ -1997,7 +1998,7 @@ xCollect(array<Zone> arr, array<float> v, array<Zone> zs, array<bool> isb, array
             zs.push(z)
             isb.push(false)
             ids.push(id)
-        if z.bodyOk(hi)
+        if dobody and z.bodyOk(hi)
             v.push(hi ? z.bhi : z.blo)
             zs.push(z)
             isb.push(true)
@@ -2120,9 +2121,9 @@ zLevels(array<Zone> arr, int nbh0, int nbl0) =>
     if n > 0
         for k = 0 to n - 1
             Zone z = arr.get(n - 1 - k)
-            if z.zBody(true, z.bodyOk(true) and nbh < BODYMAX)
+            if z.zBody(true, dobody and z.bodyOk(true) and nbh < BODYMAX)
                 nbh += 1
-            if z.zBody(false, z.bodyOk(false) and nbl < BODYMAX)
+            if z.zBody(false, dobody and z.bodyOk(false) and nbl < BODYMAX)
                 nbl += 1
             if z.drawmaxmin
                 z.zSide(true)
