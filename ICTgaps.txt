@@ -35,10 +35,10 @@ type Sty
 const string G_EN = "Enable / Filter"
 int attLvl = input.int(0, "Attenuation", minval = 0, maxval = 4, group = G_EN,
      tooltip = "Dims the drawings, 0: as configured, 4: the most dimmed. Levels have three ranks: important "
-     + "(the last M.O., the untaken high / low of the last two ended sessions, the current and previous RTHOG, "
-     + "TGIF, NWOGs, the last NDOG), normal (months, day and other session max/min, week lines, current RTHOG "
-     + "quadrants, octants and stddevs, PMKT high / low, EQH / EQL, macro background) and minor (day lines, eq, "
-     + "older M.O.s, older NDOGs, old RTHOGs, PMKT quadrants and stddevs). Each level dims minor drawings the "
+     + "(the last M.O., the untaken high / low of the previous day and of the last two ended sessions, the "
+     + "current and previous RTHOG, TGIF, NWOGs, the last NDOG), normal (months, other day and session max/min, "
+     + "week lines, current RTHOG quadrants and octants, PMKT high / low, EQH / EQL, macro background) and minor "
+     + "(day lines, eq, older M.O.s, older NDOGs, old RTHOGs, stddevs, PMKT quadrants). Each level dims minor drawings the "
      + "most and important ones the least; widths go down by 1 when dimmed enough. Session rectangles: filled "
      + "and lighter at 1, outline only from 2 on. Gap rectangles fade with the rank of their gap.")
 // [ATT] dimming steps of a rank (0 important, 1 normal, 2 minor) at the attenuation level
@@ -1049,8 +1049,9 @@ method gmake(Gap g) =>
 method gsty(Gap g) =>
     int rk = g.isw or g.imp ? 0 : 2
     Sty st = g.isw ? wgapsty : gapsty
+    int rkw = g.isw and attLvl >= 3 ? 1 : rk   // NWOG: thinner lines and lighter fill at 3 and 4
     color c = attL(st.col, rk)
-    int w = attW(st.wid, rk)
+    int w = attW(st.wid, rkw)
     if not na(g.hiln)
         g.hiln.set_color(c)
         g.hiln.set_width(w)
@@ -1061,7 +1062,7 @@ method gsty(Gap g) =>
     if not na(g.lolbl)
         g.lolbl.set_textcolor(c)
     if not na(g.rect)
-        g.rect.set_bgcolor(color.new(st.col, attT(grtransp, rk)))
+        g.rect.set_bgcolor(color.new(st.col, attT(grtransp, rkw)))
     true
 
 method gend(Gap g, float xe) =>
@@ -1364,14 +1365,14 @@ method rpo3(RTHOG g) =>
         int nd = sdCount(rthogpo3num, rthogauto, pd0, u, g.xlo, -1)
         for i = 1 to math.max(nu, nd)
             if i <= nu
-                [l1, b1] = mkLL(x0, x1, pu0 + i * u, attL(lrgapcolor, 1), rgappo3lnsty, attW(rgapwid, 1),
-                     "RTHOG" + sdName(i, u, gap, 1), attL(lrgapcolor, 1))
+                [l1, b1] = mkLL(x0, x1, pu0 + i * u, attL(lrgapcolor, 2), rgappo3lnsty, attW(rgapwid, 2),
+                     "RTHOG" + sdName(i, u, gap, 1), attL(lrgapcolor, 2))
                 g.po3lines.push(l1)
                 g.po3labels.push(b1)
                 g.po3names.push(sdName(i, u, gap, 1))
             if i <= nd
-                [l2, b2] = mkLL(x0, x1, pd0 - i * u, attL(lrgapcolor, 1), rgappo3lnsty, attW(rgapwid, 1),
-                     "RTHOG" + sdName(i, u, gap, -1), attL(lrgapcolor, 1))
+                [l2, b2] = mkLL(x0, x1, pd0 - i * u, attL(lrgapcolor, 2), rgappo3lnsty, attW(rgapwid, 2),
+                     "RTHOG" + sdName(i, u, gap, -1), attL(lrgapcolor, 2))
                 g.po3lines.push(l2)
                 g.po3labels.push(b2)
                 g.po3names.push(sdName(i, u, gap, -1))
@@ -1447,12 +1448,13 @@ method setOld(RTHOG g) =>
             g.opline.set_extend(extend.right)
 
 // right-edge update, last bar only
-// [ATT] rk: rank of the gap (current and previous: 0); quadrants and stddevs are normal
+// [ATT] rk: rank of the gap (current and previous: 0); quadrants and octants are normal, stddevs minor
 method right(RTHOG g, color c0, int rk) =>
     if not g.isold
         int x = tright(xoff)
         color c = attL(c0, rk)
         color cm = attL(c0, 1)
+        color cs = attL(c0, 2)
         int w = attW(rgapwid, rk)
         setR(g.cline, g.clabel, x, c, w)
         setR(g.mline, g.mlabel, x, c, w)
@@ -1465,10 +1467,10 @@ method right(RTHOG g, color c0, int rk) =>
         if not na(g.po3lines)
             for l in g.po3lines
                 l.set_x2(x)
-                l.set_color(cm)
+                l.set_color(cs)
             for b in g.po3labels
                 b.set_x(x)
-                b.set_textcolor(cm)
+                b.set_textcolor(cs)
 
 bool mktEnds = market.ends()
 bool mktClose = mktEnds and not mktEnds[1]
@@ -1738,7 +1740,8 @@ if finalBar and tfok
     for z in premarkets
         if z.live()
             z.refresh()
-    // [ATT] the last midnight open and the untaken high / low of the last two ended sessions are important
+    // [ATT] the last midnight open, the untaken high / low of the previous day and of the last two ended sessions
+    // are important
     if attLvl > 0
         for [i, z] in days
             if not na(z.opln)
@@ -1746,6 +1749,20 @@ if finalBar and tfok
                 z.opln.set_color(attL(opcolor, rk))
                 z.opln.set_width(attW(opwid, rk))
                 z.oplabel.set_textcolor(attL(opcolor, rk))
+        if days.size() > 1
+            Zone pd = days.get(days.size() - 2)
+            int rh = na(pd.hidonet) ? 0 : 1
+            int rl = na(pd.lodonet) ? 0 : 1
+            if not na(pd.maxln)
+                pd.maxln.set_color(attL(daymmaxcol, rh))
+                pd.maxln.set_width(attW(daymwid, rh))
+            if not na(pd.minln)
+                pd.minln.set_color(attL(daymmincol, rl))
+                pd.minln.set_width(attW(daymwid, rl))
+            if not na(pd.maxlbl)
+                pd.maxlbl.set_textcolor(attL(daymmaxcol, rh))
+            if not na(pd.minlbl)
+                pd.minlbl.set_textcolor(attL(daymmincol, rl))
         int nend = 0
         int nzs = zones.size()
         for k = 0 to math.max(nzs - 1, 0)

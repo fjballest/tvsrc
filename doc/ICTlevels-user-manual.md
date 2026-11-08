@@ -328,9 +328,9 @@ The first group: one switch per feature, so you can turn features on and off wit
 
 Attenuation dims the drawings without changing their settings. Drawings have three ranks:
 
-- Important: the last midnight open (M.O.), the untaken high and low of the last two ended sessions, the current and previous RTHOG, TGIF levels, NWOGs and the last NDOG.
-- Normal: month lines, day max/min, the other session max/min, week vertical lines, the quadrants, octants and deviations of the current RTHOG, the PMKT high and low, EQH / EQL and the macro background.
-- Minor: day vertical lines, eq, older M.O.s, older NDOGs, old RTHOGs (the short marks), and the PMKT quadrants and deviations.
+- Important: the last midnight open (M.O.), the untaken high and low of the previous day and of the last two ended sessions, the current and previous RTHOG, TGIF levels, NWOGs and the last NDOG.
+- Normal: month lines, the other day and session max/min, week vertical lines, the quadrants and octants of the current RTHOG, the PMKT high and low, EQH / EQL and the macro background.
+- Minor: day vertical lines, eq, older M.O.s, older NDOGs, old RTHOGs (the short marks), the RTHOG deviations, and the PMKT quadrants and deviations.
 
 | Level | Important | Normal | Minor | Session rectangles |
 | --- | --- | --- | --- | --- |
@@ -340,7 +340,7 @@ Attenuation dims the drawings without changing their settings. Drawings have thr
 | 3 | 18% fainter | 54% fainter, width -1 | 72% fainter, width -1 | outline only, fainter, width 1 |
 | 4 | 36% fainter, width -1 | 72% fainter, width -1 | 90% fainter, width -1 | outline only, fainter, width 1 |
 
-"Fainter" is the share of the remaining opacity that is taken away, for lines and label text. Widths never go below 1. Gap rectangles fade with the rank of their gap (20% per step), so the rectangles of older NDOGs are gone at level 4. In NinjaTrader and Tradovate attenuation is not available yet.
+"Fainter" is the share of the remaining opacity that is taken away, for lines and label text. Widths never go below 1. Gap rectangles fade with the rank of their gap (20% per step), so the rectangles of older NDOGs are gone at level 4. NWOGs keep their line color as important but get the width and fill of a normal drawing at levels 3 and 4. In NinjaTrader and Tradovate attenuation is not available yet.
 
 ### 5.2 Time & Settings
 
