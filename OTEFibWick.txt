@@ -194,34 +194,34 @@ datr = ta.rma(dtr, 14)
 dwph = ta.pivothigh(dH, oteswingleft, oteswingright)
 dwpl = ta.pivotlow(dL, oteswingleft, oteswingright)
 
-if dowick and compute and barstate.isnew and bar_index > 2
-    i = bar_index - 1
-    bodyh = math.max(dO[1], dC[1])
-    bodyl = math.min(dO[1], dC[1])
+if dowick and compute and barstate.isconfirmed and bar_index > 2
+    i = bar_index
+    bodyh = math.max(dO, dC)
+    bodyl = math.min(dO, dC)
 
     // the closed candle body crosses older CEs
     for w in wces
         if not w.dead and w.b < i and bodyl < w.ce and bodyh > w.ce
             w.dead := true
 
-    if wswing and not na(dwph[1])
+    if wswing and not na(dwph)
         wp = wfind(i - oteswingright, true)
         if not na(wp)
             wp.swing := true
-    if wswing and not na(dwpl[1])
+    if wswing and not na(dwpl)
         wp = wfind(i - oteswingright, false)
         if not na(wp)
             wp.swing := true
 
     // new CEs for the closed candle
-    if dH[1] - bodyh > minwick
-        wces.push(WCE.new(i, math.avg(dH[1], bodyh), dH[1] - bodyh, true))
-    if bodyl - dL[1] > minwick
-        wces.push(WCE.new(i, math.avg(dL[1], bodyl), bodyl - dL[1], false))
+    if dH - bodyh > minwick
+        wces.push(WCE.new(i, math.avg(dH, bodyh), dH - bodyh, true))
+    if bodyl - dL > minwick
+        wces.push(WCE.new(i, math.avg(dL, bodyl), bodyl - dL, false))
 
     // draw and forget; pick the longest live one above and below price
     hold = math.max(wrecent, oteswingright + 1)
-    reach = wreach * datr[1]
+    reach = wreach * datr
     WCE xa = na
     WCE xb = na
     n = wces.size()
@@ -238,16 +238,16 @@ if dowick and compute and barstate.isnew and bar_index > 2
                     w.ln := line.new(w.b, w.ce, w.b + wdx(), w.ce)
                 w.ln.set_x2(w.b + wdx())
                 w.ln.set_width(1)
-                if wreach > 0 and not w.dead and math.abs(w.ce - dC[1]) <= reach
-                    if w.ce >= dC[1] and (na(xa) or w.len > xa.len)
+                if wreach > 0 and not w.dead and math.abs(w.ce - dC) <= reach
+                    if w.ce >= dC and (na(xa) or w.len > xa.len)
                         xa := w
-                    if w.ce < dC[1] and (na(xb) or w.len > xb.len)
+                    if w.ce < dC and (na(xb) or w.len > xb.len)
                         xb := w
     if not na(xa)
-        xa.ln.set_x2(bar_index)
+        xa.ln.set_x2(bar_index + 1)
         xa.ln.set_width(2)
     if not na(xb)
-        xb.ln.set_x2(bar_index)
+        xb.ln.set_x2(bar_index + 1)
         xb.ln.set_width(2)
     while wces.size() > 400
         w = wces.shift()
