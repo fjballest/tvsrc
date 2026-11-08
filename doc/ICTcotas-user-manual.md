@@ -218,7 +218,7 @@ Ticked timeframes equal to or below the chart timeframe are ignored, so a D box 
 
 ### Right margin layout
 
-With **Draw in the right margin** on, the boxes are drawn in the right margin instead of over the candles. Each enabled timeframe gets its own column, from the lowest timeframe on the left to the highest on the right. Each FVG or IFVG is a box at its own high and low, with its CE box, and a label centered in the box: the timeframe on one line and, below it, an up arrow (bullish) or a down arrow (bearish), so the boxes can be thin. An IFVG adds an "i" to the timeframe ("1Hi") and shows its new direction. The show TF option still applies (off leaves just the arrow); the FVG / IFVG, direction (+/-) and position options do not, and there is no formation marker.
+With **Draw in the right margin** on (the default), the boxes are drawn in the right margin instead of over the candles. Each enabled timeframe gets its own column, from the lowest timeframe on the left to the highest on the right. Each FVG or IFVG is a box at its own high and low, with its CE box, and a label centered in the box: the timeframe on one line and, below it, an up arrow (bullish) or a down arrow (bearish), so the boxes can be thin. An IFVG adds an "i" to the timeframe ("1Hi") and shows its new direction. The show TF option still applies (off leaves just the arrow); the FVG / IFVG, direction (+/-) and position options do not, and there is no formation marker.
 
 - **offset**: bars between the last bar and the first column (default 4).
 - **width**: bars per box; columns are one bar apart (default 4).
@@ -382,7 +382,7 @@ Fills use these colors with the transparency set in each section.
 | at | CE | Vertical anchor of the label: High, CE or Low |
 | wick CE: 1H | off | Adds 1H wick CE lines (needs Draw wick CE on and a chart lower than 1H) |
 | 4H | off | Adds 4H wick CE lines (needs Draw wick CE on and a chart lower than 4H) |
-| Draw in the right margin | off | Draws the boxes in the right margin, one column per timeframe, labeled with the timeframe and an up / down arrow below it (section 7) |
+| Draw in the right margin | on | Draws the boxes in the right margin, one column per timeframe, labeled with the timeframe and an up / down arrow below it (section 7) |
 | offset | 4 | Bars between the last bar and the first margin column |
 | width | 4 | Bars per margin box |
 | extend levels | off | Margin only: lines from the high, low and CE of each FVG back into the chart |

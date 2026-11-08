@@ -9,7 +9,7 @@
  * closed through become IFVGs. Mitigated levels are removed.
  *
  * Port of the TradingView Pine Script v6 indicator ICTcotas.txt
- * (md5 5e2a811deb31af26d2385e8517f8d4b3), (c) franjballest, Mozilla Public
+ * (md5 0dc6d62cfe57d6bc7b45060d2cd132cb), (c) franjballest, Mozilla Public
  * License 2.0 (https://mozilla.org/MPL/2.0/). Same logic, same inputs (as
  * camelCase parameters) and the same defaults.
  *
@@ -537,7 +537,7 @@ function buildConfig(p, chart) {
         mfLVert: str(p.mfLVert, "ce"),
         wk1h: bool(p.wk1h, false),
         wk4h: bool(p.wk4h, false),
-        mfMargin: bool(p.mfMargin, false),
+        mfMargin: bool(p.mfMargin, true),
         mfMOff: clamp(Math.round(num(p.mfMOff, 4)), 0, 200),
         mfMW: clamp(Math.round(num(p.mfMW, 4)), 1, 50),
         mfExt: bool(p.mfExt, false),
@@ -1034,7 +1034,7 @@ module.exports = {
         wk1h: predef.paramSpecs.bool(false),
         wk4h: predef.paramSpecs.bool(false),
         // right margin: one column per timeframe
-        mfMargin: predef.paramSpecs.bool(false),
+        mfMargin: predef.paramSpecs.bool(true),
         mfMOff: int(4, 0),
         mfMW: int(4, 1),
         mfExt: predef.paramSpecs.bool(false),

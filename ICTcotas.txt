@@ -238,7 +238,7 @@ bool wk1h = input.bool(false, "wick CE: 1H", group = G_MF, inline = "m9",
      + "needs Draw wick CE on) on these timeframes. Only "
      + "timeframes higher than the chart timeframe are used.")
 bool wk4h = input.bool(false, "4H", group = G_MF, inline = "m9")
-bool mfmargin = input.bool(false, "Draw in the right margin", group = G_MF, inline = "mm1",
+bool mfmargin = input.bool(true, "Draw in the right margin", group = G_MF, inline = "mm1",
      tooltip = "Instead of over the candles, each FVG / IFVG is drawn as a box in the right margin, one column "
      + "per timeframe (from the lowest), labeled with the timeframe and, on the next line, an up (bullish) or down (bearish) arrow. Offset: bars "
      + "between the last bar and the first column. Width: bars per box (and per column).")
