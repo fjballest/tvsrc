@@ -378,6 +378,8 @@ type Zone
     int bht = na
     float blo = na
     int blt = na
+    bool bhtk = false   // [LVL] body level taken after it was decided (outside the candles around the extreme)
+    bool bltk = false
     int hbk = na        // [LVL] candle (bucket) number of the high / low, see bkN
     int lbk = na
     int hsw = 0         // [LVL] the high / low is a swing: 1 yes, -1 no, 0 not known yet
@@ -709,6 +711,7 @@ method swTest(Zone z) =>
     int k = z.isday ? 1 : 2
     if z.hbk == bkN - 1 - k and n >= 2
         z.bhi := na
+        z.bhtk := false
         for i = math.max(n - 2 - 2 * k, 0) to n - 2
             float bt = math.max(bkO.get(i), bkC.get(i))
             if na(z.bhi) or bt > z.bhi
@@ -716,6 +719,7 @@ method swTest(Zone z) =>
                 z.bht := bkT.get(i)
     if z.lbk == bkN - 1 - k and n >= 2
         z.blo := na
+        z.bltk := false
         for i = math.max(n - 2 - 2 * k, 0) to n - 2
             float bb = math.min(bkO.get(i), bkC.get(i))
             if na(z.blo) or bb < z.blo
@@ -940,6 +944,10 @@ method upd(Zone z) =>
         z.lrelc := flatLo and time[1] >= z.tstart
     else if z.lot == time[1] and flatLo
         z.lrelc := true
+    if not na(z.bhi) and high > z.bhi
+        z.bhtk := true
+    if not na(z.blo) and low < z.blo
+        z.bltk := true
 
 endZone(Zone z) =>
     if na(z.tend)
@@ -998,6 +1006,10 @@ runMon() =>
             if na(z.hidonet) and high > z.hi
                 z.hidonet := time
                 ch := true
+            if not na(z.bhi) and high > z.bhi
+                z.bhtk := true
+            if not na(z.blo) and low < z.blo
+                z.bltk := true
             if na(z.lodonet) and low < z.lo
                 z.lodonet := time
                 ch := true
@@ -1868,8 +1880,8 @@ method zSide(Zone z, bool hi) =>
     line ln = hi ? z.maxln : z.minln
     label lb = hi ? z.maxlbl : z.minlbl
     int rk = lvlRank(z, hi ? z.hsw : z.lsw, hi ? z.hrel or z.hrelc : z.lrel or z.lrelc, not na(hi ? z.hidonet : z.lodonet))
-    // a body level drawn below (above) it takes the importance
-    if not na(hi ? z.bhln : z.blln)
+    // an untaken body level drawn below (above) it takes the importance
+    if not na(hi ? z.bhln : z.blln) and not (hi ? z.bhtk : z.bltk)
         rk := math.max(rk, 1)
     color c0 = z.isday ? (hi ? daymmaxcol : daymmincol) : (hi ? sesmmaxcol : sesmmincol)
     int w0 = z.isday ? daymwid : sesmwid
@@ -1891,10 +1903,12 @@ method zBody(Zone z, bool hi, bool want) =>
     if want
         int x = tright(2)
         float p = hi ? z.bhi : z.blo
-        // important: wider, label 1 size up (also once price has traded through it)
-        color c = attL(z.isday ? (hi ? daymmaxcol : daymmincol) : (hi ? sesmmaxcol : sesmmincol), 0)
-        int w = attW(2, 0)
-        string bsz = sizeUp(z.isday ? dlblsz : slblsz)
+        // important (wider, label 1 size up) until taken after it was decided, then minor
+        bool tk = hi ? z.bhtk : z.bltk
+        color c = attL(z.isday ? (hi ? daymmaxcol : daymmincol) : (hi ? sesmmaxcol : sesmmincol), tk ? 2 : 0)
+        int w = tk ? 1 : attW(2, 0)
+        string bsz = z.isday ? dlblsz : slblsz
+        bsz := tk ? bsz : sizeUp(bsz)
         string txt = (z.isday ? "day" : z.name) + (hi ? " body hi" : " body lo")
         if na(ln)
             ln := line.new(hi ? z.bht : z.blt, p, x, p, xloc = xloc.bar_time, color = c, style = line.style_dotted,
