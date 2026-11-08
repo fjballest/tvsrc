@@ -262,7 +262,9 @@ Attenuation ranks (a first version, to be tuned):
 | normal | daily and 4H FVGs and IFVGs; weekly and monthly VIs, wick CEs and ULW CEs |
 | minor | 15m and 1H FVG boxes; daily VIs, wick CEs and ULW CEs; 1H and 4H wick CEs |
 
-Each attenuation level makes minor drawings the most transparent and important ones the least (as in ICTlevels): lines, labels and fills fade, and widths go down by 1 when dimmed enough (never below 1). With **Draw in the right margin** on, the margin boxes, their labels and the links to them are dimmed as important drawings whatever their rank; only the extended levels over the candles use the rank of their FVG. In Tradovate a faded color is the color blended into the chart background: set **attbg** (white by default) to your chart background color.
+Each attenuation level makes minor drawings the most transparent and important ones the least (as in ICTlevels): lines, labels and fills fade, and widths go down by 1 when dimmed enough (never below 1). The fills of the daily, weekly and monthly FVG and VI rectangles follow their own steps: at attenuation 1 they fade like the lines, at 2 they fade faster, and at 3 and 4 they are not drawn, except for VIs that are narrow (at most 0.1 of the daily ATR) when there are at most three such VIs on the chart.
+
+With **Draw in the right margin** on, the margin boxes, their labels and the links to them are dimmed as important drawings whatever their rank; only the extended levels over the candles use the rank of their FVG. In Tradovate a faded color is the color blended into the chart background: set **attbg** (white by default) to your chart background color.
 
 ### Colors (by timeframe)
 

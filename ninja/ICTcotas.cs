@@ -7,7 +7,7 @@
 // FVGs closed through become IFVGs. Mitigated levels are removed.
 //
 // Port of the TradingView Pine Script v6 indicator ICTcotas.txt by franjballest
-// (source md5 bfde885562dfcfa0c69155ff842d2dc9). Mozilla Public License 2.0.
+// (source md5 6f8633a5ff416e14a898eb39ea0873f7). Mozilla Public License 2.0.
 //
 // Install:
 //   1. Copy this file to  Documents\NinjaTrader 8\bin\Custom\Indicators\ICTcotas.cs
@@ -974,9 +974,28 @@ namespace NinjaTrader.NinjaScript.Indicators
 		private List<LblE> lbls = new List<LblE>();
 		private static readonly string[] LblParts = { "hb", "lb", "cb" };
 
+		// [ATT] fill transparency of a D / W / M FVG or VI rectangle (100: no fill). Levels 0 and 1 as AttT,
+		// level 2 fades faster, levels 3 and 4 draw no fill except for VIs when they are few and narrow (viNar)
+		private bool viNar;
+
+		private int FillT(int t, int rk, int kind, double h)
+		{
+			if (Attenuation <= 1)
+				return AttT(t, rk);
+			if (Attenuation == 2)
+				return (int)Math.Min(100.0, t + (100 - t) * Math.Min(0.9, AttE(rk) * 0.35));
+			return kind == 1 && viNar && !double.IsNaN(dAtr) && h <= 0.1 * dAtr ? (int)(t + (100 - t) * 0.7) : 100;
+		}
+
 		private void DrawAll()
 		{
 			lbls.Clear();
+			// few (3 at most) narrow (0.1 daily ATR at most) VIs keep their fill at attenuation 3 and 4
+			int nn = 0;
+			foreach (Lvl l in lvls)
+				if (l.Kind == 1 && !l.Dead && !double.IsNaN(dAtr) && l.Hi - l.Lo <= 0.1 * dAtr)
+					nn++;
+			viNar = nn <= 3;
 			foreach (Lvl l in lvls)
 			{
 				if (l.Dead)
@@ -1053,11 +1072,11 @@ namespace NinjaTrader.NinjaScript.Indicators
 			int nl = (shi ? 1 : 0) + (slo ? 1 : 0) + (sce ? 1 : 0);
 			bool one = ShowLabels && LabelMerge > 0 && !double.IsNaN(dAtr) && nl >= 2 && gap < LabelMerge * dAtr;
 
-			if (KFill(l.Kind))
-			{
-				int opacity = 100 - AttT(l.Kind == 0 ? FvgTransparency : ViTransparency, rk);
-				Draw.Rectangle(this, Tag(l, "bx"), false, sba, l.Hi, eba, l.Lo, Brushes.Transparent, TCol(l.Tfi, l.Dir), opacity);
-			}
+			int ft = FillT(l.Kind == 0 ? FvgTransparency : ViTransparency, rk, l.Kind, l.Hi - l.Lo);
+			if (KFill(l.Kind) && ft >= 100)
+				RmTag(l, "bx");
+			else if (KFill(l.Kind))
+				Draw.Rectangle(this, Tag(l, "bx"), false, sba, l.Hi, eba, l.Lo, Brushes.Transparent, TCol(l.Tfi, l.Dir), 100 - ft);
 			if (shi)
 			{
 				Draw.Line(this, Tag(l, "hl"), false, sba, l.Hi, eba, l.Hi, c, s1, w);

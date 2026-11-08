@@ -450,6 +450,13 @@ method rank(Lvl l) =>
          ? 1 : 2
     math.min(2, b + (l.kind == 0 or l.kind == 3 ? 0 : 1))
 
+// [ATT] fill transparency of a D / W / M FVG or VI rectangle (100: no fill). Levels 0 and 1 as attT, level 2
+// fades faster, levels 3 and 4 draw no fill except for VIs when they are few and narrow (vinar)
+var bool vinar = false
+fillT(int t, int rk, int kind, float h) =>
+    attLvl <= 1 ? attT(t, rk) : attLvl == 2 ? int(math.min(100, t + (100 - t) * math.min(0.9, attE(rk) * 0.35)))
+         : kind == 1 and vinar and not na(dAtr) and h <= 0.1 * dAtr ? int(t + (100 - t) * 0.7) : 100
+
 rmLbl(label lb) =>
     if not na(lb)
         lb.delete()
@@ -470,8 +477,12 @@ method draw(Lvl l) =>
     float gap = sce and (shi or slo) ? (l.hi - l.lo) / 2 : l.hi - l.lo
     int nl = (shi ? 1 : 0) + (slo ? 1 : 0) + (sce ? 1 : 0)
     bool one = dolbl and lblmrg > 0 and not na(dAtr) and nl >= 2 and gap < lblmrg * dAtr
-    if kfill(l.kind)
-        color bg = color.new(tcol(l.tfi, l.dir), attT(l.kind == 0 ? fvgtr : vitr, rk))
+    int ft = fillT(l.kind == 0 ? fvgtr : vitr, rk, l.kind, l.hi - l.lo)
+    if kfill(l.kind) and ft >= 100
+        rmBox(l.bx)
+        l.bx := na
+    else if kfill(l.kind)
+        color bg = color.new(tcol(l.tfi, l.dir), ft)
         if na(l.bx)
             l.bx := box.new(l.t, l.hi, x, l.lo, xloc = xloc.bar_time, border_color = transparent,
                  bgcolor = bg)
@@ -929,6 +940,12 @@ runMit()
 // ============================================================ last bar: draw
 if barstate.islast
     lbls.clear()
+    // few (3 at most) narrow (0.1 daily ATR at most) VIs keep their fill at attenuation 3 and 4
+    int nn = 0
+    for l in lvls
+        if l.kind == 1 and not l.dead and not na(dAtr) and l.hi - l.lo <= 0.1 * dAtr
+            nn += 1
+    vinar := nn <= 3
     for l in lvls
         if l.kind == 3
             if mfmargin

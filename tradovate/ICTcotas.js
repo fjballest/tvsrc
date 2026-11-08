@@ -9,7 +9,7 @@
  * closed through become IFVGs. Mitigated levels are removed.
  *
  * Port of the TradingView Pine Script v6 indicator ICTcotas.txt
- * (md5 bfde885562dfcfa0c69155ff842d2dc9), (c) franjballest, Mozilla Public
+ * (md5 6f8633a5ff416e14a898eb39ea0873f7), (c) franjballest, Mozilla Public
  * License 2.0 (https://mozilla.org/MPL/2.0/). Same logic, same inputs (as
  * camelCase parameters) and the same defaults.
  *
@@ -653,6 +653,14 @@ function textItem(key, x, y, text, color, size, bold, align) {
     };
 }
 
+// [ATT] fill transparency of a D / W / M FVG or VI rectangle (100: no fill). Levels 0 and 1 as attT, level 2
+// fades faster, levels 3 and 4 draw no fill except for VIs when they are few and narrow (c.viNar)
+function fillT(c, t, rk, kind, h, datr) {
+    if (c.attLvl <= 1) return attT(c, t, rk);
+    if (c.attLvl === 2) return Math.floor(Math.min(100, t + (100 - t) * Math.min(0.9, attE(c, rk) * 0.35)));
+    return kind === 1 && c.viNar && datr !== null && datr !== undefined && h <= 0.1 * datr ? Math.floor(t + (100 - t) * 0.7) : 100;
+}
+
 // level of kind 0, 1, 2 or 4 (Pine draw). datr: daily ATR, for one label when hi / lo / CE labels overlap
 function drawLvl(c, l, x, items, datr, lbls) {
     const rk = rankOf(l);
@@ -665,7 +673,8 @@ function drawLvl(c, l, x, items, datr, lbls) {
     const gap = sce && (shi || slo) ? (l.hi - l.lo) / 2 : l.hi - l.lo;
     const nl = (shi ? 1 : 0) + (slo ? 1 : 0) + (sce ? 1 : 0);
     const one = c.doLbl && c.lblMerge > 0 && datr !== null && datr !== undefined && nl >= 2 && gap < c.lblMerge * datr;
-    if (kfill(c, l.kind)) items.push(rectItem(k + "bx", l.t, l.hi, x, l.lo, tcol(c, l.tfi, l.dir), attT(c, l.kind === 0 ? c.fvgTr : c.viTr, rk)));
+    const ft = fillT(c, l.kind === 0 ? c.fvgTr : c.viTr, rk, l.kind, l.hi - l.lo, datr);
+    if (kfill(c, l.kind) && ft < 100) items.push(rectItem(k + "bx", l.t, l.hi, x, l.lo, tcol(c, l.tfi, l.dir), ft));
     const parts = [[0, l.hi, s1, c.pTxtHi, "hi"], [1, l.lo, s1, c.pTxtLo, "lo"], [2, l.ce, s2, c.pTxtCe, "ce"]];
     for (const [part, y, s, txt, nm] of parts) {
         if (!kshow(c, l.kind, part)) continue;
@@ -764,6 +773,9 @@ function drawAll(c, eng, lastIdx, lastBar) {
     const x = lastIdx + c.xOff;
     const items = [];
     const lbls = [];
+    // few (3 at most) narrow (0.1 daily ATR at most) VIs keep their fill at attenuation 3 and 4
+    const datr = eng.S.datr;
+    c.viNar = eng.S.lvls.filter(l => l.kind === 1 && !l.dead && datr !== null && l.hi - l.lo <= 0.1 * datr).length <= 3;
     for (const l of eng.S.lvls) {
         if (l.dead) continue;
         if (l.kind === 3) {
