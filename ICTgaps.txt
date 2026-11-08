@@ -673,27 +673,30 @@ bkFlat(int i, int j, bool hi) =>
 
 // a high (low) is a swing when the candles before and after it have lower highs (higher lows); decided when the
 // candle after it completes (a new candle starts two candles after the one of the high)
-// Same time: the high (low) is flat (REH / REL) with the candle before or after it. Also the highest (lowest) body
-// of the zone, over the completed candles that start inside it.
+// Same time: the high (low) is flat (REH / REL) with the candle before or after it, and its body level is the
+// highest (lowest) body of the swing: the candle of the high (low) and the ones before and after it.
 method swTest(Zone z) =>
     int n = bkH.size()
     if z.hsw == 0 and z.hbk == bkN - 2
         z.hsw := n >= 4 and bkH.get(n - 4) < z.hi and bkH.get(n - 2) < z.hi ? 1 : -1
         z.hrel := n >= 4 and (bkFlat(n - 4, n - 3, true) or bkFlat(n - 3, n - 2, true))
+        z.bhi := na
+        if n >= 3
+            for i = math.max(n - 4, 0) to n - 2
+                float bt = math.max(bkO.get(i), bkC.get(i))
+                if na(z.bhi) or bt > z.bhi
+                    z.bhi := bt
+                    z.bht := bkT.get(i)
     if z.lsw == 0 and z.lbk == bkN - 2
         z.lsw := n >= 4 and bkL.get(n - 4) > z.lo and bkL.get(n - 2) > z.lo ? 1 : -1
         z.lrel := n >= 4 and (bkFlat(n - 4, n - 3, false) or bkFlat(n - 3, n - 2, false))
-    if n >= 2
-        int t = bkT.get(n - 2)
-        if t >= z.tstart and (na(z.tend) or t <= z.tend)
-            float bt = math.max(bkO.get(n - 2), bkC.get(n - 2))
-            float bb = math.min(bkO.get(n - 2), bkC.get(n - 2))
-            if na(z.bhi) or bt >= z.bhi
-                z.bhi := bt
-                z.bht := t
-            if na(z.blo) or bb <= z.blo
-                z.blo := bb
-                z.blt := t
+        z.blo := na
+        if n >= 3
+            for i = math.max(n - 4, 0) to n - 2
+                float bb = math.min(bkO.get(i), bkC.get(i))
+                if na(z.blo) or bb < z.blo
+                    z.blo := bb
+                    z.blt := bkT.get(i)
     true
 
 mkZone(string name, ZoneInfo zi = na) =>
@@ -899,12 +902,14 @@ method upd(Zone z) =>
         z.hbk := bkN
         z.hsw := 0
         z.hrel := false
+        z.bhi := na
     if low <= z.lo
         z.lot := time
         z.lo := low
         z.lbk := bkN
         z.lsw := 0
         z.lrel := false
+        z.blo := na
 
 endZone(Zone z) =>
     if na(z.tend)
