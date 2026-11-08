@@ -378,6 +378,8 @@ type Zone
     int bht = na
     float blo = na
     int blt = na
+    bool bhtk = false   // [LVL] body level taken (traded beyond after the swing was decided)
+    bool bltk = false
     int hbk = na        // [LVL] candle (bucket) number of the high / low, see bkN
     int lbk = na
     int hsw = 0         // [LVL] the high / low is a swing: 1 yes, -1 no, 0 not known yet
@@ -703,6 +705,7 @@ method swTest(Zone z) =>
         z.hsw := n >= 4 and bkH.get(n - 4) < z.hi and bkH.get(n - 2) < z.hi ? 1 : -1
         z.hrel := n >= 4 and (bkFlat(n - 4, n - 3, true) or bkFlat(n - 3, n - 2, true))
         z.bhi := na
+        z.bhtk := false
         if n >= 3
             for i = math.max(n - 4, 0) to n - 2
                 float bt = math.max(bkO.get(i), bkC.get(i))
@@ -713,6 +716,7 @@ method swTest(Zone z) =>
         z.lsw := n >= 4 and bkL.get(n - 4) > z.lo and bkL.get(n - 2) > z.lo ? 1 : -1
         z.lrel := n >= 4 and (bkFlat(n - 4, n - 3, false) or bkFlat(n - 3, n - 2, false))
         z.blo := na
+        z.bltk := false
         if n >= 3
             for i = math.max(n - 4, 0) to n - 2
                 float bb = math.min(bkO.get(i), bkC.get(i))
@@ -938,6 +942,10 @@ method upd(Zone z) =>
         z.lrelc := flatLo and time[1] >= z.tstart
     else if z.lot == time[1] and flatLo
         z.lrelc := true
+    if not na(z.bhi) and high > z.bhi
+        z.bhtk := true
+    if not na(z.blo) and low < z.blo
+        z.bltk := true
 
 endZone(Zone z) =>
     if na(z.tend)
@@ -996,6 +1004,10 @@ runMon() =>
             if na(z.hidonet) and high > z.hi
                 z.hidonet := time
                 ch := true
+            if not na(z.bhi) and high > z.bhi
+                z.bhtk := true
+            if not na(z.blo) and low < z.blo
+                z.bltk := true
             if na(z.lodonet) and low < z.lo
                 z.lodonet := time
                 ch := true
@@ -1866,6 +1878,9 @@ method zSide(Zone z, bool hi) =>
     line ln = hi ? z.maxln : z.minln
     label lb = hi ? z.maxlbl : z.minlbl
     int rk = lvlRank(z, hi ? z.hsw : z.lsw, hi ? z.hrel or z.hrelc : z.lrel or z.lrelc, not na(hi ? z.hidonet : z.lodonet))
+    // an untaken body level drawn below (above) it takes the importance until it is taken
+    if not na(hi ? z.bhln : z.blln) and not (hi ? z.bhtk : z.bltk)
+        rk := math.max(rk, 1)
     color c0 = z.isday ? (hi ? daymmaxcol : daymmincol) : (hi ? sesmmaxcol : sesmmincol)
     int w0 = z.isday ? daymwid : sesmwid
     string sz0 = z.isday ? dlblsz : slblsz
@@ -1884,18 +1899,26 @@ method zBody(Zone z, bool hi, bool want) =>
     if want
         int x = tright(2)
         float p = hi ? z.bhi : z.blo
-        color c = attL(z.isday ? (hi ? daymmaxcol : daymmincol) : (hi ? sesmmaxcol : sesmmincol), 1)
+        // important (wider, label 1 size up) until taken, then minor
+        bool tk = hi ? z.bhtk : z.bltk
+        int rk = tk ? 2 : 0
+        color c = attL(z.isday ? (hi ? daymmaxcol : daymmincol) : (hi ? sesmmaxcol : sesmmincol), rk)
+        int w = tk ? 1 : attW(2, 0)
+        string bsz = z.isday ? dlblsz : slblsz
+        bsz := tk ? bsz : sizeUp(bsz)
         string txt = (z.isday ? "day" : z.name) + (hi ? " body hi" : " body lo")
         if na(ln)
             ln := line.new(hi ? z.bht : z.blt, p, x, p, xloc = xloc.bar_time, color = c, style = line.style_dotted,
-                 width = 1)
+                 width = w)
             lb := label.new(x, p, txt, xloc = xloc.bar_time, style = label.style_label_left, color = transparent,
-                 textcolor = c, size = z.isday ? dlblsz : slblsz)
+                 textcolor = c, size = bsz)
         else
             ln.set_x2(x)
             ln.set_color(c)
+            ln.set_width(w)
             lb.set_x(x)
             lb.set_textcolor(c)
+            lb.set_size(bsz)
     else
         rmLine(ln)
         rmLabel(lb)
@@ -1917,14 +1940,14 @@ zLevels(array<Zone> arr, int nbh0, int nbl0) =>
     if n > 0
         for k = 0 to n - 1
             Zone z = arr.get(n - 1 - k)
-            if z.drawmaxmin
-                z.zSide(true)
-                z.zSide(false)
             bool ended = z.drawmaxmin and not na(z.tend) and dobody
             if z.zBody(true, ended and na(z.hidonet) and z.bhi < z.hi and nbh < BODYMAX)
                 nbh += 1
             if z.zBody(false, ended and na(z.lodonet) and z.blo > z.lo and nbl < BODYMAX)
                 nbl += 1
+            if z.drawmaxmin
+                z.zSide(true)
+                z.zSide(false)
     [nbh, nbl]
 
 // ============================================================ last-bar work: right edges, months,
