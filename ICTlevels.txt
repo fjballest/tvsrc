@@ -44,6 +44,10 @@ getsize(string s) =>
         "huge" => size.huge
         => size.normal
 
+// one label size up (important levels)
+sizeUp(string sz) =>
+    sz == size.tiny ? size.small : sz == size.small ? size.normal : sz == size.normal ? size.large : size.huge
+
 type Sty
     string sty
     int wid
@@ -138,6 +142,10 @@ bool dodaylbl = input.bool(true, "label unbroken day max/min", group = G_DAYS,
      + "It reads week high / week low when the level is the max/min of its week.")
 string dlblsize = input.string("tiny", "size", options = ["tiny", "small", "normal", "large",
      "huge"], group = G_DAYS, inline = "dlbl")
+bool dobody = input.bool(true, "body high / low levels (days and sessions)", group = G_DAYS,
+     tooltip = "While the high (low) of an ended day or session is not taken, also draw a dotted line at its "
+     + "highest (lowest) candle body when that is below (above) the wick: price often takes the body level but "
+     + "not the wick. Removed once the high (low) is taken. The most recent " + "6 per side are drawn.")
 bool doreh = input.bool(true, "REH/REL labels", group = G_DAYS, inline = "dreh",
      tooltip = "When two (or more) unbroken day highs (lows) are close to each other "
      + "their lines stay, but only the higher high (lower low) is labeled, "
@@ -393,8 +401,10 @@ int lnEq = doeqhl ? (doeqd ? 4 : 2) * eqkeep : 0
 int lbSes = doses and doseslbl ? 2 * nsesEff : 0
 int lbPre = preOn and doseslbl ? 2 * nsesEff : 0
 int lnTg = dotgif ? 2 : 0
-int lnReserve = lnMonths + lnGaps + lnRth + lnSes + lnPre + lnPmx + lnEq + lnTg + 10
-int lbReserve = lnMonths + lnGaps + lnRth + lbSes + lbPre + lnPmx + lnEq + lnTg + 10
+const int BODYMAX = 6   // body levels drawn per side
+int lnBody = dobody and (dodmaxmin or (doses and dosmaxmin)) ? 2 * BODYMAX : 0
+int lnReserve = lnMonths + lnGaps + lnRth + lnSes + lnPre + lnPmx + lnEq + lnTg + lnBody + 10
+int lbReserve = lnMonths + lnGaps + lnRth + lbSes + lbPre + lnPmx + lnEq + lnTg + lnBody + 10
 int lnPerDay = (dolines ? 1 : 0) + (dodmaxmin ? 2 : 0) + (doeq ? 1 : 0) + (doopen ? 1 : 0)
 int lbPerDay = (doeq ? 1 : 0) + (doopen ? 1 : 0) + (dodaylbl and dodmaxmin ? 2 : 0)
 int daysByLn = lnPerDay > 0 ? math.floor((500 - lnReserve) / lnPerDay) : ndays
@@ -428,6 +438,14 @@ type Zone
     int tend = na
     int hidonet = na
     int lodonet = na
+    float bhi = na      // [LVL] highest / lowest candle body and its time
+    int bht = na
+    float blo = na
+    int blt = na
+    int hbk = na        // [LVL] candle (bucket) number of the high / low, see bkN
+    int lbk = na
+    int hsw = 0         // [LVL] the high / low is a swing: 1 yes, -1 no, 0 not known yet
+    int lsw = 0
     int extendt = na
     int tclose = na     // premarket range: market close, the lines never go past it
     float pwhi = na   // highest high of the earlier days of the same week
@@ -456,6 +474,10 @@ type Zone
     label minlbl = na
     label eqlabel = na
     label oplabel = na
+    line bhln = na      // [LVL] body level lines and labels
+    line blln = na
+    label bhlbl = na
+    label bllbl = na
     array<line> qlines = na     // premarket quadrant lines
     array<label> qlabels = na
     array<line> sdlines = na    // premarket stddev lines, in the order +1, -1, +2, -2...
@@ -676,6 +698,38 @@ sdName(int i, float u, float r, int sgn) =>
     (sgn > 0 ? "+" : "-") + str.tostring(i * u / r, "#.###")
 
 // ============================================================ zones
+// [LVL] candles of max(15m, chart timeframe) for the swing test of day / session highs and lows: number of the
+// current candle and the highs / lows of the last four
+int bkMs = math.max(900, tfsecs) * 1000
+var int bkN = 0
+var int bkId = na
+var array<float> bkH = array.new<float>()
+var array<float> bkL = array.new<float>()
+bool bkNew = false
+int bkCur = int(math.floor(time / bkMs))
+if na(bkId) or bkCur != bkId
+    bkId := bkCur
+    bkN += 1
+    bkNew := true
+    bkH.push(high)
+    bkL.push(low)
+    if bkH.size() > 4
+        bkH.shift()
+        bkL.shift()
+else
+    bkH.set(bkH.size() - 1, math.max(bkH.last(), high))
+    bkL.set(bkL.size() - 1, math.min(bkL.last(), low))
+
+// a high (low) is a swing when the candles before and after it have lower highs (higher lows); decided when the
+// candle after it completes (a new candle starts two candles after the one of the high)
+method swTest(Zone z) =>
+    int n = bkH.size()
+    if z.hsw == 0 and z.hbk == bkN - 2
+        z.hsw := n >= 4 and bkH.get(n - 4) < z.hi and bkH.get(n - 2) < z.hi ? 1 : -1
+    if z.lsw == 0 and z.lbk == bkN - 2
+        z.lsw := n >= 4 and bkL.get(n - 4) > z.lo and bkL.get(n - 2) > z.lo ? 1 : -1
+    true
+
 mkZone(string name, ZoneInfo zi = na) =>
     Zone z = Zone.new(name, time, open, high, low, time, time)
     z.zi := zi
@@ -782,6 +836,10 @@ method kill(Zone z) =>
     rmLabel(z.minlbl)
     rmLabel(z.eqlabel)
     rmLabel(z.oplabel)
+    rmLine(z.bhln)
+    rmLine(z.blln)
+    rmLabel(z.bhlbl)
+    rmLabel(z.bllbl)
 
 // create or update every object of the zone from its current state
 method refresh(Zone z) =>
@@ -872,9 +930,21 @@ method upd(Zone z) =>
     if high >= z.hi
         z.hit := time
         z.hi := high
+        z.hbk := bkN
+        z.hsw := 0
     if low <= z.lo
         z.lot := time
         z.lo := low
+        z.lbk := bkN
+        z.lsw := 0
+    float bt = math.max(open, close)
+    float bb = math.min(open, close)
+    if na(z.bhi) or bt >= z.bhi
+        z.bhi := bt
+        z.bht := time
+    if na(z.blo) or bb <= z.blo
+        z.blo := bb
+        z.blt := time
 
 endZone(Zone z) =>
     if na(z.tend)
@@ -994,6 +1064,11 @@ if inWin and tfok
         actz.push(p)
         if premarkets.size() > nsesEff
             premarkets.shift().kill()
+    if bkNew
+        for z in days
+            z.swTest()
+        for z in zones
+            z.swTest()
     runActive()
     runMon()
 
@@ -1788,6 +1863,77 @@ combinePo3(RTHOG g, Zone z, float tol) =>
                     break
     true
 
+// ============================================================ [LVL] high / low importance and body levels
+// rank of an untaken high / low: swing 0 (important: line 1 wider, label 1 size up), not known yet 1, not a swing
+// 1 (sessions) or 2 (days); a taken one is 1
+lvlRank(Zone z, int sw, bool taken) =>
+    taken ? 1 : sw > 0 ? 0 : sw == 0 ? 1 : z.isday ? 2 : 1
+
+method zSide(Zone z, bool hi) =>
+    line ln = hi ? z.maxln : z.minln
+    label lb = hi ? z.maxlbl : z.minlbl
+    int rk = lvlRank(z, hi ? z.hsw : z.lsw, not na(hi ? z.hidonet : z.lodonet))
+    color c0 = z.isday ? (hi ? daymmaxcol : daymmincol) : (hi ? sesmmaxcol : sesmmincol)
+    int w0 = z.isday ? daymwid : sesmwid
+    string sz0 = z.isday ? dlblsz : slblsz
+    if not na(ln)
+        ln.set_color(attL(c0, rk))
+        ln.set_width(rk == 0 ? math.min(4, attW(w0, 0) + 1) : attW(w0, rk))
+    if not na(lb)
+        lb.set_textcolor(attL(c0, rk))
+        lb.set_size(rk == 0 ? sizeUp(sz0) : sz0)
+    true
+
+// body level of side hi of z (want: draw it), returns whether it is drawn
+method zBody(Zone z, bool hi, bool want) =>
+    line ln = hi ? z.bhln : z.blln
+    label lb = hi ? z.bhlbl : z.bllbl
+    if want
+        int x = tright(2)
+        float p = hi ? z.bhi : z.blo
+        color c = attL(z.isday ? (hi ? daymmaxcol : daymmincol) : (hi ? sesmmaxcol : sesmmincol), 1)
+        string txt = (z.isday ? "day" : z.name) + (hi ? " body hi" : " body lo")
+        if na(ln)
+            ln := line.new(hi ? z.bht : z.blt, p, x, p, xloc = xloc.bar_time, color = c, style = line.style_dotted,
+                 width = 1)
+            lb := label.new(x, p, txt, xloc = xloc.bar_time, style = label.style_label_left, color = transparent,
+                 textcolor = c, size = z.isday ? dlblsz : slblsz)
+        else
+            ln.set_x2(x)
+            ln.set_color(c)
+            lb.set_x(x)
+            lb.set_textcolor(c)
+    else
+        rmLine(ln)
+        rmLabel(lb)
+        ln := na
+        lb := na
+    if hi
+        z.bhln := ln
+        z.bhlbl := lb
+    else
+        z.blln := ln
+        z.bllbl := lb
+    want
+
+// newest first; nbh / nbl: body levels already drawn per side
+zLevels(array<Zone> arr, int nbh0, int nbl0) =>
+    int nbh = nbh0
+    int nbl = nbl0
+    int n = arr.size()
+    if n > 0
+        for k = 0 to n - 1
+            Zone z = arr.get(n - 1 - k)
+            if z.drawmaxmin
+                z.zSide(true)
+                z.zSide(false)
+            bool ended = z.drawmaxmin and not na(z.tend) and dobody
+            if z.zBody(true, ended and na(z.hidonet) and z.bhi < z.hi and nbh < BODYMAX)
+                nbh += 1
+            if z.zBody(false, ended and na(z.lodonet) and z.blo > z.lo and nbl < BODYMAX)
+                nbl += 1
+    [nbh, nbl]
+
 // ============================================================ last-bar work: right edges, months,
 // table
 var table tbl = table.new(position.top_right, 1, 4, bgcolor = transparent)
@@ -1812,8 +1958,7 @@ if finalBar and tfok
     for z in premarkets
         if z.live()
             z.refresh()
-    // [ATT] the last midnight open, the untaken high / low of the previous day and of the last two ended sessions
-    // are important
+    // [ATT] the last midnight open is important
     if attLvl > 0
         for [i, z] in days
             if not na(z.opln)
@@ -1821,40 +1966,9 @@ if finalBar and tfok
                 z.opln.set_color(attL(opcolor, rk))
                 z.opln.set_width(attW(opwid, rk))
                 z.oplabel.set_textcolor(attL(opcolor, rk))
-        if days.size() > 1
-            Zone pd = days.get(days.size() - 2)
-            int rh = na(pd.hidonet) ? 0 : 1
-            int rl = na(pd.lodonet) ? 0 : 1
-            if not na(pd.maxln)
-                pd.maxln.set_color(attL(daymmaxcol, rh))
-                pd.maxln.set_width(attW(daymwid, rh))
-            if not na(pd.minln)
-                pd.minln.set_color(attL(daymmincol, rl))
-                pd.minln.set_width(attW(daymwid, rl))
-            if not na(pd.maxlbl)
-                pd.maxlbl.set_textcolor(attL(daymmaxcol, rh))
-            if not na(pd.minlbl)
-                pd.minlbl.set_textcolor(attL(daymmincol, rl))
-        int nend = 0
-        int nzs = zones.size()
-        for k = 0 to math.max(nzs - 1, 0)
-            Zone z = nzs > 0 ? zones.get(nzs - 1 - k) : na
-            if na(z)
-                break
-            if not na(z.tend)
-                nend += 1
-                int rh = nend <= 2 and na(z.hidonet) ? 0 : 1
-                int rl = nend <= 2 and na(z.lodonet) ? 0 : 1
-                if not na(z.maxln)
-                    z.maxln.set_color(attL(sesmmaxcol, rh))
-                    z.maxln.set_width(attW(sesmwid, rh))
-                if not na(z.minln)
-                    z.minln.set_color(attL(sesmmincol, rl))
-                    z.minln.set_width(attW(sesmwid, rl))
-                if not na(z.maxlbl)
-                    z.maxlbl.set_textcolor(attL(sesmmaxcol, rh))
-                if not na(z.minlbl)
-                    z.minlbl.set_textcolor(attL(sesmmincol, rl))
+    // [LVL] day / session highs and lows by importance, and the body levels
+    [nbh, nbl] = zLevels(zones, 0, 0)
+    [nbh2, nbl2] = zLevels(days, nbh, nbl)
     if preOn
         int npm = premarkets.size()
         for [i, z] in premarkets

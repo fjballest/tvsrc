@@ -95,6 +95,8 @@ None of these windows can be changed in the settings, except the premarket range
 - **Day labels** on untaken highs and lows: "day high" / "day low", or "week high" / "week low" when the level is at or beyond the extremes of the earlier days of the same week. The label disappears when the level is taken.
 - **Equilibrium** ("eq", dashed blue): the midpoint of the day's high and low. The current day's eq moves with the day. A completed day's eq extends through the following day and stops at its end.
 - **Midnight open** ("M.O.", dashed black): the open of the first bar of the day, drawn across the day.
+- **Swing highs and lows are emphasized**: an untaken day or session high (low) that is a swing high (low) is drawn 1 px wider with its label one size larger. It is a swing when the candle before and the candle after it have lower highs (higher lows), using 15m candles (or chart candles above 15m); this is decided when the candle after it completes. A day high or low that is not a swing (made at the edge of the day, or level with a neighbor candle) ranks as minor for attenuation.
+- **Body levels** (dotted, same color, "day body hi", "Asia body lo", ...): while the high (low) of an ended day or session is untaken, a dotted line marks its highest (lowest) candle body when that is below (above) the wick. Price often takes the body level and not the wick, so the body level is a reaction level of its own. It is removed once the high (low) is taken. The 6 most recent per side are drawn.
 
 **How to use it**
 
@@ -328,9 +330,9 @@ The first group: one switch per feature, so you can turn features on and off wit
 
 Attenuation dims the drawings without changing their settings. Drawings have three ranks:
 
-- Important: the last midnight open (M.O.), the untaken high and low of the previous day and of the last two ended sessions, the current and previous RTHOG, TGIF levels, NWOGs and the last NDOG.
-- Normal: month lines, the other day and session max/min, week vertical lines, the quadrants and octants of the current RTHOG, the PMKT high and low, EQH / EQL and the macro background.
-- Minor: day vertical lines, eq, older M.O.s, older NDOGs, old RTHOGs (the short marks), the RTHOG deviations, and the PMKT quadrants and deviations.
+- Important: the last midnight open (M.O.), untaken day and session highs and lows that are swings, the current and previous RTHOG, TGIF levels, NWOGs and the last NDOG.
+- Normal: month lines, session highs and lows that are not swings (or not decided yet), taken highs and lows, body levels, week vertical lines, the quadrants and octants of the current RTHOG, the PMKT high and low, EQH / EQL and the macro background.
+- Minor: day highs and lows that are not swings, day vertical lines, eq, older M.O.s, older NDOGs, old RTHOGs (the short marks), the RTHOG deviations, and the PMKT quadrants and deviations.
 
 | Level | Important | Normal | Minor | Session rectangles |
 | --- | --- | --- | --- | --- |
@@ -379,6 +381,7 @@ Attenuation dims the drawings without changing their settings. Drawings have thr
 | (no label, width) | 2 | Width of the day high and low lines. |
 | label unbroken day max/min | on | Labels day highs and lows that have not been taken ("day high", "week high", ...). |
 | size | tiny | Text size of those labels. |
+| body high / low levels (days and sessions) | on | Dotted lines at the highest (lowest) candle body of ended days and sessions whose high (low) is untaken and above (below) that body; removed when the high (low) is taken. The 6 most recent per side. |
 | REH/REL labels | on | Groups untaken day highs (lows) that are close to each other and labels only the outermost as "day REHs" ("day RELs"). |
 | tolerance x daily ATR | 0.05 | Maximum distance between two day highs (lows) to be relative equal, as a fraction of the daily ATR(14). Higher values group more levels. |
 | equilibrium | on | Draws the day equilibrium (midpoint of high and low) with an "eq" label. |

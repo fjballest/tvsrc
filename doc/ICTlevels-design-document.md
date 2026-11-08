@@ -299,7 +299,16 @@ The design choices that keep it fast:
 
 `attLvl` (0 to 4) dims the drawings by rank, `[ATT]` in the code. `attE(rank)` gives the dimming steps of a rank (0 important, 1 normal, 2 minor): 0 at level 0; important 0, 1, 1, 2; normal 1 to 4; minor 2 to 5 for levels 1 to 4. `attL(c, rank)` takes `min(e * 0.18, 0.9)` of the remaining opacity from a color, `attW(w, rank)` lowers a width by 1 from 2 steps on (never below 1) and `attT(t, rank)` raises a fill transparency by `e * 20%` of what is left.
 
-- Ranks are fixed per drawing (styles and call sites), except: `gsty()` restyles a gap on the last bar (NWOG and the gap flagged `imp` important, other NDOGs minor; `imp` is the newest NDOG, passed on to the gap that shows it when gaps are combined); `right(g, c, rk)` restyles the current and previous RTHOG (rank 0), with the quadrants and octants of the current one normal and its stddevs minor; old compact RTHOGs (`setOld`) are minor; on the last bar, with `attLvl > 0`, the last day's M.O. is important (older ones minor), and the untaken max / min of the previous day and of the last two ended sessions are important (other days and sessions normal). NWOG lines keep rank 0 colors but take rank 1 widths and fill at levels 3 and 4 (`rkw` in `gsty()`). Months are normal.
+- Ranks are fixed per drawing (styles and call sites), except: `gsty()` restyles a gap on the last bar (NWOG and the gap flagged `imp` important, other NDOGs minor; `imp` is the newest NDOG, passed on to the gap that shows it when gaps are combined); `right(g, c, rk)` restyles the current and previous RTHOG (rank 0), with the quadrants and octants of the current one normal and its stddevs minor; old compact RTHOGs (`setOld`) are minor; on the last bar, with `attLvl > 0`, the last day's M.O. is important (older ones minor); day and session highs and lows take their rank from `lvlRank()` (see Level importance). NWOG lines keep rank 0 colors but take rank 1 widths and fill at levels 3 and 4 (`rkw` in `gsty()`). Months are normal.
 - Session rectangles: `rtrF` (fill) is lighter at level 1; from level 2 on `rbord` forces the outline with `rtrB`, fainter each level, width 1 from level 3.
 - The NinjaTrader and Tradovate ports do not have attenuation yet; they will get it once the levels are settled.
+
+## Level importance and body levels
+
+`[LVL]` in the code.
+
+- Candles for the swing test are buckets of `max(15m, chart timeframe)`: `bkN` counts them and `bkH` / `bkL` keep the highs and lows of the last four. `upd()` stores the bucket of a new zone high (low) in `hbk` (`lbk`) and resets `hsw` (`lsw`) to 0 (unknown). When a bucket starts, `swTest()` decides the zones (days and sessions) whose extreme is two buckets back: swing (1) if the buckets before and after have a lower high (higher low), else -1.
+- `upd()` also tracks the highest and lowest body (`bhi` / `bht`, `blo` / `blt`).
+- On the last bar `zLevels()` walks sessions and then days, newest first: `zSide()` restyles each max / min line and label by `lvlRank()` (untaken swing 0: width +1, max 4, and `sizeUp()` of the label size; unknown 1; not a swing 1 for sessions, 2 for days; taken 1); `zBody()` draws or removes the body level (dotted, width 1, rank 1) of an ended zone whose extreme is untaken and beyond its body, at most `BODYMAX` (6) per side, reserved in the object budget (`lnBody`).
+- Input `dobody` (Day Settings, on). The NinjaTrader and Tradovate ports do not have this yet.
 
