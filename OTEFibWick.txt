@@ -25,9 +25,12 @@ var wickdx = input.int(1, "bars",  inline = "wick", group=GW,
 var wswing = input.bool(true, "keep CEs of swing high/low wicks", group=GW,
      tooltip="older candles keep only these. Uses the swing bars left/right from the Fib section")
 var wrecent = input.int(5, "always show CEs of the last candles", group=GW, minval=0)
-var wreach = input.float(1, "extend CEs within x ATR of price", group=GW, minval=0,
-     tooltip="above and below price, the CE of the longest wick within this distance and not yet crossed by a body " +
-         "extends to the current bar. 0 to disable")
+var wfvg = input.bool(true, "keep CEs of wicks starting an FVG", group=GW,
+     tooltip="the wick of the first candle of an FVG, on the side of the gap")
+var wnext = input.int(2, "extend", group=GW, minval=0, maxval=10, inline="wx")
+var wreach = input.float(1, "CEs per side within x ATR", group=GW, minval=0, inline="wx",
+     tooltip="above and below price, the CEs of the N longest wicks within this distance and not yet crossed by a body " +
+         "extend to the current bar. 0 to disable")
 
 GF = "Fib"
 var fibswing = input.bool(true, "use swings to locate 0/100", group=GF, tooltip="retrace in swing highs/lows")
@@ -158,8 +161,9 @@ rng = dH - dL
 plot(rng, title="range", display=display.status_line)
 
 // Wick CEs.
-// The last few candles always show theirs. Older candles keep only those of swing highs/lows.
-// Above and below price, the CE of the longest wick close to price and not yet crossed by a body extends.
+// The last few candles always show theirs. Older candles keep only those of swing highs/lows
+// and of the wick of the first candle of an FVG, on the gap side.
+// Above and below price, the CEs of the N longest wicks close to price and not yet crossed by a body extend.
 type WCE
     int b
     float ce
@@ -167,6 +171,7 @@ type WCE
     bool up
     line ln = na
     bool swing = false
+    bool fvg = false
     bool dead = false
 
 method hide(WCE w) =>
@@ -188,6 +193,14 @@ wfind(int b, bool up) =>
                 r := w
                 break
     r
+
+wextend(array<WCE> ws, array<float> lens) =>
+    if ws.size() > 0
+        idx = lens.sort_indices(order.descending)
+        for j = 0 to math.min(wnext, idx.size()) - 1
+            w = ws.get(idx.get(j))
+            w.ln.set_x2(bar_index + 1)
+            w.ln.set_width(2)
 
 dtr = math.max(dH - dL, math.abs(dH - nz(dC[1], dO)), math.abs(dL - nz(dC[1], dO)))
 datr = ta.rma(dtr, 14)
@@ -213,23 +226,34 @@ if dowick and compute and barstate.isconfirmed and bar_index > 2
         if not na(wp)
             wp.swing := true
 
+    if wfvg and dL[2] > dH
+        wp = wfind(i - 2, false)
+        if not na(wp)
+            wp.fvg := true
+    if wfvg and dH[2] < dL
+        wp = wfind(i - 2, true)
+        if not na(wp)
+            wp.fvg := true
+
     // new CEs for the closed candle
     if dH - bodyh > minwick
         wces.push(WCE.new(i, math.avg(dH, bodyh), dH - bodyh, true))
     if bodyl - dL > minwick
         wces.push(WCE.new(i, math.avg(dL, bodyl), bodyl - dL, false))
 
-    // draw and forget; pick the longest live one above and below price
+    // draw and forget; pick the longest live ones above and below price
     hold = math.max(wrecent, oteswingright + 1)
     reach = wreach * datr
-    WCE xa = na
-    WCE xb = na
+    xa = array.new<WCE>()
+    xal = array.new<float>()
+    xb = array.new<WCE>()
+    xbl = array.new<float>()
     n = wces.size()
     if n > 0
         for k = n - 1 to 0
             w = wces.get(k)
             recent = w.b > i - wrecent
-            if not w.swing and not recent
+            if not w.swing and not w.fvg and not recent
                 w.hide()
                 if w.b <= i - hold
                     wces.remove(k)
@@ -238,17 +262,15 @@ if dowick and compute and barstate.isconfirmed and bar_index > 2
                     w.ln := line.new(w.b, w.ce, w.b + wdx(), w.ce)
                 w.ln.set_x2(w.b + wdx())
                 w.ln.set_width(1)
-                if wreach > 0 and not w.dead and math.abs(w.ce - dC) <= reach
-                    if w.ce >= dC and (na(xa) or w.len > xa.len)
-                        xa := w
-                    if w.ce < dC and (na(xb) or w.len > xb.len)
-                        xb := w
-    if not na(xa)
-        xa.ln.set_x2(bar_index + 1)
-        xa.ln.set_width(2)
-    if not na(xb)
-        xb.ln.set_x2(bar_index + 1)
-        xb.ln.set_width(2)
+                if wnext > 0 and wreach > 0 and not w.dead and math.abs(w.ce - dC) <= reach
+                    if w.ce >= dC
+                        xa.push(w)
+                        xal.push(w.len)
+                    else
+                        xb.push(w)
+                        xbl.push(w.len)
+    wextend(xa, xal)
+    wextend(xb, xbl)
     while wces.size() > 400
         w = wces.shift()
         w.hide()
