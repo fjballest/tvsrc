@@ -7,7 +7,7 @@
 // FVGs closed through become IFVGs. Mitigated levels are removed.
 //
 // Port of the TradingView Pine Script v6 indicator ICTcotas.txt by franjballest
-// (source md5 b36c9bcf7ce564c0144556d6e0be00cd). Mozilla Public License 2.0.
+// (source md5 974cb9ace535ae01bfb4200c487d410f). Mozilla Public License 2.0.
 //
 // Install:
 //   1. Copy this file to  Documents\NinjaTrader 8\bin\Custom\Indicators\ICTcotas.cs
@@ -316,8 +316,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 				MfLabelSize = ICTcotasLabelSize.Normal;
 				MfLabelPos = ICTcotasLabelPosition.InsideRight;
 				MfLabelAnchor = ICTcotasLabelAnchor.CE;
-				Wick1H = false;
-				Wick4H = false;
+				Wick1H = true;
+				Wick4H = true;
 				MfMargin = true;
 				MfMarginOffset = 4;
 				MfMarginWidth = 4;
@@ -1054,16 +1054,20 @@ namespace NinjaTrader.NinjaScript.Indicators
 			Brush c = AttL(TCol(l.Tfi, l.Dir), rk);
 			Brush cf = TCol(l.Tfi, l.Dir);
 			int mw = AttW(MfWidth, rk);
+			// [ATT] the margin (boxes, labels) is dimmed as an important level; only the extended levels
+			// over the candles use the level's own rank
+			Brush cm = AttL(cf, 0);
+			int mwm = AttW(MfWidth, 0);
 			int x0 = -(MfMarginOffset + MfCol(l.Tfi - 3) * (MfMarginWidth + 1));
 			int x1 = x0 - MfMarginWidth;
 
 			NinjaTrader.NinjaScript.DrawingTools.Rectangle r = Draw.Rectangle(this, Tag(l, "bx"), false,
-				x0, l.Hi, x1, l.Lo, c, MfFill == ICTcotasFill.Never ? Brushes.Transparent : cf,
-				MfFill == ICTcotasFill.Never ? 0 : 100 - AttT(MfTransparency, rk));
+				x0, l.Hi, x1, l.Lo, cm, MfFill == ICTcotasFill.Never ? Brushes.Transparent : cf,
+				MfFill == ICTcotasFill.Never ? 0 : 100 - AttT(MfTransparency, 0));
 			if (r != null)
-				r.OutlineStroke = new Stroke(c, MfStyle, mw);
+				r.OutlineStroke = new Stroke(cm, MfStyle, mwm);
 			if (MfShowCE)
-				Draw.Line(this, Tag(l, "cbx"), false, x0, l.Ce, x1, l.Ce, c, MfCEStyle, mw);
+				Draw.Line(this, Tag(l, "cbx"), false, x0, l.Ce, x1, l.Ce, cm, MfCEStyle, mwm);
 
 			if (MfExtend)
 			{
@@ -1083,7 +1087,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 				// TF with an "i" for an IFVG: "1Hi"
 				string tfn = MfLabelShowTf ? MfNames[l.Tfi - 3] + (l.Inv ? "i" : "") + "\n" : "";
 				string txt = tfn + (l.Dir == 1 ? "\u2191" : "\u2193");
-				DrawLabel(Tag(l, "lbl"), (x0 + x1) / 2, y, txt, c, mfFont, TextAlignment.Center);
+				DrawLabel(Tag(l, "lbl"), (x0 + x1) / 2, y, txt, cm, mfFont, TextAlignment.Center);
 			}
 		}
 

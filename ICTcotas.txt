@@ -233,11 +233,11 @@ string mflpos = input.string("Inside right", "position", options = ["Right margi
 string mflvert = input.string("CE", "at", options = ["High", "CE", "Low"], group = G_MF,
      inline = "m8",
      tooltip = "Price level the label is attached to")
-bool wk1h = input.bool(false, "wick CE: 1H", group = G_MF, inline = "m9",
+bool wk1h = input.bool(true, "wick CE: 1H", group = G_MF, inline = "m9",
      tooltip = "Also compute the wick CE levels (see Wick CE group, "
      + "needs Draw wick CE on) on these timeframes. Only "
      + "timeframes higher than the chart timeframe are used.")
-bool wk4h = input.bool(false, "4H", group = G_MF, inline = "m9")
+bool wk4h = input.bool(true, "4H", group = G_MF, inline = "m9")
 bool mfmargin = input.bool(true, "Draw in the right margin", group = G_MF, inline = "mm1",
      tooltip = "Instead of over the candles, each FVG / IFVG is drawn as a box in the right margin, one column "
      + "per timeframe (from the lowest), labeled with the timeframe and, on the next line, an up (bullish) or down (bearish) arrow. Offset: bars "
@@ -514,35 +514,39 @@ method drawMM(Lvl l) =>
     int rk = l.rank()
     color c = attL(mfcol(l.tfi - 3, l.dir), rk)
     int mw = attW(mfwid, rk)
-    color bg = mffill == "never" ? transparent : color.new(mfcol(l.tfi - 3, l.dir), attT(mftr, rk))
+    // [ATT] the margin (boxes, labels, links to the boxes) is dimmed as an important level;
+    // only the extended levels over the candles use the level's own rank
+    color cm = attL(mfcol(l.tfi - 3, l.dir), 0)
+    int mwm = attW(mfwid, 0)
+    color bg = mffill == "never" ? transparent : color.new(mfcol(l.tfi - 3, l.dir), attT(mftr, 0))
     int x0 = bar_index + mfmoff + mfCol(l.tfi - 3) * (mfmw + 1)
     int x1 = x0 + mfmw
     if na(l.bx)
-        l.bx := box.new(x0, l.hi, x1, l.lo, xloc = xloc.bar_index, border_color = c,
-             border_style = mfsty, border_width = mw, bgcolor = bg)
+        l.bx := box.new(x0, l.hi, x1, l.lo, xloc = xloc.bar_index, border_color = cm,
+             border_style = mfsty, border_width = mwm, bgcolor = bg)
     else
         l.bx.set_lefttop(x0, l.hi)
         l.bx.set_rightbottom(x1, l.lo)
-        l.bx.set_border_color(c)
+        l.bx.set_border_color(cm)
         l.bx.set_bgcolor(bg)
     if mfshowce
         if na(l.cebx)
-            l.cebx := box.new(x0, l.ce, x1, l.ce, xloc = xloc.bar_index, border_color = c,
-                 border_style = mfcesty, border_width = mw, bgcolor = transparent)
+            l.cebx := box.new(x0, l.ce, x1, l.ce, xloc = xloc.bar_index, border_color = cm,
+                 border_style = mfcesty, border_width = mwm, bgcolor = transparent)
         else
             l.cebx.set_lefttop(x0, l.ce)
             l.cebx.set_rightbottom(x1, l.ce)
-            l.cebx.set_border_color(c)
+            l.cebx.set_border_color(cm)
     if mfext
         int xs = mfextto == "to start" ? l.t : mfextto == "to creation" ? nz(l.tfm, l.t)
              : time[math.min(mfextn, bar_index)]
         l.hiln := mkLine(l.hiln, xs, l.hi, time, c, mfsty, mw)
         l.loln := mkLine(l.loln, xs, l.lo, time, c, mfsty, mw)
-        l.hiln2 := mkLineI(l.hiln2, bar_index, l.hi, x0, c, mfsty, mw)
-        l.loln2 := mkLineI(l.loln2, bar_index, l.lo, x0, c, mfsty, mw)
+        l.hiln2 := mkLineI(l.hiln2, bar_index, l.hi, x0, cm, mfsty, mwm)
+        l.loln2 := mkLineI(l.loln2, bar_index, l.lo, x0, cm, mfsty, mwm)
         if mfshowce
             l.celn := mkLine(l.celn, xs, l.ce, time, c, mfcesty, mw)
-            l.celn2 := mkLineI(l.celn2, bar_index, l.ce, x0, c, mfcesty, mw)
+            l.celn2 := mkLineI(l.celn2, bar_index, l.ce, x0, cm, mfcesty, mwm)
     if mflbl
         float y = mflvert == "High" ? l.hi : mflvert == "Low" ? l.lo : l.ce
         // thin boxes: the timeframe on one line, the arrow on the next
@@ -551,12 +555,12 @@ method drawMM(Lvl l) =>
         string txt = tfn + (l.dir == 1 ? "↑" : "↓")
         if na(l.celb)
             l.celb := label.new(int((x0 + x1) / 2), y, txt, xloc = xloc.bar_index,
-                 style = label.style_label_center, color = transparent, textcolor = c, size = mflsz,
+                 style = label.style_label_center, color = transparent, textcolor = cm, size = mflsz,
                  text_formatting = lblbold ? text.format_bold : text.format_none)
         else
             l.celb.set_xy(int((x0 + x1) / 2), y)
             l.celb.set_text(txt)
-            l.celb.set_textcolor(c)
+            l.celb.set_textcolor(cm)
     true
 
 // FVG by timeframe: outline box (optionally filled), CE box and label

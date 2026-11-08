@@ -176,7 +176,7 @@ ICT treats the 50 percent of a long wick as a level where price often reacts on 
 
 With the default mitigation rule (Fully filled, wick), a lower wick CE is removed when price trades down to the wick's low, and an upper wick CE when price trades up to the wick's high. With **CE touched**, the line is removed as soon as the CE is touched.
 
-The 1H and 4H wick CE options in the last settings section add the same kind of lines for those timeframes, using the Wick CE settings (they need **Draw wick CE** on). They use the 1H / 4H box colors and their labels start with `1H` or `4H`.
+The 1H and 4H wick CE options in the last settings section (on by default) add the same kind of lines for those timeframes, using the Wick CE settings (they need **Draw wick CE** on). They use the 1H / 4H box colors and their labels start with `1H` or `4H`.
 
 ### ULW CE
 
@@ -262,7 +262,7 @@ Attenuation ranks (a first version, to be tuned):
 | normal | daily and 4H FVGs and IFVGs; weekly and monthly VIs, wick CEs and ULW CEs |
 | minor | 15m and 1H FVG boxes; daily VIs, wick CEs and ULW CEs; 1H and 4H wick CEs |
 
-Each attenuation level makes minor drawings the most transparent and important ones the least (as in ICTlevels): lines, labels and fills fade, and widths go down by 1 when dimmed enough (never below 1). In Tradovate a faded color is the color blended into the chart background: set **attbg** (white by default) to your chart background color.
+Each attenuation level makes minor drawings the most transparent and important ones the least (as in ICTlevels): lines, labels and fills fade, and widths go down by 1 when dimmed enough (never below 1). With **Draw in the right margin** on, the margin boxes, their labels and the links to them are dimmed as important drawings whatever their rank; only the extended levels over the candles use the rank of their FVG. In Tradovate a faded color is the color blended into the chart background: set **attbg** (white by default) to your chart background color.
 
 ### Colors (by timeframe)
 
@@ -380,8 +380,8 @@ Fills use these colors with the transparency set in each section.
 | direction (+/-) | off | Include + or - |
 | position | Inside right | Right margin, Inside left, Inside right, Center, Left of box (section 7) |
 | at | CE | Vertical anchor of the label: High, CE or Low |
-| wick CE: 1H | off | Adds 1H wick CE lines (needs Draw wick CE on and a chart lower than 1H) |
-| 4H | off | Adds 4H wick CE lines (needs Draw wick CE on and a chart lower than 4H) |
+| wick CE: 1H | on | Adds 1H wick CE lines (needs Draw wick CE on and a chart lower than 1H) |
+| 4H | on | Adds 4H wick CE lines (needs Draw wick CE on and a chart lower than 4H) |
 | Draw in the right margin | on | Draws the boxes in the right margin, one column per timeframe, labeled with the timeframe and an up / down arrow below it (section 7) |
 | offset | 4 | Bars between the last bar and the first margin column |
 | width | 4 | Bars per margin box |

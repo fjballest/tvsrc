@@ -9,7 +9,7 @@
  * closed through become IFVGs. Mitigated levels are removed.
  *
  * Port of the TradingView Pine Script v6 indicator ICTcotas.txt
- * (md5 b36c9bcf7ce564c0144556d6e0be00cd), (c) franjballest, Mozilla Public
+ * (md5 974cb9ace535ae01bfb4200c487d410f), (c) franjballest, Mozilla Public
  * License 2.0 (https://mozilla.org/MPL/2.0/). Same logic, same inputs (as
  * camelCase parameters) and the same defaults.
  *
@@ -535,8 +535,8 @@ function buildConfig(p, chart) {
         mfLFont: font(p.mfLSize, "normal"),
         mfLPos: str(p.mfLPos, "insideRight"),
         mfLVert: str(p.mfLVert, "ce"),
-        wk1h: bool(p.wk1h, false),
-        wk4h: bool(p.wk4h, false),
+        wk1h: bool(p.wk1h, true),
+        wk4h: bool(p.wk4h, true),
         mfMargin: bool(p.mfMargin, true),
         mfMOff: clamp(Math.round(num(p.mfMOff, 4)), 0, 200),
         mfMW: clamp(Math.round(num(p.mfMW, 4)), 1, 50),
@@ -710,16 +710,20 @@ function drawMfMargin(c, l, eng, lastIdx, items) {
     const cf = c.mfCol[l.tfi - 3][l.dir === 1 ? 0 : 1];
     const col = attL(c, cf, rk);
     const mw = attW(c, c.mfWid, rk);
+    // [ATT] the margin (boxes, labels) is dimmed as an important level; only the extended levels
+    // over the candles use the level's own rank
+    const cm = attL(c, cf, 0);
+    const mwm = attW(c, c.mfWid, 0);
     const k = "ictc" + l.id;
     let cn = 0;
     for (let j = 0; j < l.tfi - 3; j++) if (eng.mfEnabled(j)) cn++;
     const x0 = lastIdx + c.mfMOff + cn * (c.mfMW + 1);
     const x1 = x0 + c.mfMW;
-    if (c.mfFill !== "never") items.push(rectItem(k + "fill", x0, l.hi, x1, l.lo, cf, attT(c, c.mfTr, rk)));
+    if (c.mfFill !== "never") items.push(rectItem(k + "fill", x0, l.hi, x1, l.lo, cf, attT(c, c.mfTr, 0)));
     items.push(linesItem(k + "bx", [
         seg(x0, l.hi, x1, l.hi), seg(x1, l.hi, x1, l.lo), seg(x1, l.lo, x0, l.lo), seg(x0, l.lo, x0, l.hi)
-    ], col, mw, c.mfSty));
-    if (c.mfShowCe) items.push(linesItem(k + "ce", [seg(x0, l.ce, x1, l.ce)], col, mw, c.mfCeSty));
+    ], cm, mwm, c.mfSty));
+    if (c.mfShowCe) items.push(linesItem(k + "ce", [seg(x0, l.ce, x1, l.ce)], cm, mwm, c.mfCeSty));
     if (c.mfExt) {
         // "for" N candles, "start" of the FVG, or "creation": end of its third candle
         const xs = c.mfExtTo === "start" ? l.t : c.mfExtTo === "creation" ? (l.tfm !== null ? l.tfm : l.t)
@@ -733,7 +737,7 @@ function drawMfMargin(c, l, eng, lastIdx, items) {
         // (Tradovate does not break text at "\n" and misplaces centerBottom / centerTop text)
         const xm = Math.floor((x0 + x1) / 2);
         const tf = c.mfLShowTf ? MF_NAMES[l.tfi - 3] + (l.inv ? "i" : "") + " " : "";
-        items.push(textItem(k + "lb", xm, y, tf + (l.dir === 1 ? "\u2191" : "\u2193"), col, c.mfLFont, c.lblBold, "center"));
+        items.push(textItem(k + "lb", xm, y, tf + (l.dir === 1 ? "\u2191" : "\u2193"), cm, c.mfLFont, c.lblBold, "center"));
     }
 }
 
@@ -1031,8 +1035,8 @@ module.exports = {
             center: "Center", leftOfBox: "Left of box"
         }, "insideRight"),
         mfLVert: predef.paramSpecs.enum({ high: "High", ce: "CE", low: "Low" }, "ce"),
-        wk1h: predef.paramSpecs.bool(false),
-        wk4h: predef.paramSpecs.bool(false),
+        wk1h: predef.paramSpecs.bool(true),
+        wk4h: predef.paramSpecs.bool(true),
         // right margin: one column per timeframe
         mfMargin: predef.paramSpecs.bool(true),
         mfMOff: int(4, 0),
