@@ -22,6 +22,19 @@ wick_color = input.color(color.gray, "color", group = GW, inline = "w")
 var minwick = input.float(20, "wick CE sz", inline = "wick", group = GW)
 var wickdx = input.int(1, "bars",  inline = "wick", group=GW, 
      tooltip="0 for auto or number of bars for segment width")
+var wswing = input.bool(true, "keep CEs of swing high/low wicks", group=GW,
+     tooltip="uses the swing bars left/right from the Fib section")
+var wdisp = input.float(2, "keep CEs next to displacement: body x avg", group=GW, minval=0,
+     tooltip="keep the CE when the candle before, after or with the wick has a body at least this many times " +
+         "the average body (last 20 candles). 0 to disable")
+var wclus = input.int(3, "keep CE of the furthest wick in runs of", group=GW, minval=0,
+     tooltip="in a run of consecutive wicks on the same side only the furthest one may be kept; " +
+         "runs with at least this many wicks keep it. 0 to disable")
+var wrecent = input.int(5, "always show CEs of the last candles", group=GW, minval=0)
+var wresp = input.bool(true, "keep respected CEs", group=GW,
+     tooltip="keep CEs that price came back to, with wicks but no body through them")
+var wreach = input.float(3, "extend live CEs within x ATR of price", group=GW, minval=0,
+     tooltip="kept CEs not yet crossed by a body extend to the current bar while price is this close. 0 to disable")
 
 GF = "Fib"
 var fibswing = input.bool(true, "use swings to locate 0/100", group=GF, tooltip="retrace in swing highs/lows")
@@ -139,7 +152,6 @@ wdx() =>
     r
 
  
-var wickces = array.new<line>()
 var wicks = array.new<line>()
 var line ln5 = na
 var label lb5 = na
@@ -152,23 +164,148 @@ rng = dH - dL
 // Show whole range in the status line
 plot(rng, title="range", display=display.status_line)
 
-if dowick and compute and barstate.isconfirmed
-    bodyh = math.max(dO[1],dC[1])
-    bodyl = math.min(dO[1],dC[1])
-    wh = dH[1]-bodyh
-    wl = bodyl-dL[1]
-    
-    if wh > minwick
-        ce = math.avg(dH[1],bodyh)
-        ln = line.new(bar_index-1, ce, bar_index-1+wdx(), ce)
-        wickces.push(ln)
-    if wl > minwick
-        ce = math.avg(dL[1],bodyl)
-        ln = line.new(bar_index-1, ce, bar_index-1+wdx(), ce)
-        wickces.push(ln)
-    if wickces.size() > 250
-        w = wickces.shift()
-        w.delete()
+// Wick CEs.
+// Only relevant ones are kept: swing wicks, wicks next to displacement, the furthest wick
+// in a run of same side wicks, and those later respected (pierced by wicks, not by bodies).
+// The last few candles always show theirs.
+// Kept CEs not yet crossed by a body extend to the current bar while price is near.
+type WCE
+    int b
+    float ce
+    float ext
+    bool up
+    line ln = na
+    bool swing = false
+    bool disp = false
+    bool clus = false
+    bool shadow = false
+    bool tested = false
+    bool dead = false
+
+method kept(WCE w) =>
+    not w.shadow and (w.swing or w.disp or w.clus or w.tested)
+
+method hide(WCE w) =>
+    if not na(w.ln)
+        w.ln.delete()
+        w.ln := na
+
+type WRun
+    WCE last = na
+    WCE best = na
+    int n = 0
+
+method addw(WRun r, WCE w, int nclus) =>
+    if not na(r.last) and r.last.b == w.b - 1
+        r.n := r.n + 1
+        if (w.up and w.ext > r.best.ext) or (not w.up and w.ext < r.best.ext)
+            r.best.shadow := true
+            r.best.clus := false
+            r.best := w
+        else
+            w.shadow := true
+    else
+        r.n := 1
+        r.best := w
+    r.last := w
+    if nclus > 0 and r.n >= nclus
+        r.best.clus := true
+
+var wces = array.new<WCE>()
+var wru = WRun.new()
+var wrl = WRun.new()
+
+wfind(int b, bool up) =>
+    WCE r = na
+    n = wces.size()
+    if n > 0
+        for k = n - 1 to 0
+            w = wces.get(k)
+            if w.b < b
+                break
+            if w.b == b and w.up == up
+                r := w
+                break
+    r
+
+dbody = math.abs(dC - dO)
+dbavg = ta.sma(dbody, 20)
+dtr = math.max(dH - dL, math.abs(dH - nz(dC[1], dO)), math.abs(dL - nz(dC[1], dO)))
+datr = ta.rma(dtr, 14)
+dwph = ta.pivothigh(dH, oteswingleft, oteswingright)
+dwpl = ta.pivotlow(dL, oteswingleft, oteswingright)
+
+if dowick and compute and barstate.isnew and bar_index > 2
+    i = bar_index - 1
+    bodyh = math.max(dO[1], dC[1])
+    bodyl = math.min(dO[1], dC[1])
+
+    // the closed candle tests or crosses older CEs
+    for w in wces
+        if not w.dead and w.b < i
+            if bodyl < w.ce and bodyh > w.ce
+                w.dead := true
+                if not na(w.ln)
+                    w.ln.set_x2(i)
+                    w.ln.set_width(1)
+            else if wresp and i >= w.b + 2 and dH[1] >= w.ce and dL[1] <= w.ce
+                w.tested := true
+
+    bigcur = wdisp > 0 and dbody[1] >= wdisp * dbavg[1]
+    bigprev = wdisp > 0 and dbody[2] >= wdisp * dbavg[2]
+    if bigcur
+        wp = wfind(i - 1, true)
+        if not na(wp)
+            wp.disp := true
+        wp := wfind(i - 1, false)
+        if not na(wp)
+            wp.disp := true
+    if wswing and not na(dwph[1])
+        wp = wfind(i - oteswingright, true)
+        if not na(wp)
+            wp.swing := true
+    if wswing and not na(dwpl[1])
+        wp = wfind(i - oteswingright, false)
+        if not na(wp)
+            wp.swing := true
+
+    // new CEs for the closed candle
+    if dH[1] - bodyh > minwick
+        w = WCE.new(i, math.avg(dH[1], bodyh), dH[1], true)
+        w.disp := bigcur or bigprev
+        wru.addw(w, wclus)
+        wces.push(w)
+    if bodyl - dL[1] > minwick
+        w = WCE.new(i, math.avg(dL[1], bodyl), dL[1], false)
+        w.disp := bigcur or bigprev
+        wrl.addw(w, wclus)
+        wces.push(w)
+
+    // draw, extend, hide and forget
+    hold = math.max(wrecent, oteswingright + 1)
+    n = wces.size()
+    if n > 0
+        for k = n - 1 to 0
+            w = wces.get(k)
+            keep = w.kept()
+            recent = w.b > i - wrecent
+            if not keep and not recent
+                w.hide()
+                if w.b <= i - hold and (w.dead or w.shadow or not wresp)
+                    wces.remove(k)
+            else
+                live = not w.dead and wreach > 0 and keep and math.abs(w.ce - dC[1]) <= wreach * datr[1]
+                if na(w.ln)
+                    x2 = w.tested ? i : w.b + wdx()
+                    w.ln := line.new(w.b, w.ce, x2, w.ce)
+                if live
+                    w.ln.set_x2(bar_index)
+                    w.ln.set_width(2)
+                else
+                    w.ln.set_width(1)
+    while wces.size() > 400
+        w = wces.shift()
+        w.hide()
 
 if compute 
     body_top = math.max(dO, dC)
