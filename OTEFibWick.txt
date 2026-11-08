@@ -19,7 +19,7 @@ var dohtf = input.bool(false, "HTF OTEs", group=GS, inline="en")
 
 wick_width = input.int(2, "Wick Width", group = GW, minval=1, maxval=10, inline="w")
 wick_color = input.color(color.gray, "color", group = GW, inline = "w")
-var minwick = input.float(20, "wick CE sz", inline = "wick", group = GW)
+var minwick = input.float(15, "wick CE sz", inline = "wick", group = GW)
 var wickdx = input.int(1, "bars",  inline = "wick", group=GW, 
      tooltip="0 for auto or number of bars for segment width")
 var wswing = input.bool(true, "keep CEs of swing high/low wicks", group=GW,
