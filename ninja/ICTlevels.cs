@@ -4,7 +4,7 @@
 // quadrants and standard deviations, premarket range, EQH/EQL, PO3 lines, TGIF levels, macros,
 // silver bullet and a session/macro status text. Draws levels only: no plots, no signals, no alerts.
 //
-// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 248ebaf1d2d800845b7636dc116c5eb9),
+// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 bbdcc99a1af3144046223614003b83a2),
 // © franjballest, Mozilla Public License 2.0 (https://mozilla.org/MPL/2.0/).
 //
 // Install:
@@ -2296,7 +2296,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 				g.cline.txt = (up ? "RTHOG lo " : "RTHOG hi ") + nm;
 				DrawLabel(g.cline);
 			}
-			if (DoGapRect)
+			if (DoGapRect && Attenuation < 2)   // [ATT] no RTHOG rectangle from attenuation 2 on
 			{
 				g.rect = true;
 				g.rx0 = x0;

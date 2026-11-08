@@ -346,7 +346,7 @@ Attenuation dims the drawings without changing their settings. Drawings have thr
 | 3 | 18% fainter | 54% fainter, width -1 | 72% fainter, width -1 | outline only, fainter, width 1 |
 | 4 | 36% fainter, width -1 | 72% fainter, width -1 | 90% fainter, width -1 | outline only, fainter, width 1 |
 
-"Fainter" is the share of the remaining opacity that is taken away, for lines and label text. Widths never go below 1. Gap rectangles fade with the rank of their gap (20% per step), so the rectangles of older NDOGs are gone at level 4. NWOGs keep their line color as important but get the width and fill of a normal drawing at levels 3 and 4. NinjaTrader and Tradovate have the same attenuation, swing and REH / REL emphasis and body levels. Tradovate ignores the transparency of line and text colors, so there a fainter color is the color blended into the chart background: set "attbg" (white by default) to your chart background color.
+"Fainter" is the share of the remaining opacity that is taken away, for lines and label text. Widths never go below 1. Gap rectangles fade with the rank of their gap (20% per step), so the rectangles of older NDOGs are gone at level 4. RTHOGs get no rectangle at all from level 2 on. NWOGs keep their line color as important but get the width and fill of a normal drawing at levels 3 and 4. NinjaTrader and Tradovate have the same attenuation, swing and REH / REL emphasis and body levels. Tradovate ignores the transparency of line and text colors, so there a fainter color is the color blended into the chart background: set "attbg" (white by default) to your chart background color.
 
 ### 5.2 Time & Settings
 
@@ -443,7 +443,7 @@ Attenuation dims the drawings without changing their settings. Drawings have thr
 | min size | 50.0 | Minimum step in points; the step is the first of gap/8, gap/4, gap/2 or the whole gap that is larger than this, otherwise none are drawn. |
 | number of stddevs to draw above/below | 4 | Deviation lines per side. Keep it at 1 or more; to hide them, turn off "RTHOG stddevs". |
 | auto | on | Latest RTHOG only, from the open until the market close: more deviations are drawn as price goes beyond them, so there are always at least the number above and also the next one to be hit on each side (at most 40 per side). |
-| Draw gap rectangles | on | Draws shaded boxes for NDOG, NWOG and RTHOG gaps. |
+| Draw gap rectangles | on | Draws shaded boxes for NDOG, NWOG and RTHOG gaps (RTHOGs only at attenuation 0 and 1). |
 | transp | 90 | Transparency of the gap boxes. |
 | Combine gaps at similar levels | on | Draws nearby NDOGs (NWOGs) once with their outer levels ("NDOGx3"), and merges NDOGs into a NWOG at the same levels ("NWOG+NDOG"). |
 | tolerance x daily ATR | 0.05 | Maximum distance between levels to be combined, as a fraction of the daily ATR(14). Also decides when a gap is so small that it gets a single label in the middle. |

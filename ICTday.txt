@@ -1585,7 +1585,8 @@ method rends(RTHOG g, float opv) =>
     g.oplabel := b2
     if not na(g.clabel)
         g.clabel.set_text((up ? "RTHOG lo " : "RTHOG hi ") + nm)
-    if dogrect
+    // [ATT] no RTHOG rectangle from attenuation 2 on
+    if dogrect and attLvl < 2
         g.rect := box.new(x0, g.op, x1, g.cl, xloc = xloc.bar_time, border_color = transparent,
              bgcolor = color.new(lrgapcolor, attT(grtransp, 0)))
     g.killq()

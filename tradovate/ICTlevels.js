@@ -11,7 +11,7 @@
  *   It draws levels only: no signals, no alerts, no plots.
  *
  *   It is a port of the TradingView Pine Script v6 indicator ICTlevels.txt
- *   (md5 248ebaf1d2d800845b7636dc116c5eb9). Parameter names are the Pine variable names and the
+ *   (md5 bbdcc99a1af3144046223614003b83a2). Parameter names are the Pine variable names and the
  *   defaults are the Pine defaults; see "doc/ICTlevels-user-manual.md" for what every level means.
  *
  * How to install
@@ -1930,7 +1930,7 @@ class ICTlevels {
         G.text(xr, mid, "RTHOG ce " + nm, col, 12);
         G.line(g.tend, xr, g.op, col, P.rgaplnsty, w0);
         G.text(xr, g.op, (up ? "RTHOG hi " : "RTHOG lo ") + nm, col, 12);
-        if (P.dogrect) {
+        if (P.dogrect && attLvlOf(P) < 2) {   // [ATT] no RTHOG rectangle from attenuation 2 on
             G.rect(x0, xr, g.op, g.cl, P.lrgapcolor, (100 - attT(P, P.grtransp, 0)) / 100);
         }
         if (!current) {

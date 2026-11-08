@@ -167,7 +167,7 @@ bool rthogauto = input.bool(true, "auto", group = GRP_DOG, inline = "rn",
      + "on each side (at most 40 per side).")
 bool dogrect = input.bool(true, "Draw gap rectangles", inline = "gtransp", group = GRP_DOG)
 int grtransp = input.int(90, "transp", inline = "gtransp", group = GRP_DOG,
-     tooltip = "transparency for the gap rectangles when drawn")
+     tooltip = "transparency for the gap rectangles when drawn. RTHOGs get no rectangle from attenuation 2 on")
 bool combgaps = input.bool(true, "Combine gaps at similar levels", group = GRP_DOG,
      inline = "cmb", tooltip = "Several NDOGs (NWOGs) at the same or nearby levels "
      + "are drawn once, with the outer levels that include them, "
@@ -1573,7 +1573,8 @@ method rends(RTHOG g, float opv) =>
     g.oplabel := b2
     if not na(g.clabel)
         g.clabel.set_text((up ? "RTHOG lo " : "RTHOG hi ") + nm)
-    if dogrect
+    // [ATT] no RTHOG rectangle from attenuation 2 on
+    if dogrect and attLvl < 2
         g.rect := box.new(x0, g.op, x1, g.cl, xloc = xloc.bar_time, border_color = transparent,
              bgcolor = color.new(lrgapcolor, attT(grtransp, 0)))
     g.killq()
