@@ -9,7 +9,7 @@
  * closed through become IFVGs. Mitigated levels are removed.
  *
  * Port of the TradingView Pine Script v6 indicator ICTcotas.txt
- * (md5 0dc6d62cfe57d6bc7b45060d2cd132cb), (c) franjballest, Mozilla Public
+ * (md5 b36c9bcf7ce564c0144556d6e0be00cd), (c) franjballest, Mozilla Public
  * License 2.0 (https://mozilla.org/MPL/2.0/). Same logic, same inputs (as
  * camelCase parameters) and the same defaults.
  *
@@ -540,9 +540,9 @@ function buildConfig(p, chart) {
         mfMargin: bool(p.mfMargin, true),
         mfMOff: clamp(Math.round(num(p.mfMOff, 4)), 0, 200),
         mfMW: clamp(Math.round(num(p.mfMW, 4)), 1, 50),
-        mfExt: bool(p.mfExt, false),
+        mfExt: bool(p.mfExt, true),
         mfExtN: clamp(Math.round(num(p.mfExtN, 20)), 1, 500),
-        mfExtTo: ["for", "start", "creation"].includes(p.mfExtTo) ? p.mfExtTo : "for"
+        mfExtTo: ["for", "start", "creation"].includes(p.mfExtTo) ? p.mfExtTo : "creation"
     };
     // chart timeframe in seconds from the chart description, when time based
     c.fixedTfSecs = 0;
@@ -1037,8 +1037,8 @@ module.exports = {
         mfMargin: predef.paramSpecs.bool(true),
         mfMOff: int(4, 0),
         mfMW: int(4, 1),
-        mfExt: predef.paramSpecs.bool(false),
-        mfExtTo: predef.paramSpecs.enum({ for: "for", start: "to start", creation: "to creation" }, "for"),
+        mfExt: predef.paramSpecs.bool(true),
+        mfExtTo: predef.paramSpecs.enum({ for: "for", start: "to start", creation: "to creation" }, "creation"),
         mfExtN: int(20, 1)
     },
     inputType: meta.InputType.BARS,

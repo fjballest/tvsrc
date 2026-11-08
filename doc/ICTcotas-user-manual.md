@@ -222,7 +222,7 @@ With **Draw in the right margin** on (the default), the boxes are drawn in the r
 
 - **offset**: bars between the last bar and the first column (default 4).
 - **width**: bars per box; columns are one bar apart (default 4).
-- **extend levels** (off): draws the high, the low and (with CE box on) the CE of each FVG as lines from the left edge of its box back to the point chosen next to it: **for** goes back **candles** bars before the last one (default 20), **to start** goes to the start of the FVG, and **to creation** goes to the end of the FVG's third candle, when the gap was formed, so the third candle's own highs and lows are not read as bounces on the FVG levels.
+- **extend levels** (on, to creation by default): draws the high, the low and (with CE box on) the CE of each FVG as lines from the left edge of its box back to the point chosen next to it: **for** goes back **candles** bars before the last one (default 20), **to start** goes to the start of the FVG, and **to creation** goes to the end of the FVG's third candle, when the gap was formed, so the third candle's own highs and lows are not read as bounces on the FVG levels.
 
 ### How to use it
 
@@ -385,8 +385,8 @@ Fills use these colors with the transparency set in each section.
 | Draw in the right margin | on | Draws the boxes in the right margin, one column per timeframe, labeled with the timeframe and an up / down arrow below it (section 7) |
 | offset | 4 | Bars between the last bar and the first margin column |
 | width | 4 | Bars per margin box |
-| extend levels | off | Margin only: lines from the high, low and CE of each FVG back into the chart |
-| (mode) | for | Where the extended lines start: **for** the number of candles below, **to start** the start of the FVG, **to creation** the end of its third candle |
+| extend levels | on | Margin only: lines from the high, low and CE of each FVG back into the chart |
+| (mode) | to creation | Where the extended lines start: **for** the number of candles below, **to start** the start of the FVG, **to creation** the end of its third candle |
 | candles | 20 | How far back the extended lines go with **for**, in candles before the last one |
 
 The by-timeframe timeframe names in labels (15m, 1H, 4H, D, W, M) are fixed; the **text: daily / weekly / monthly** inputs do not change them.

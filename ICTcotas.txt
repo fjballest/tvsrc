@@ -244,8 +244,8 @@ bool mfmargin = input.bool(true, "Draw in the right margin", group = G_MF, inlin
      + "between the last bar and the first column. Width: bars per box (and per column).")
 int mfmoff = input.int(4, "offset", minval = 0, maxval = 200, group = G_MF, inline = "mm1")
 int mfmw = input.int(4, "width", minval = 1, maxval = 50, group = G_MF, inline = "mm1")
-bool mfext = input.bool(false, "extend levels", group = G_MF, inline = "mm2")
-string mfextto = input.string("for", "", options = ["for", "to start", "to creation"], group = G_MF,
+bool mfext = input.bool(true, "extend levels", group = G_MF, inline = "mm2")
+string mfextto = input.string("to creation", "", options = ["for", "to start", "to creation"], group = G_MF,
      inline = "mm2")
 int mfextn = input.int(20, "candles", minval = 1, maxval = 500, group = G_MF, inline = "mm2",
      tooltip = "Margin only: lines from the high, low and CE (with CE box on) of each FVG back to: "
