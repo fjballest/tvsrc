@@ -34,7 +34,7 @@ var wrecent = input.int(5, "always show CEs of the last candles", group=GW, minv
 var wresp = input.bool(true, "keep respected CEs", group=GW,
      tooltip="keep CEs that price came back to, with wicks but no body through them")
 var wreach = input.float(3, "extend live CEs within x ATR of price", group=GW, minval=0,
-     tooltip="kept CEs not yet crossed by a body extend to the current bar while price is this close. 0 to disable")
+     tooltip="recent CEs, and on each side the outermost kept CE price is still going to, extend to the current bar while price is this close. 0 to disable")
 
 GF = "Fib"
 var fibswing = input.bool(true, "use swings to locate 0/100", group=GF, tooltip="retrace in swing highs/lows")
@@ -245,9 +245,6 @@ if dowick and compute and barstate.isnew and bar_index > 2
         if not w.dead and w.b < i
             if bodyl < w.ce and bodyh > w.ce
                 w.dead := true
-                if not na(w.ln)
-                    w.ln.set_x2(i)
-                    w.ln.set_width(1)
             else if wresp and i >= w.b + 2 and dH[1] >= w.ce and dL[1] <= w.ce
                 w.tested := true
 
@@ -282,8 +279,25 @@ if dowick and compute and barstate.isnew and bar_index > 2
         wces.push(w)
 
     // draw, extend, hide and forget
+    // only recent CEs and, on each side, the outermost one price is still going to, extend.
     hold = math.max(wrecent, oteswingright + 1)
     n = wces.size()
+    reach = wreach * datr[1]
+    WCE outu = na
+    WCE outl = na
+    int outub = na
+    int outlb = na
+    if n > 0 and wreach > 0
+        for w in wces
+            if not w.dead and not w.shadow and (w.kept() or w.b > i - wrecent) and math.abs(w.ce - dC[1]) <= reach
+                if w.up and w.ce > dC[1] and (na(outu) or w.ext > outu.ext)
+                    outu := w
+                if not w.up and w.ce < dC[1] and (na(outl) or w.ext < outl.ext)
+                    outl := w
+    if not na(outu)
+        outub := outu.b
+    if not na(outl)
+        outlb := outl.b
     if n > 0
         for k = n - 1 to 0
             w = wces.get(k)
@@ -294,14 +308,16 @@ if dowick and compute and barstate.isnew and bar_index > 2
                 if w.b <= i - hold and (w.dead or w.shadow or not wresp)
                     wces.remove(k)
             else
-                live = not w.dead and wreach > 0 and keep and math.abs(w.ce - dC[1]) <= wreach * datr[1]
+                near = wreach > 0 and not w.dead and math.abs(w.ce - dC[1]) <= reach
+                out = w.up ? w.b == outub : w.b == outlb
+                live = (near and recent) or out
                 if na(w.ln)
-                    x2 = w.tested ? i : w.b + wdx()
-                    w.ln := line.new(w.b, w.ce, x2, w.ce)
+                    w.ln := line.new(w.b, w.ce, w.b + wdx(), w.ce)
                 if live
                     w.ln.set_x2(bar_index)
-                    w.ln.set_width(2)
+                    w.ln.set_width(out ? 2 : 1)
                 else
+                    w.ln.set_x2(w.b + wdx())
                     w.ln.set_width(1)
     while wces.size() > 400
         w = wces.shift()
