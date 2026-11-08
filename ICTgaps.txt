@@ -1905,9 +1905,10 @@ method zSide(Zone z, bool hi) =>
         lb.set_size(rk == 0 ? (rel ? sizeUp(sizeUp(sz0)) : sizeUp(sz0)) : sz0)
     true
 
-// the body level of side hi is shown: ended zone, high (low) untaken and beyond the body, body not taken later
+// the body level of side hi is shown: high (low) untaken and beyond the body, body not taken later (also for the
+// current day / session, once its body level is decided)
 method bodyOk(Zone z, bool hi) =>
-    bool ok = z.drawmaxmin and not na(z.tend) and dobody
+    bool ok = z.drawmaxmin and dobody
     hi ? ok and na(z.hidonet) and z.bhi < z.hi and not z.bhtk : ok and na(z.lodonet) and z.blo > z.lo and not z.bltk
 
 // [LVL] untaken highs (lows) of days and sessions, and their body levels, that are within tol of another one are

@@ -143,9 +143,10 @@ bool dodaylbl = input.bool(true, "label unbroken day max/min", group = G_DAYS,
 string dlblsize = input.string("tiny", "size", options = ["tiny", "small", "normal", "large",
      "huge"], group = G_DAYS, inline = "dlbl")
 bool dobody = input.bool(true, "body high / low levels (days and sessions)", group = G_DAYS,
-     tooltip = "While the high (low) of an ended day or session is not taken, also draw a dotted line at its "
-     + "highest (lowest) candle body when that is below (above) the wick: price often takes the body level but "
-     + "not the wick. Removed once the high (low) is taken. The most recent " + "6 per side are drawn.")
+     tooltip = "While the high (low) of a day or session is not taken, also draw a line at the highest (lowest) "
+     + "15m candle body around it (two candles before and after) when that is below (above) the wick: price often "
+     + "takes the body level but not the wick. Removed once price takes the body later, or takes the high (low). "
+     + "The most recent 6 per side are drawn.")
 bool doreh = input.bool(true, "REH/REL labels", group = G_DAYS, inline = "dreh",
      tooltip = "When two (or more) unbroken day highs (lows) are close to each other "
      + "their lines stay, but only the higher high (lower low) is labeled, "
@@ -1980,9 +1981,10 @@ method zSide(Zone z, bool hi) =>
         lb.set_size(rk == 0 ? (rel ? sizeUp(sizeUp(sz0)) : sizeUp(sz0)) : sz0)
     true
 
-// the body level of side hi is shown: ended zone, high (low) untaken and beyond the body, body not taken later
+// the body level of side hi is shown: high (low) untaken and beyond the body, body not taken later (also for the
+// current day / session, once its body level is decided)
 method bodyOk(Zone z, bool hi) =>
-    bool ok = z.drawmaxmin and not na(z.tend) and dobody
+    bool ok = z.drawmaxmin and dobody
     hi ? ok and na(z.hidonet) and z.bhi < z.hi and not z.bhtk : ok and na(z.lodonet) and z.blo > z.lo and not z.bltk
 
 // [LVL] untaken highs (lows) of days and sessions, and their body levels, that are within tol of another one are
