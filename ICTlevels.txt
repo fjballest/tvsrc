@@ -707,38 +707,68 @@ var int bkN = 0
 var int bkId = na
 var array<float> bkH = array.new<float>()
 var array<float> bkL = array.new<float>()
+var array<float> bkO = array.new<float>()
+var array<float> bkC = array.new<float>()
+var array<int> bkT = array.new<int>()
+var float bkRng = na    // average range of the completed candles (EMA)
 bool bkNew = false
 int bkCur = int(math.floor(time / bkMs))
 if na(bkId) or bkCur != bkId
+    if bkH.size() > 0
+        float r = bkH.last() - bkL.last()
+        bkRng := na(bkRng) ? r : bkRng * 0.9 + r * 0.1
     bkId := bkCur
     bkN += 1
     bkNew := true
     bkH.push(high)
     bkL.push(low)
+    bkO.push(open)
+    bkC.push(close)
+    bkT.push(time)
     if bkH.size() > 4
         bkH.shift()
         bkL.shift()
+        bkO.shift()
+        bkC.shift()
+        bkT.shift()
 else
     bkH.set(bkH.size() - 1, math.max(bkH.last(), high))
     bkL.set(bkL.size() - 1, math.min(bkL.last(), low))
+    bkC.set(bkC.size() - 1, close)
 
-// [LVL] flat top / bottom of this candle and the previous one: highs (lows) within tolerance (2 ticks or a tenth
-// of the chart ATR) and both upper (lower) wicks within that tolerance or a fifth of the candle range
-float flTol = math.max(2 * syminfo.mintick, 0.1 * nz(ta.atr(14), 0.0))
-float flWmax = math.max(flTol, 0.2 * (high - low))
-float flUw = high - math.max(open, close)
-float flLw = math.min(open, close) - low
-bool flatHi = math.abs(high - high[1]) <= flTol and flUw <= flWmax and flUw[1] <= flWmax[1]
-bool flatLo = math.abs(low - low[1]) <= flTol and flLw <= flWmax and flLw[1] <= flWmax[1]
+// [LVL] candles i and j (indexes in the bucket arrays) make a flat top (bottom): highs (lows) within tolerance
+// (2 ticks or a tenth of the average candle range) and both upper (lower) wicks within that tolerance or a fifth
+// of the candle range
+bkFlat(int i, int j, bool hi) =>
+    float tol = math.max(2 * syminfo.mintick, 0.1 * nz(bkRng, 0.0))
+    float wi = hi ? bkH.get(i) - math.max(bkO.get(i), bkC.get(i)) : math.min(bkO.get(i), bkC.get(i)) - bkL.get(i)
+    float wj = hi ? bkH.get(j) - math.max(bkO.get(j), bkC.get(j)) : math.min(bkO.get(j), bkC.get(j)) - bkL.get(j)
+    float d = hi ? math.abs(bkH.get(i) - bkH.get(j)) : math.abs(bkL.get(i) - bkL.get(j))
+    d <= tol and wi <= math.max(tol, 0.2 * (bkH.get(i) - bkL.get(i))) and wj <= math.max(tol, 0.2 * (bkH.get(j) - bkL.get(j)))
 
 // a high (low) is a swing when the candles before and after it have lower highs (higher lows); decided when the
 // candle after it completes (a new candle starts two candles after the one of the high)
+// Same time: the high (low) is flat (REH / REL) with the candle before or after it. Also the highest (lowest) body
+// of the zone, over the completed candles that start inside it.
 method swTest(Zone z) =>
     int n = bkH.size()
     if z.hsw == 0 and z.hbk == bkN - 2
         z.hsw := n >= 4 and bkH.get(n - 4) < z.hi and bkH.get(n - 2) < z.hi ? 1 : -1
+        z.hrel := n >= 4 and (bkFlat(n - 4, n - 3, true) or bkFlat(n - 3, n - 2, true))
     if z.lsw == 0 and z.lbk == bkN - 2
         z.lsw := n >= 4 and bkL.get(n - 4) > z.lo and bkL.get(n - 2) > z.lo ? 1 : -1
+        z.lrel := n >= 4 and (bkFlat(n - 4, n - 3, false) or bkFlat(n - 3, n - 2, false))
+    if n >= 2
+        int t = bkT.get(n - 2)
+        if t >= z.tstart and (na(z.tend) or t <= z.tend)
+            float bt = math.max(bkO.get(n - 2), bkC.get(n - 2))
+            float bb = math.min(bkO.get(n - 2), bkC.get(n - 2))
+            if na(z.bhi) or bt >= z.bhi
+                z.bhi := bt
+                z.bht := t
+            if na(z.blo) or bb <= z.blo
+                z.blo := bb
+                z.blt := t
     true
 
 mkZone(string name, ZoneInfo zi = na) =>
@@ -943,25 +973,13 @@ method upd(Zone z) =>
         z.hi := high
         z.hbk := bkN
         z.hsw := 0
-        z.hrel := flatHi and time[1] >= z.tstart
-    else if z.hit == time[1] and flatHi
-        z.hrel := true
+        z.hrel := false
     if low <= z.lo
         z.lot := time
         z.lo := low
         z.lbk := bkN
         z.lsw := 0
-        z.lrel := flatLo and time[1] >= z.tstart
-    else if z.lot == time[1] and flatLo
-        z.lrel := true
-    float bt = math.max(open, close)
-    float bb = math.min(open, close)
-    if na(z.bhi) or bt >= z.bhi
-        z.bhi := bt
-        z.bht := time
-    if na(z.blo) or bb <= z.blo
-        z.blo := bb
-        z.blt := time
+        z.lrel := false
 
 endZone(Zone z) =>
     if na(z.tend)
