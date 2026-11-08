@@ -173,6 +173,7 @@ type WCE
     bool swing = false
     bool fvg = false
     bool dead = false
+    bool extd = false
 
 method hide(WCE w) =>
     if not na(w.ln)
@@ -200,6 +201,7 @@ wextend(array<WCE> ws, array<float> lens) =>
         for j = 0 to math.min(wnext, idx.size()) - 1
             w = ws.get(idx.get(j))
             w.ln.set_x2(bar_index + 1)
+            w.extd := true
 
 dtr = math.max(dH - dL, math.abs(dH - nz(dC[1], dO)), math.abs(dL - nz(dC[1], dO)))
 datr = ta.rma(dtr, 14)
@@ -252,14 +254,21 @@ if dowick and compute and barstate.isconfirmed and bar_index > 2
         for k = n - 1 to 0
             w = wces.get(k)
             recent = w.b > i - wrecent
-            if not w.swing and not w.fvg and not recent
+            if w.b < i - 5000
+                // too old to touch its line again (bar index limits); leave it drawn
+                if w.extd and not na(w.ln)
+                    w.ln.set_x2(w.b + wdx())
+                wces.remove(k)
+            else if not w.swing and not w.fvg and not recent
                 w.hide()
                 if w.b <= i - hold
                     wces.remove(k)
             else
                 if na(w.ln)
                     w.ln := line.new(w.b, w.ce, w.b + wdx(), w.ce)
-                w.ln.set_x2(w.b + wdx())
+                if w.extd
+                    w.ln.set_x2(w.b + wdx())
+                    w.extd := false
                 if wnext > 0 and wreach > 0 and not w.dead and math.abs(w.ce - dC) <= reach
                     if w.ce >= dC
                         xa.push(w)
