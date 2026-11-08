@@ -7,7 +7,7 @@
 // FVGs closed through become IFVGs. Mitigated levels are removed.
 //
 // Port of the TradingView Pine Script v6 indicator ICTcotas.txt by franjballest
-// (source md5 974cb9ace535ae01bfb4200c487d410f). Mozilla Public License 2.0.
+// (source md5 bfde885562dfcfa0c69155ff842d2dc9). Mozilla Public License 2.0.
 //
 // Install:
 //   1. Copy this file to  Documents\NinjaTrader 8\bin\Custom\Indicators\ICTcotas.cs
@@ -959,8 +959,24 @@ namespace NinjaTrader.NinjaScript.Indicators
 			return CurrentBars[0] - idx;
 		}
 
+		// label wanted by a level (part 0 hi, 1 lo, 2 CE); labels of different levels at about the same price
+		// are combined into one
+		private class LblE
+		{
+			public Lvl L;
+			public int Part;
+			public double Y;
+			public string Txt;
+			public Brush C;
+			public int Rk;
+		}
+
+		private List<LblE> lbls = new List<LblE>();
+		private static readonly string[] LblParts = { "hb", "lb", "cb" };
+
 		private void DrawAll()
 		{
+			lbls.Clear();
 			foreach (Lvl l in lvls)
 			{
 				if (l.Dead)
@@ -974,6 +990,44 @@ namespace NinjaTrader.NinjaScript.Indicators
 				}
 				else
 					DrawL(l);
+			}
+			LblApply();
+		}
+
+		// labels closer than LabelMerge x daily ATR become one label, "D VI / D FVG lo", at the price and in
+		// the color of the most important one (lowest rank, then first)
+		private void LblApply()
+		{
+			HashSet<string> shown = new HashSet<string>();
+			List<LblE> es = lbls.OrderBy(e => e.Y).ToList();   // stable
+			double tol = LabelMerge > 0 && !double.IsNaN(dAtr) ? LabelMerge * dAtr : 0;
+			int eba = -LabelOffset;
+			int i = 0;
+			while (i < es.Count)
+			{
+				int j = i + 1;
+				while (j < es.Count && es[j].Y - es[i].Y < tol)
+					j++;
+				int best = i;
+				for (int k = i; k < j; k++)
+					if (es[k].Rk < es[best].Rk)
+						best = k;
+				LblE b = es[best];
+				string txt = b.Txt;
+				for (int k = i; k < j; k++)
+					if (k != best)
+						txt += " / " + es[k].Txt;
+				DrawLabel(Tag(b.L, LblParts[b.Part]), eba, b.Y, txt, b.C, lblFont, TextAlignment.Left);
+				shown.Add(b.L.Id + "_" + b.Part);
+				i = j;
+			}
+			foreach (Lvl l in lvls)
+			{
+				if (l.Dead || l.Kind == 3)
+					continue;
+				for (int p = 0; p < 3; p++)
+					if (!shown.Contains(l.Id + "_" + p))
+						RmTag(l, LblParts[p]);
 			}
 		}
 
@@ -1008,26 +1062,20 @@ namespace NinjaTrader.NinjaScript.Indicators
 			{
 				Draw.Line(this, Tag(l, "hl"), false, sba, l.Hi, eba, l.Hi, c, s1, w);
 				if (ShowLabels && !one)
-					DrawLabel(Tag(l, "hb"), eba, l.Hi, LblTxt(l, TextHigh), c, lblFont, TextAlignment.Left);
+					lbls.Add(new LblE { L = l, Part = 0, Y = l.Hi, Txt = LblTxt(l, TextHigh), C = c, Rk = rk });
 			}
 			if (slo)
 			{
 				Draw.Line(this, Tag(l, "ll"), false, sba, l.Lo, eba, l.Lo, c, s1, w);
 				if (ShowLabels && !one)
-					DrawLabel(Tag(l, "lb"), eba, l.Lo, LblTxt(l, TextLow), c, lblFont, TextAlignment.Left);
+					lbls.Add(new LblE { L = l, Part = 1, Y = l.Lo, Txt = LblTxt(l, TextLow), C = c, Rk = rk });
 			}
 			if (sce)
 				Draw.Line(this, Tag(l, "cl"), false, sba, l.Ce, eba, l.Ce, c, s2, w);
 			if (one)
-			{
-				RmTag(l, "hb");
-				RmTag(l, "lb");
-				DrawLabel(Tag(l, "cb"), eba, sce ? l.Ce : (l.Hi + l.Lo) / 2, LblTxt(l, "").Trim(), c, lblFont, TextAlignment.Left);
-			}
+				lbls.Add(new LblE { L = l, Part = 2, Y = sce ? l.Ce : (l.Hi + l.Lo) / 2, Txt = LblTxt(l, "").Trim(), C = c, Rk = rk });
 			else if (sce && ShowLabels)
-				DrawLabel(Tag(l, "cb"), eba, l.Ce, LblTxt(l, TextCE), c, lblFont, TextAlignment.Left);
-			else
-				RmTag(l, "cb");
+				lbls.Add(new LblE { L = l, Part = 2, Y = l.Ce, Txt = LblTxt(l, TextCE), C = c, Rk = rk });
 		}
 
 		private void RmTag(Lvl l, string part)

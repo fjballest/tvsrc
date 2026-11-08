@@ -9,7 +9,7 @@
  * closed through become IFVGs. Mitigated levels are removed.
  *
  * Port of the TradingView Pine Script v6 indicator ICTcotas.txt
- * (md5 974cb9ace535ae01bfb4200c487d410f), (c) franjballest, Mozilla Public
+ * (md5 bfde885562dfcfa0c69155ff842d2dc9), (c) franjballest, Mozilla Public
  * License 2.0 (https://mozilla.org/MPL/2.0/). Same logic, same inputs (as
  * camelCase parameters) and the same defaults.
  *
@@ -409,7 +409,7 @@ class Engine {
             const d1 = A.d.get(1), d2 = A.d.get(2);
             if (d1 && d2) {
                 const tr = Math.max(d1.h - d1.l, Math.abs(d1.h - d2.c), Math.abs(d1.l - d2.c));
-                this.S.datr = this.S.datr === null ? tr : (this.S.datr * 13 + tr) / 14;
+                if (Number.isFinite(tr)) this.S.datr = this.S.datr === null ? tr : (this.S.datr * 13 + tr) / 14;
             }
         }
         if (dayOk && ev.d) { this.processTf(0, A.d, j); tfc[0] = A.d.get(1).c; }
@@ -654,7 +654,7 @@ function textItem(key, x, y, text, color, size, bold, align) {
 }
 
 // level of kind 0, 1, 2 or 4 (Pine draw). datr: daily ATR, for one label when hi / lo / CE labels overlap
-function drawLvl(c, l, x, items, datr) {
+function drawLvl(c, l, x, items, datr, lbls) {
     const rk = rankOf(l);
     const col = attL(c, tcol(c, l.tfi, l.dir), rk);
     const w = attW(c, kwid(c, l.kind, l.tfi), rk);
@@ -670,9 +670,28 @@ function drawLvl(c, l, x, items, datr) {
     for (const [part, y, s, txt, nm] of parts) {
         if (!kshow(c, l.kind, part)) continue;
         items.push(linesItem(k + nm, [seg(l.t, y, x, y)], col, w, s));
-        if (c.doLbl && !one) items.push(textItem(k + nm + "lb", x, y, lbltxt(c, l, txt), col, c.lblFont, c.lblBold, "left"));
+        if (c.doLbl && !one) lbls.push({ key: k + nm + "lb", y, txt: lbltxt(c, l, txt), col, rk });
     }
-    if (one) items.push(textItem(k + "celb", x, sce ? l.ce : (l.hi + l.lo) / 2, lbltxt(c, l, "").trim(), col, c.lblFont, c.lblBold, "left"));
+    if (one) lbls.push({ key: k + "celb", y: sce ? l.ce : (l.hi + l.lo) / 2, txt: lbltxt(c, l, "").trim(), col, rk });
+}
+
+// labels closer than lblMerge x daily ATR become one label, "D VI / D FVG lo", at the price and in the
+// color of the most important one (lowest rank, then first)
+function drawLbls(c, x, items, datr, lbls) {
+    const es = lbls.map((e, i) => Object.assign({ i }, e)).sort((a, b) => a.y - b.y || a.i - b.i);
+    const tol = c.lblMerge > 0 && datr !== null && datr !== undefined ? c.lblMerge * datr : 0;
+    let i = 0;
+    while (i < es.length) {
+        let j = i + 1;
+        while (j < es.length && es[j].y - es[i].y < tol) j++;
+        let best = i;
+        for (let k = i; k < j; k++) if (es[k].rk < es[best].rk) best = k;
+        const b = es[best];
+        let txt = b.txt;
+        for (let k = i; k < j; k++) if (k !== best) txt += " / " + es[k].txt;
+        items.push(textItem(b.key, x, b.y, txt, b.col, c.lblFont, c.lblBold, "left"));
+        i = j;
+    }
 }
 
 // FVG by timeframe (Pine drawM)
@@ -744,14 +763,16 @@ function drawMfMargin(c, l, eng, lastIdx, items) {
 function drawAll(c, eng, lastIdx, lastBar) {
     const x = lastIdx + c.xOff;
     const items = [];
+    const lbls = [];
     for (const l of eng.S.lvls) {
         if (l.dead) continue;
         if (l.kind === 3) {
             if (c.mfMargin) drawMfMargin(c, l, eng, lastIdx, items);
             else drawMf(c, l, x, items);
         }
-        else drawLvl(c, l, x, items, eng.S.datr);
+        else drawLvl(c, l, x, items, eng.S.datr, lbls);
     }
+    drawLbls(c, x, items, eng.S.datr, lbls);
     const tfs = eng.tfsecs();
     const any = (c.doDaily && tfs < 86400) || (c.doWeekly && tfs < 604800) || (c.doMonthly && tfs < 2592000);
     if (!any) {

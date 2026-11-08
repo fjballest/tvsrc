@@ -303,8 +303,23 @@ type Lvl
     line loln2 = na
     line celn2 = na
     line vln = na
+    bool lshi = false   // labels shown on the last bar: hi, lo, CE
+    bool lslo = false
+    bool lsce = false
 
 var array<Lvl> lvls = array.new<Lvl>()
+
+// label wanted by a level on the last bar (part 0 hi, 1 lo, 2 CE); labels of different levels at about the
+// same price are combined into one
+type LblE
+    Lvl l
+    int part
+    float y
+    string txt
+    color c
+    int rk
+
+var array<LblE> lbls = array.new<LblE>()
 var array<Lvl> wcur = array.new<Lvl>(12, na)   // current wick group level: tf * 2 + side
 
 // timeframe list for the FVGs by timeframe (kind 3 levels use tfi = 3 + index)
@@ -468,23 +483,59 @@ method draw(Lvl l) =>
         l.hiln := mkLine(l.hiln, l.t, l.hi, x, c, s1, w)
         l.hiln.set_width(w)
         if dolbl and not one
-            l.hilb := mkLbl(l.hilb, x, l.hi, lbltxt(l, ptxthi), c)
+            lbls.push(LblE.new(l, 0, l.hi, lbltxt(l, ptxthi), c, rk))
     if slo
         l.loln := mkLine(l.loln, l.t, l.lo, x, c, s1, w)
         l.loln.set_width(w)
         if dolbl and not one
-            l.lolb := mkLbl(l.lolb, x, l.lo, lbltxt(l, ptxtlo), c)
+            lbls.push(LblE.new(l, 1, l.lo, lbltxt(l, ptxtlo), c, rk))
     if sce
         l.celn := mkLine(l.celn, l.t, l.ce, x, c, s2, w)
         l.celn.set_width(w)
     if one
-        l.hilb := rmLbl(l.hilb)
-        l.lolb := rmLbl(l.lolb)
-        l.celb := mkLbl(l.celb, x, sce ? l.ce : (l.hi + l.lo) / 2, str.trim(lbltxt(l, "")), c)
+        lbls.push(LblE.new(l, 2, sce ? l.ce : (l.hi + l.lo) / 2, str.trim(lbltxt(l, "")), c, rk))
     else if sce and dolbl
-        l.celb := mkLbl(l.celb, x, l.ce, lbltxt(l, ptxtce), c)
-    else
-        l.celb := rmLbl(l.celb)
+        lbls.push(LblE.new(l, 2, l.ce, lbltxt(l, ptxtce), c, rk))
+    true
+
+// labels of the last bar: those of different levels closer than lblmrg x daily ATR become one label,
+// "D VI / D FVG lo", at the price and in the color of the most important one (lowest rank, then first)
+lblApply() =>
+    int n = lbls.size()
+    if n > 0
+        array<float> ys = array.new<float>()
+        for e in lbls
+            ys.push(e.y)
+        array<int> idx = ys.sort_indices()
+        float tol = lblmrg > 0 and not na(dAtr) ? lblmrg * dAtr : 0.0
+        int x = tright(xoff)
+        int i = 0
+        while i < n
+            LblE e0 = lbls.get(idx.get(i))
+            int j = i + 1
+            while j < n and lbls.get(idx.get(j)).y - e0.y < tol
+                j += 1
+            // representative: lowest rank, then first
+            int best = i
+            for k = i to j - 1
+                if lbls.get(idx.get(k)).rk < lbls.get(idx.get(best)).rk
+                    best := k
+            LblE b = lbls.get(idx.get(best))
+            string txt = b.txt
+            for k = i to j - 1
+                if k != best
+                    txt += " / " + lbls.get(idx.get(k)).txt
+            Lvl l = b.l
+            if b.part == 0
+                l.hilb := mkLbl(l.hilb, x, b.y, txt, b.c)
+                l.lshi := true
+            else if b.part == 1
+                l.lolb := mkLbl(l.lolb, x, b.y, txt, b.c)
+                l.lslo := true
+            else
+                l.celb := mkLbl(l.celb, x, b.y, txt, b.c)
+                l.lsce := true
+            i := j
     true
 
 // margin column of timeframe i: its rank among the enabled timeframes
@@ -877,6 +928,7 @@ runMit()
 
 // ============================================================ last bar: draw
 if barstate.islast
+    lbls.clear()
     for l in lvls
         if l.kind == 3
             if mfmargin
@@ -884,7 +936,19 @@ if barstate.islast
             else
                 l.drawM()
         else
+            l.lshi := false
+            l.lslo := false
+            l.lsce := false
             l.draw()
+    lblApply()
+    for l in lvls
+        if l.kind != 3
+            if not l.lshi
+                l.hilb := rmLbl(l.hilb)
+            if not l.lslo
+                l.lolb := rmLbl(l.lolb)
+            if not l.lsce
+                l.celb := rmLbl(l.celb)
 
 var table note = table.new(position.bottom_right, 1, 1)
 var table setNote = table.new(position.top_right, 1, 1)
