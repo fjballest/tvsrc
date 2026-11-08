@@ -11,7 +11,7 @@
  *   It draws levels only: no signals, no alerts, no plots.
  *
  *   It is a port of the TradingView Pine Script v6 indicator ICTlevels.txt
- *   (md5 46ef4e7972b009e1f55fef6060cf8962). Parameter names are the Pine variable names and the
+ *   (md5 541dee28a673cd51828b3654d22ddf7e). Parameter names are the Pine variable names and the
  *   defaults are the Pine defaults; see "doc/ICTlevels-user-manual.md" for what every level means.
  *
  * How to install
@@ -146,12 +146,12 @@ const PARAMS = {
     // Gaps and Ranges
     ngaps: ps.number(10, 1, 1),
     dorthogq: ps.bool(true),
-    rthogqmin: ps.number(25.0, 0.25, 0),
+    rthogqmin: ps.number(50.0, 0.25, 0),
     dorthogoct: ps.bool(true),
     dorthogpo3: ps.bool(true),
-    rthogpo3min: ps.number(25.0, 0.25, 0),
+    rthogpo3min: ps.number(50.0, 0.25, 0),
     rthogpo3num: ps.number(4, 1, 0),
-    rthogauto: ps.bool(false),
+    rthogauto: ps.bool(true),
     dogrect: ps.bool(true),
     grtransp: ps.number(90, 1, 0),
     combgaps: ps.bool(true),
@@ -174,9 +174,9 @@ const PARAMS = {
     pmmode: ps.enum({ Auto: "Auto", Manual: "Manual" }, "Auto"),
     pmsession: ps.text("0700-0900"),
     dopmq: ps.bool(true),
-    pmqmin: ps.number(20.0, 0.25, 0),
+    pmqmin: ps.number(50.0, 0.25, 0),
     dopmpo3: ps.bool(true),
-    pmpo3min: ps.number(20.0, 0.25, 0),
+    pmpo3min: ps.number(50.0, 0.25, 0),
     pmpo3num: ps.number(4, 1, 1),
     pmauto: ps.bool(false),
     pmcolor: ps.color(C_RED),

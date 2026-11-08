@@ -174,8 +174,8 @@ Needs a chart timeframe of 5 minutes or lower.
 - **Start and end vertical lines** of the range, in the day line style (dotted blue).
 - **Pre-mkt hi / Pre-mkt lo** lines and labels, in the session max/min style, from the extreme to the bar that takes it, stopping at the market close (16:15 New York, 17:30 Madrid).
 - For the most recent range (or the last N ranges, setting "quadrants/stddevs for the last"):
-  - **Quadrants**: lines at 25%, 50% and 75% of the range, labelled "PMKT dq", "PMKT ce" and "PMKT uq" with the date (for example "PMKT ce 20O"). Drawn only when a quarter of the range is larger than the minimum size (default 20 points, so the range must be over 80 points).
-  - **Standard deviations**: lines above the high and below the low, 4 per side by default. The step is the range divided by 8, 4, 2 or 1: the first of these that is larger than the minimum size (default 20 points). Each label gives the distance from the range edge in whole ranges: "PMKT+1" is one full range above the high, "PMKT-0.5" half a range below the low, "PMKT+0.25" a quarter of a range above, and so on (with a step of 1/8: "PMKT+0.125", "PMKT+0.25", "PMKT+0.375"...). If even the whole range is not larger than the minimum, no deviations are drawn.
+  - **Quadrants**: lines at 25%, 50% and 75% of the range, labelled "PMKT dq", "PMKT ce" and "PMKT uq" with the date (for example "PMKT ce 20O"). Drawn only when a quarter of the range is larger than the minimum size (default 50 points, so the range must be over 200 points).
+  - **Standard deviations**: lines above the high and below the low, 4 per side by default. The step is the range divided by 8, 4, 2 or 1: the first of these that is larger than the minimum size (default 50 points). Each label gives the distance from the range edge in whole ranges: "PMKT+1" is one full range above the high, "PMKT-0.5" half a range below the low, "PMKT+0.25" a quarter of a range above, and so on (with a step of 1/8: "PMKT+0.125", "PMKT+0.25", "PMKT+0.375"...). If even the whole range is not larger than the minimum, no deviations are drawn.
   - **PMKT hi / PMKT lo**: whenever any quadrant or deviation line is drawn, the range high and low are also drawn as solid lines in the premarket color (red by default), labelled for example "PMKT hi 20O".
   - These lines start a couple of bars before the end of the range (4 bars on 1m or lower, 2 bars otherwise) and extend to the right margin, but never past the market close of that day.
 
@@ -218,9 +218,9 @@ The regular trading hours opening gap is the range between the settlement of the
 - **On the open bar**: the gap is fixed with the real open price:
   - The open line is labelled "RTHOG hi" (gap up) or "RTHOG lo" (gap down) with the date; the settlement line is relabelled with the other one.
   - **CE**: the midpoint of the gap, "RTHOG ce 20O".
-  - **Quadrants**: 25% and 75% of the gap, "RTHOG dq" and "RTHOG uq", only when a quarter of the gap is larger than the minimum size (default 25 points, so the gap must be over 100 points).
-  - **Octants** (on by default): 1/8, 3/8, 5/8 and 7/8 of the gap, the midpoints between the quadrants, labelled "RTHOG 1/8 20O" and so on, thin lines in the quadrant style. Only on the latest RTHOG, only when an eighth of the gap is larger than the quadrant minimum size (so the gap must be over 200 points with the default 25), and they stop at noon: until noon they follow the right edge, after noon they end there.
-  - **Standard deviations**: above the higher edge and below the lower edge, 4 per side by default, dotted. The step is the gap divided by 8, 4, 2 or 1, the first that is larger than the minimum size (default 25 points). As for the premarket range, the label is the distance from the gap edge in whole gaps: "RTHOG+1" one full gap above, "RTHOG-0.5" half a gap below, "RTHOG+1.25" and so on.
+  - **Quadrants**: 25% and 75% of the gap, "RTHOG dq" and "RTHOG uq", only when a quarter of the gap is larger than the minimum size (default 50 points, so the gap must be over 200 points).
+  - **Octants** (on by default): 1/8, 3/8, 5/8 and 7/8 of the gap, the midpoints between the quadrants, labelled "RTHOG 1/8 20O" and so on, thin lines in the quadrant style. Only on the latest RTHOG, only when an eighth of the gap is larger than the quadrant minimum size (so the gap must be over 400 points with the default 50), and they stop at noon: until noon they follow the right edge, after noon they end there.
+  - **Standard deviations**: above the higher edge and below the lower edge, 4 per side by default, dotted. The step is the gap divided by 8, 4, 2 or 1, the first that is larger than the minimum size (default 50 points). With auto (on by default) more deviations are added as price reaches them. As for the premarket range, the label is the distance from the gap edge in whole gaps: "RTHOG+1" one full gap above, "RTHOG-0.5" half a gap below, "RTHOG+1.25" and so on.
   - Optional rectangle between settlement and open.
 - **After the next close**: the gap becomes the previous one. It is redrawn in the "old" color (cyan #17E1DA) and loses its quadrants, octants and deviations, keeping settlement, CE and open.
 - **Older gaps** are reduced to short ticks around the settlement and the open, labelled "rthog.cl", "rthog.ce" and "rthog.op" in black text. With "extend old RTHOG lines" the ticks at the open are extended to the right.
@@ -435,11 +435,12 @@ Attenuation dims the drawings without changing their settings. Drawings have thr
 | --- | --- | --- |
 | Gaps to keep | 10 (min 1) | Number of NDOGs, of NWOGs and of RTHOGs to keep (each). Values above 15 are reduced to 15. |
 | RTHOG quadrants | on | Draws the 25% and 75% lines of the current RTHOG. |
-| min size | 25.0 | Minimum distance in points between quadrant lines; quadrants are drawn only when a quarter of the gap is larger. |
+| min size | 50.0 | Minimum distance in points between quadrant lines; quadrants are drawn only when a quarter of the gap is larger. |
 | RTHOG octants | on | Draws the 1/8, 3/8, 5/8 and 7/8 lines of the latest RTHOG until noon, when an eighth of the gap is larger than the quadrant min size. |
 | RTHOG stddevs | on | Draws standard deviation projections of the current RTHOG. |
-| min size | 25.0 | Minimum step in points; the step is the first of gap/8, gap/4, gap/2 or the whole gap that is larger than this, otherwise none are drawn. |
+| min size | 50.0 | Minimum step in points; the step is the first of gap/8, gap/4, gap/2 or the whole gap that is larger than this, otherwise none are drawn. |
 | number of stddevs to draw above/below | 4 | Deviation lines per side. Keep it at 1 or more; to hide them, turn off "RTHOG stddevs". |
+| auto | on | Latest RTHOG only, from the open until the market close: more deviations are drawn as price goes beyond them, so there are always at least the number above and also the next one to be hit on each side (at most 40 per side). |
 | Draw gap rectangles | on | Draws shaded boxes for NDOG, NWOG and RTHOG gaps. |
 | transp | 90 | Transparency of the gap boxes. |
 | Combine gaps at similar levels | on | Draws nearby NDOGs (NWOGs) once with their outer levels ("NDOGx3"), and merges NDOGs into a NWOG at the same levels ("NWOG+NDOG"). |
@@ -466,9 +467,9 @@ Attenuation dims the drawings without changing their settings. Drawings have thr
 | range | Auto | Auto: 07:00-09:00 New York (US) or 06:30-08:30 Madrid (EU). Manual: uses the "manual range" setting. |
 | manual range | 07:00-09:00 | The range window in Manual mode, in the script's time zone (New York for US, Madrid for EU). |
 | PMKT quadrants | on | Draws the 25%, 50% (CE) and 75% lines. |
-| min size | 20.0 | Minimum distance in points between quadrant lines; drawn only when a quarter of the range is larger. |
+| min size | 50.0 | Minimum distance in points between quadrant lines; drawn only when a quarter of the range is larger. |
 | PMKT stddevs | on | Draws standard deviation projections above and below the range. |
-| min size | 20.0 | Minimum step in points; the step is the first of range/8, range/4, range/2 or the whole range that is larger than this, otherwise none are drawn. |
+| min size | 50.0 | Minimum step in points; the step is the first of range/8, range/4, range/2 or the whole range that is larger than this, otherwise none are drawn. |
 | number of stddevs to draw above/below | 4 (min 1) | Deviation lines per side. |
 | line | red | Color of all PMKT lines and labels (hi, lo, quadrants, CE, deviations). |
 | (no label, width) | 2 | Width of the PMKT lines. |
@@ -540,9 +541,9 @@ To stay fast, the script processes only a window of recent history: about 1.5 ti
 
 **Nothing is drawn.** The chart timeframe is above 1 hour. Use 1h or lower.
 
-**The premarket range is missing.** It needs 5m or lower and "PMKT range" on in Enable / Filter. Quadrants and deviations are drawn only when the range is large enough (over 80 points for quadrants and over 20 points for deviations with the defaults); otherwise only the Pre-mkt high and low lines are shown, without the red PMKT hi / lo lines.
+**The premarket range is missing.** It needs 5m or lower and "PMKT range" on in Enable / Filter. Quadrants and deviations are drawn only when the range is large enough (over 200 points for quadrants and over 50 points for deviations with the defaults); otherwise only the Pre-mkt high and low lines are shown, without the red PMKT hi / lo lines.
 
-**There is no RTHOG.** It needs 15m or lower. Quadrants need a gap over 100 points with the defaults, and deviations a gap over 25 points. RTHOGs are computed only for the last 5000 bars.
+**There is no RTHOG.** It needs 15m or lower. Quadrants need a gap over 200 points with the defaults, and deviations a gap over 50 points. RTHOGs are computed only for the last 5000 bars.
 
 **NDOGs or NWOGs do not appear.** The gap is completed only on a bar that opens exactly at 18:00 New York (US) or 00:00 Madrid (EU), and its first edge comes from the bar that ends at 17:00 / 23:00 or the bar that opens then. If your symbol's data has no bars at those times, no gaps are drawn.
 

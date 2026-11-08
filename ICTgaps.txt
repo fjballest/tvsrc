@@ -151,17 +151,17 @@ color uscolor = color.blue
 const string GRP_DOG = "Gaps and Ranges"
 int ngaps = input.int(10, "Gaps to keep", group = GRP_DOG, inline = "gap", minval = 1)
 bool dorthogq = input.bool(true, "RTHOG quadrants", group = GRP_DOG, inline = "rq")
-float rthogqmin = input.float(25.0, "min size", group = GRP_DOG, inline = "rq",
+float rthogqmin = input.float(50.0, "min size", group = GRP_DOG, inline = "rq",
      tooltip = "min size between quadrants to draw them")
 bool dorthogoct = input.bool(true, "RTHOG octants", group = GRP_DOG, inline = "ro",
      tooltip = "Midpoints between the quadrants (1/8, 3/8, 5/8 and 7/8 of the gap) of the latest RTHOG, drawn "
      + "when an eighth of the gap is above the quadrant min size, from the open until noon.")
 bool dorthogpo3 = input.bool(true, "RTHOG stddevs", group = GRP_DOG, inline = "rp")
-float rthogpo3min = input.float(25.0, "min size", group = GRP_DOG, inline = "rp",
+float rthogpo3min = input.float(50.0, "min size", group = GRP_DOG, inline = "rp",
      tooltip = "min size of the steps to draw them (selects octants, "
      + "quadrants, half gap, whole gap or none)")
 int rthogpo3num = input.int(4, "number of stddevs to draw above/below", group = GRP_DOG, inline = "rn")
-bool rthogauto = input.bool(false, "auto", group = GRP_DOG, inline = "rn",
+bool rthogauto = input.bool(true, "auto", group = GRP_DOG, inline = "rn",
      tooltip = "Latest RTHOG only, from the open until the market close: more stddevs are drawn when price "
      + "goes beyond them, so there are always at least the number above and also the next stddev to be hit "
      + "on each side (at most 40 per side).")
@@ -210,11 +210,11 @@ string pmmode = input.string("Auto", "range", options = ["Auto", "Manual"], grou
      + "timezone of the market open (New York for NQ, Madrid for DAX).")
 string pmsession = input.session("0700-0900", "manual range", group = G_PM, inline = "pm1")
 bool dopmq = input.bool(true, "PMKT quadrants", group = G_PM, inline = "pm2")
-float pmqmin = input.float(20.0, "min size", group = G_PM, inline = "pm2",
+float pmqmin = input.float(50.0, "min size", group = G_PM, inline = "pm2",
      tooltip = "min size between quadrants to draw them (the lines at 25%, 50% (CE) and 75% "
      + "of the range)")
 bool dopmpo3 = input.bool(true, "PMKT stddevs", group = G_PM, inline = "pm3")
-float pmpo3min = input.float(20.0, "min size", group = G_PM, inline = "pm3",
+float pmpo3min = input.float(50.0, "min size", group = G_PM, inline = "pm3",
      tooltip = "min size of the steps to draw them (selects octants, quadrants, half range, "
      + "whole range or none)")
 int pmpo3num = input.int(4, "number of stddevs to draw above/below", minval = 1,

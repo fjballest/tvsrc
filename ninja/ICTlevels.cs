@@ -4,7 +4,7 @@
 // quadrants and standard deviations, premarket range, EQH/EQL, PO3 lines, TGIF levels, macros,
 // silver bullet and a session/macro status text. Draws levels only: no plots, no signals, no alerts.
 //
-// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 46ef4e7972b009e1f55fef6060cf8962),
+// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 541dee28a673cd51828b3654d22ddf7e),
 // © franjballest, Mozilla Public License 2.0 (https://mozilla.org/MPL/2.0/).
 //
 // Install:
@@ -358,11 +358,11 @@ namespace NinjaTrader.NinjaScript.Indicators
 				DoRthog = true;
 				DoRthogQ = true;
 				DoRthogOct = true;
-				RthogQMin = 25.0;
+				RthogQMin = 50.0;
 				DoRthogPo3 = true;
-				RthogPo3Min = 25.0;
+				RthogPo3Min = 50.0;
 				RthogPo3Num = 4;
-				RthogAuto = false;
+				RthogAuto = true;
 				DoGapRect = true;
 				GapRectTransparency = 90;
 				CombGaps = true;
@@ -385,9 +385,9 @@ namespace NinjaTrader.NinjaScript.Indicators
 				PmMode = ICTlevelsPmMode.Auto;
 				PmSession = "0700-0900";
 				DoPmQ = true;
-				PmQMin = 20.0;
+				PmQMin = 50.0;
 				DoPmPo3 = true;
-				PmPo3Min = 20.0;
+				PmPo3Min = 50.0;
 				PmPo3Num = 4;
 				PmAuto = false;
 				PmColor = PineRed;
