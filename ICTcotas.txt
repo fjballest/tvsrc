@@ -45,8 +45,8 @@ string mitig = input.string("Fully filled (wick)", "remove when",
      + "filled means price crossed the far edge: the low of a "
      + "bullish level, the high of a bearish one (by wick or by "
      + "close of the level's own timeframe). FVGs follow the IFVG rule instead when it is enabled.")
-int attLvl = input.int(0, "Attenuation", minval = 0, maxval = 4, group = G_GEN,
-     tooltip = "Dims the drawings, 0: as configured (default), 4: the most dimmed. Levels have three ranks: "
+int attLvl = input.int(2, "Attenuation", minval = 0, maxval = 4, group = G_GEN,
+     tooltip = "Dims the drawings, 0: as configured, 4: the most dimmed (2 by default). Levels have three ranks: "
      + "important (weekly and monthly), normal (daily and 4H) and minor (15m and 1H). Volume imbalances, "
      + "wick CEs and ULW CEs are one rank lower than FVGs of the same timeframe. Each level dims minor "
      + "drawings the most and important ones the least; widths go down by 1 when dimmed enough.")

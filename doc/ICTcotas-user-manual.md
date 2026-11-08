@@ -241,7 +241,7 @@ The tables follow the order of the settings dialog. Several controls often share
 | Monthly | on | Levels from monthly candles. Chart timeframe must be lower than 1M |
 | extra line width per timeframe step | 1 (0 to 2) | Extra width added to weekly lines (1 step) and monthly lines (2 steps) over daily ones. 0 makes all timeframes the same width. Does not affect the by-timeframe layer |
 | remove when | Fully filled (wick) | Mitigation rule for all levels (see table below). FVGs follow the IFVG rule instead while it is enabled; IFVGs, VIs and wick CEs always follow this rule |
-| Attenuation | 0 (0 to 4) | Dims the drawings without changing their settings. 0 draws everything as configured; 4 is the most dimmed (see below) |
+| Attenuation | 2 (0 to 4) | Dims the drawings without changing their settings. 0 draws everything as configured; 4 is the most dimmed (see below) |
 
 Mitigation rules (tested on every chart bar):
 

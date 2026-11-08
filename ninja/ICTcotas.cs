@@ -7,7 +7,7 @@
 // FVGs closed through become IFVGs. Mitigated levels are removed.
 //
 // Port of the TradingView Pine Script v6 indicator ICTcotas.txt by franjballest
-// (source md5 6f8633a5ff416e14a898eb39ea0873f7). Mozilla Public License 2.0.
+// (source md5 7e14b8ffcf0c64477a906fcc05b73a0e). Mozilla Public License 2.0.
 //
 // Install:
 //   1. Copy this file to  Documents\NinjaTrader 8\bin\Custom\Indicators\ICTcotas.cs
@@ -212,7 +212,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 				DoMonthly = true;
 				WidthExtra = 1;
 				Mitigation = ICTcotasMitigation.FullyFilledWick;
-				Attenuation = 0;
+				Attenuation = 2;
 
 				// Colors (Pine v6 palette)
 				DailyBull = MakeBrush(0x4C, 0xAF, 0x50);   // green
@@ -1229,7 +1229,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 
 		[NinjaScriptProperty]
 		[Range(0, 4)]
-		[Display(Name = "Attenuation", Description = "Dims the drawings, 0: as configured (default), 4: the most dimmed. Levels have three ranks: important (weekly and monthly), normal (daily and 4H) and minor (15m and 1H). Volume imbalances, wick CEs and ULW CEs are one rank lower than FVGs of the same timeframe. Each level dims minor drawings the most and important ones the least; widths go down by 1 when dimmed enough.", GroupName = GGen, Order = 6)]
+		[Display(Name = "Attenuation", Description = "Dims the drawings, 0: as configured, 4: the most dimmed (2 by default). Levels have three ranks: important (weekly and monthly), normal (daily and 4H) and minor (15m and 1H). Volume imbalances, wick CEs and ULW CEs are one rank lower than FVGs of the same timeframe. Each level dims minor drawings the most and important ones the least; widths go down by 1 when dimmed enough.", GroupName = GGen, Order = 6)]
 		public int Attenuation { get; set; }
 
 		// ---------------------------------------------------------------- Colors

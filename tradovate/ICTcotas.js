@@ -9,7 +9,7 @@
  * closed through become IFVGs. Mitigated levels are removed.
  *
  * Port of the TradingView Pine Script v6 indicator ICTcotas.txt
- * (md5 6f8633a5ff416e14a898eb39ea0873f7), (c) franjballest, Mozilla Public
+ * (md5 7e14b8ffcf0c64477a906fcc05b73a0e), (c) franjballest, Mozilla Public
  * License 2.0 (https://mozilla.org/MPL/2.0/). Same logic, same inputs (as
  * camelCase parameters) and the same defaults.
  *
@@ -458,7 +458,7 @@ function buildConfig(p, chart) {
         wExtra: clamp(Math.round(num(p.wExtra, 1)), 0, 2),
         mmode: mit === "ce" ? 1 : mit === "wick" ? 2 : mit === "close" ? 3 : 0,
         sessHour: clamp(num(p.sessionStartHour, 18), 0, 23),
-        attLvl: clamp(Math.round(num(p.attLvl, 0)), 0, 4),
+        attLvl: clamp(Math.round(num(p.attLvl, 2)), 0, 4),
         attbg: str(p.attbg, "#FFFFFF"),
 
         dBull: str(p.dBull, "#4CAF50"), dBear: str(p.dBear, "#F23645"),
@@ -965,7 +965,7 @@ module.exports = {
             never: "Never", ce: "CE touched", wick: "Fully filled (wick)", close: "Fully filled (close)"
         }, "wick"),
         sessionStartHour: int(18, 0),
-        attLvl: predef.paramSpecs.number(0, 1, 0),
+        attLvl: predef.paramSpecs.number(2, 1, 0),
         attbg: predef.paramSpecs.color("#FFFFFF"),
         // Colors (by timeframe)
         dBull: predef.paramSpecs.color("#4CAF50"),
