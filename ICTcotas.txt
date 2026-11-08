@@ -50,6 +50,10 @@ int attLvl = input.int(2, "Attenuation", minval = 0, maxval = 4, group = G_GEN,
      + "important (weekly and monthly), normal (daily and 4H) and minor (15m and 1H). Volume imbalances, "
      + "wick CEs and ULW CEs are one rank lower than FVGs of the same timeframe. Each level dims minor "
      + "drawings the most and important ones the least; widths go down by 1 when dimmed enough.")
+float badatr = input.float(6, "Ignore wicks longer than (daily ATRs)", minval = 0, step = 0.5, group = G_GEN,
+     tooltip = "Bad data: a wick longer than this many daily ATRs (any timeframe, chart candles included) is taken "
+     + "as a bad print, and the candle's high or low is taken at its body for levels, mitigation and turtle soup. "
+     + "0: off.")
 // [ATT] dimming steps of a rank (0 important, 1 normal, 2 minor) at the attenuation level
 attE(int rank) =>
     attLvl == 0 ? 0 : rank == 0 ? (attLvl >= 4 ? 2 : attLvl >= 2 ? 1 : 0) : rank == 1 ? attLvl : attLvl + 1
@@ -296,6 +300,16 @@ string mflsz = getsize(mflsize)
 var int tfirst = time
 // daily ATR(14) (RMA of the true range of completed daily candles; chart candles on D charts and above)
 var float dAtr = na
+
+// bad data: a wick longer than badatr daily ATRs is a bad print, not price; the high / low is taken at the body
+clH(float o, float h, float c) =>
+    float b = math.max(o, c)
+    badatr > 0 and not na(dAtr) and h - b > badatr * dAtr ? b : h
+clL(float o, float l, float c) =>
+    float b = math.min(o, c)
+    badatr > 0 and not na(dAtr) and b - l > badatr * dAtr ? b : l
+float cH = clH(open, high, close)
+float cL = clL(open, low, close)
 
 type Lvl
     int kind    // 0 FVG / IFVG, 1 volume imbalance, 2 wick, 3 FVG by timeframe, 4 ULW CE (both wicks of a candle)
@@ -855,9 +869,9 @@ runMit() =>
                 bool tn = tfNew.get(l.tfi)
                 float tc = tfClose.get(l.tfi)
                 if l.dir == 1
-                    m := mmode == 1 ? low <= l.ce : mmode == 2 ? low <= l.lo : tn and tc < l.lo
+                    m := mmode == 1 ? cL <= l.ce : mmode == 2 ? cL <= l.lo : tn and tc < l.lo
                 else
-                    m := mmode == 1 ? high >= l.ce : mmode == 2 ? high >= l.hi : tn and tc > l.hi
+                    m := mmode == 1 ? cH >= l.ce : mmode == 2 ? cH >= l.hi : tn and tc > l.hi
                 if m
                     l.kill()
                     lvls.remove(i)
@@ -904,7 +918,10 @@ var string setUsed = ""
 
 bool newD = dayOk and dT != nz(dT[1], dT)
 if dT != nz(dT[1], dT) and not na(dH1) and not na(dC2)
-    float tr = math.max(dH1 - dL1, math.abs(dH1 - dC2), math.abs(dL1 - dC2))
+    // from the cleaned candle (bad prints do not inflate it), cleaned with the ATR so far
+    float ah = clH(dO1, dH1, dC1)
+    float al = clL(dO1, dL1, dC1)
+    float tr = math.max(ah - al, math.abs(ah - dC2), math.abs(al - dC2))
     dAtr := na(dAtr) ? tr : (dAtr * 13 + tr) / 14
 bool newW = wkOk and wT != nz(wT[1], wT)
 bool newM = monOk and mT != nz(mT[1], mT)
@@ -925,6 +942,28 @@ if newD and setOn and not na(sO1) and not na(uO1)
     dL3 := useSet ? sL3 : uL3
     dO3 := useSet ? sO3 : uO3
     dC3 := useSet ? sC3 : uC3
+// bad prints out of the higher timeframe candles
+if newD
+    dH1 := clH(dO1, dH1, dC1)
+    dL1 := clL(dO1, dL1, dC1)
+    dH2 := clH(dO2, dH2, dC2)
+    dL2 := clL(dO2, dL2, dC2)
+    dH3 := clH(dO3, dH3, dC3)
+    dL3 := clL(dO3, dL3, dC3)
+if newW
+    wH1 := clH(wO1, wH1, wC1)
+    wL1 := clL(wO1, wL1, wC1)
+    wH2 := clH(wO2, wH2, wC2)
+    wL2 := clL(wO2, wL2, wC2)
+    wH3 := clH(wO3, wH3, wC3)
+    wL3 := clL(wO3, wL3, wC3)
+if newM
+    mH1 := clH(mO1, mH1, mC1)
+    mL1 := clL(mO1, mL1, mC1)
+    mH2 := clH(mO2, mH2, mC2)
+    mL2 := clL(mO2, mL2, mC2)
+    mH3 := clH(mO3, mH3, mC3)
+    mL3 := clL(mO3, mL3, mC3)
 if newD
     tfNew.set(0, true)
     tfClose.set(0, dC1)
@@ -948,10 +987,16 @@ for i = 0 to 5
             if not na(last) and t0 != last
                 tfNew.set(3 + i, true)
                 tfClose.set(3 + i, u1)
+                float q1c = clH(p1, q1, u1)
+                float r1c = clL(p1, r1, u1)
+                float q2c = clH(p2, q2, u2)
+                float r2c = clL(p2, r2, u2)
+                float h3c = clH(p3, h3, u3)
+                float l3c = clL(p3, l3, u3)
                 if fvgOn
-                    addFvgs(3, 3 + i, mfmin, p1, q1, r1, u1, p2, q2, r2, u2, h3, l3, p3, u3, t2, t0)
+                    addFvgs(3, 3 + i, mfmin, p1, q1c, r1c, u1, p2, q2c, r2c, u2, h3c, l3c, p3, u3, t2, t0)
                 if wkOn
-                    addWicks(3 + i, p1, q1, r1, u1, t1)
+                    addWicks(3 + i, p1, q1c, r1c, u1, t1)
             mfLastT.set(i, t0)
 runMit()
 
@@ -1016,13 +1061,13 @@ method tsStep(TSt s, bool nw) =>
             s.pl := s.l
             s.pc := close[1]
         s.o := open
-        s.h := high
-        s.l := low
+        s.h := cH
+        s.l := cL
         s.armed := false
         s.inv := false
     else
-        s.h := math.max(s.h, high)
-        s.l := math.min(s.l, low)
+        s.h := math.max(s.h, cH)
+        s.l := math.min(s.l, cL)
     if not na(s.pc)
         if s.armed and (s.pc < s.po ? close > s.pc : close < s.pc)
             s.inv := true

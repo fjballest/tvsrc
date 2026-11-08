@@ -7,7 +7,7 @@
 // FVGs closed through become IFVGs. Mitigated levels are removed.
 //
 // Port of the TradingView Pine Script v6 indicator ICTcotas.txt by franjballest
-// (source md5 a1a15795e61ed8d234e4ec029c244edf). Mozilla Public License 2.0.
+// (source md5 9310adfb1f5642f7f18b2e318084eeb2). Mozilla Public License 2.0.
 //
 // Install:
 //   1. Copy this file to  Documents\NinjaTrader 8\bin\Custom\Indicators\ICTcotas.cs
@@ -182,6 +182,20 @@ namespace NinjaTrader.NinjaScript.Indicators
 		private int nextId;
 		private bool dirty;
 		private double dAtr = double.NaN;    // daily ATR(14): RMA of the true range of completed daily candles
+
+		// bad data: a wick longer than BadAtr daily ATRs is a bad print, not price; high / low taken at the body
+		// (the daily ATR is built from cleaned candles too, cleaned with the ATR so far)
+		private double CH(int k, int i)
+		{
+			double h = Highs[k][i], b = Math.Max(Opens[k][i], Closes[k][i]);
+			return BadAtr > 0 && !double.IsNaN(dAtr) && h - b > BadAtr * dAtr ? b : h;
+		}
+
+		private double CL(int k, int i)
+		{
+			double l = Lows[k][i], b = Math.Min(Opens[k][i], Closes[k][i]);
+			return BadAtr > 0 && !double.IsNaN(dAtr) && b - l > BadAtr * dAtr ? b : l;
+		}
 		private Dictionary<string, Brush> attCache = new Dictionary<string, Brush>();
 
 		private int tfsecs;
@@ -225,6 +239,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 				WidthExtra = 1;
 				Mitigation = ICTcotasMitigation.FullyFilledWick;
 				Attenuation = 2;
+				BadAtr = 6;
 
 				// Colors (Pine v6 palette)
 				DailyBull = MakeBrush(0x4C, 0xAF, 0x50);   // green
@@ -454,7 +469,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 				if (key != lastPrimaryKey)
 				{
 					lastPrimaryKey = key;
-					RunMit(Closes[0][off], Highs[0][off], Lows[0][off]);
+					RunMit(Closes[0][off], CH(0, off), CL(0, off));
 				}
 			}
 
@@ -486,8 +501,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 
 			if (k == SerDay)
 			{
-				double tr = Math.Max(Highs[k][off] - Lows[k][off], Math.Max(Math.Abs(Highs[k][off] - Closes[k][off + 1]),
-					Math.Abs(Lows[k][off] - Closes[k][off + 1])));
+				double tr = Math.Max(CH(k, off) - CL(k, off), Math.Max(Math.Abs(CH(k, off) - Closes[k][off + 1]),
+					Math.Abs(CL(k, off) - Closes[k][off + 1])));
 				dAtr = double.IsNaN(dAtr) ? tr : (dAtr * 13 + tr) / 14;
 			}
 
@@ -796,9 +811,9 @@ namespace NinjaTrader.NinjaScript.Indicators
 		// widens the range, also when the wicks do not overlap (a gap)
 		private void AddFvgs(int kind, int tfi, double minsz, int k, int off)
 		{
-			double o1 = Opens[k][off], h1 = Highs[k][off], l1 = Lows[k][off], c1 = Closes[k][off];
+			double o1 = Opens[k][off], h1 = CH(k, off), l1 = CL(k, off), c1 = Closes[k][off];
 			double o2 = Opens[k][off + 1], c2 = Closes[k][off + 1];
-			double o3 = Opens[k][off + 2], h3 = Highs[k][off + 2], l3 = Lows[k][off + 2], c3 = Closes[k][off + 2];
+			double o3 = Opens[k][off + 2], h3 = CH(k, off + 2), l3 = CL(k, off + 2), c3 = Closes[k][off + 2];
 			DateTime t2 = CandleStart(k, off + 1);
 			DateTime tform = Times[0][0];
 
@@ -862,7 +877,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 		// wick groups of the completed candle [off] of series k
 		private void AddWicks(int tfi, int k, int off)
 		{
-			double o1 = Opens[k][off], h1 = Highs[k][off], l1 = Lows[k][off], c1 = Closes[k][off];
+			double o1 = Opens[k][off], h1 = CH(k, off), l1 = CL(k, off), c1 = Closes[k][off];
 			DateTime t1 = CandleStart(k, off);
 			double topC = Math.Max(o1, c1);
 			double botC = Math.Min(o1, c1);
@@ -884,8 +899,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 		// one completed daily, weekly or monthly candle: 1 = [off], 2 = [off+1], 3 = [off+2]
 		private void ProcessTf(int tfi, int k, int off)
 		{
-			double o1 = Opens[k][off], h1 = Highs[k][off], l1 = Lows[k][off], c1 = Closes[k][off];
-			double o2 = Opens[k][off + 1], h2 = Highs[k][off + 1], l2 = Lows[k][off + 1], c2 = Closes[k][off + 1];
+			double o1 = Opens[k][off], h1 = CH(k, off), l1 = CL(k, off), c1 = Closes[k][off];
+			double o2 = Opens[k][off + 1], h2 = CH(k, off + 1), l2 = CL(k, off + 1), c2 = Closes[k][off + 1];
 			DateTime t1 = CandleStart(k, off);
 			double topP = Math.Max(o2, c2);
 			double botP = Math.Min(o2, c2);
@@ -1245,7 +1260,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 				return 0;
 			DateTime t0 = Times[0][0];
 			int j = t0 > Times[k][0] ? 0 : 1;
-			double po = Opens[k][j], ph = Highs[k][j], pl = Lows[k][j], pc = Closes[k][j];
+			double po = Opens[k][j], ph = CH(k, j), pl = CL(k, j), pc = Closes[k][j];
 			DateTime ps = Times[k][j];
 			if (pc == po)
 				return 0;
@@ -1260,8 +1275,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 			bool armed = false, inv = false, cont = false;
 			for (int b = n - 1; b >= 0; b--)
 			{
-				h = Math.Max(h, Highs[0][b]);
-				l = Math.Min(l, Lows[0][b]);
+				h = Math.Max(h, CH(0, b));
+				l = Math.Min(l, CL(0, b));
 				double cb = Closes[0][b];
 				if (armed && (down ? cb > pc : cb < pc))
 					inv = true;
@@ -1373,6 +1388,11 @@ namespace NinjaTrader.NinjaScript.Indicators
 		[Range(0, 4)]
 		[Display(Name = "Attenuation", Description = "Dims the drawings, 0: as configured, 4: the most dimmed (2 by default). Levels have three ranks: important (weekly and monthly), normal (daily and 4H) and minor (15m and 1H). Volume imbalances, wick CEs and ULW CEs are one rank lower than FVGs of the same timeframe. Each level dims minor drawings the most and important ones the least; widths go down by 1 when dimmed enough.", GroupName = GGen, Order = 6)]
 		public int Attenuation { get; set; }
+
+		[NinjaScriptProperty]
+		[Range(0, double.MaxValue)]
+		[Display(Name = "Ignore wicks longer than (daily ATRs)", Description = "Bad data: a wick longer than this many daily ATRs (any timeframe, chart candles included) is taken as a bad print, and the candle's high or low is taken at its body for levels, mitigation and turtle soup. 0: off.", GroupName = GGen, Order = 8)]
+		public double BadAtr { get; set; }
 
 		// ---------------------------------------------------------------- Colors
 		[NinjaScriptProperty]
@@ -1943,7 +1963,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 
 		// ---------------------------------------------------------------- Turtle soup / continuation
 		[NinjaScriptProperty]
-		[Display(Name = "Turtle soup / continuation indications", Description = "Small up / down triangles in a chart corner, one per timeframe (15m, 1H, 4H on charts up to 15m; 1H, 4H, D up to 1H; 4H and D on 4H charts; D on daily charts). Previous candle down: its low taken and price back above its close is a turtle soup up (bright up triangle); the forming candle traded above its open and price is below the previous close is a continuation down (grey down triangle), cancelled for the rest of the candle when price goes back above that close. Mirrored for up candles.", GroupName = GGen, Order = 7)]
+		[Display(Name = "Turtle soup / continuation indications", Description = "Small up / down triangles in a chart corner, one per timeframe (15m, 1H, 4H on charts up to 15m; 1H, 4H, D up to 1H; 4H, D, W up to 4H; D, W on daily charts; W on weekly charts). Previous candle down: its low taken and price back above its close is a turtle soup up (bright up triangle); the forming candle traded above its open and price is below the previous close is a continuation down (grey down triangle), cancelled for the rest of the candle when price goes back above that close. Mirrored for up candles.", GroupName = GGen, Order = 7)]
 		public bool TsShow { get; set; }
 
 		[NinjaScriptProperty]

@@ -243,6 +243,7 @@ The tables follow the order of the settings dialog. Several controls often share
 | remove when | Fully filled (wick) | Mitigation rule for all levels (see table below). FVGs follow the IFVG rule instead while it is enabled; IFVGs, VIs and wick CEs always follow this rule |
 | Turtle soup / continuation indications | on | Small up / down triangles in a chart corner, one per timeframe (see Turtle soup / continuation below) |
 | Attenuation | 2 (0 to 4) | Dims the drawings without changing their settings. 0 draws everything as configured; 4 is the most dimmed (see below) |
+| Ignore wicks longer than (daily ATRs) | 6 | Bad data filter. A wick longer than this many daily ATRs, on any candle (chart or higher timeframe), is taken as a bad print: the candle's high or low is taken at its body, so it makes no FVG, VI, wick CE or turtle soup, and does not mitigate levels. 0 turns it off |
 
 Mitigation rules (tested on every chart bar):
 

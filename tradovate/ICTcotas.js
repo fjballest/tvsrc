@@ -9,7 +9,7 @@
  * closed through become IFVGs. Mitigated levels are removed.
  *
  * Port of the TradingView Pine Script v6 indicator ICTcotas.txt
- * (md5 a1a15795e61ed8d234e4ec029c244edf), (c) franjballest, Mozilla Public
+ * (md5 9310adfb1f5642f7f18b2e318084eeb2), (c) franjballest, Mozilla Public
  * License 2.0 (https://mozilla.org/MPL/2.0/). Same logic, same inputs (as
  * camelCase parameters) and the same defaults.
  *
@@ -426,6 +426,14 @@ class Engine {
     // full pipeline of one chart bar (index j, values b)
     applyBar(j, b) {
         const c = this.cfg;
+        // bad data: a wick longer than badAtr daily ATRs is a bad print, not price; the high / low is taken at the
+        // body, so the candles built from chart bars leave it out too (and so does the daily ATR)
+        const da = this.S.datr;
+        if (c.badAtr > 0 && da !== null) {
+            const lim = c.badAtr * da, bt = Math.max(b.o, b.c), bb = Math.min(b.o, b.c);
+            if (b.h - bt > lim || bb - b.l > lim)
+                b = Object.assign({}, b, { h: b.h - bt > lim ? bt : b.h, l: bb - b.l > lim ? bb : b.l });
+        }
         const A = this.S.aggs;
         const tfs = this.tfsecs();
         const barMs = tfs * 1000;
@@ -495,6 +503,7 @@ function buildConfig(p, chart) {
         tsNames: bool(p.tsNames, true),
         tsUp: str(p.tsUpColor, "#00E676"), tsDn: str(p.tsDownColor, "#FF1744"), tsCt: str(p.tsContColor, "#787B86"),
         attLvl: clamp(Math.round(num(p.attLvl, 2)), 0, 4),
+        badAtr: Math.max(0, num(p.badAtr, 6)),
         attbg: str(p.attbg, "#FFFFFF"),
 
         dBull: str(p.dBull, "#4CAF50"), dBear: str(p.dBear, "#F23645"),
@@ -1057,6 +1066,7 @@ module.exports = {
         sessionStartHour: int(18, 0),
         tsShow: predef.paramSpecs.bool(true),
         attLvl: predef.paramSpecs.number(2, 1, 0),
+        badAtr: predef.paramSpecs.number(6, 0.5, 0),
         attbg: predef.paramSpecs.color("#FFFFFF"),
         // Colors (by timeframe)
         dBull: predef.paramSpecs.color("#4CAF50"),
