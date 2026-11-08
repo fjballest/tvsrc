@@ -4,7 +4,7 @@
 // quadrants and standard deviations, premarket range, EQH/EQL, PO3 lines, TGIF levels, macros,
 // silver bullet and a session/macro status text. Draws levels only: no plots, no signals, no alerts.
 //
-// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 5c357d797fbfdb521c06b5b4321c996e),
+// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 a754d8c1f536b3de32002583810c5409),
 // © franjballest, Mozilla Public License 2.0 (https://mozilla.org/MPL/2.0/).
 //
 // Install:
