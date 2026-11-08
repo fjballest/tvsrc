@@ -143,6 +143,20 @@ namespace NinjaTrader.NinjaScript.Indicators
 			public List<LL> sdlines = new List<LL>();    // premarket stddevs, order +1, -1, +2, -2...
 			public List<string> sdnames = new List<string>();
 			public double xhi = double.NaN, xlo = double.NaN;
+			public bool islvl;      // [LVL] day or session (levels by importance, body levels)
+			// [LVL] highest / lowest candle body around the extreme and its time; taken after it was decided
+			public double bhi = double.NaN, blo = double.NaN;
+			public DateTime bht, blt;
+			public bool bhtk, bltk;
+			// [LVL] candle (bucket) number of the high / low; swing: 1 yes, -1 no, 0 not known yet
+			public int hbk = -1, lbk = -1, hsw, lsw;
+			// [LVL] flat top / bottom on 15m candles (REH / REL) and on chart candles (reh / rel)
+			public bool hrel, lrel, hrelc, lrelc;
+			// [LVL] REH / REL with another day / session level, text of that combined label ("": shown by another)
+			public bool hx, lx, bhx, blx;
+			public string hxt = "", lxt = "", bhxt = "", blxt = "";
+			public bool bhOn, blOn;  // [LVL] body levels drawn (last final bar)
+			public string sig = "";  // [LVL] state the levels were last drawn with
 		}
 
 		private class IGap
@@ -155,6 +169,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 			public bool isw;
 			public int n = 1, nd = 0;
 			public bool show = true;
+			public bool imp;    // [ATT] last NDOG (or the gap that shows it when combined)
 			public double uhi, ulo;
 			public DateTime ut;
 		}
@@ -218,7 +233,21 @@ namespace NinjaTrader.NinjaScript.Indicators
 		private int nextId;
 
 		private Sty daysty, daymaxsty, dayminsty, sesmaxsty, sesminsty, gapsty, wgapsty;
-		private SimpleFont fDay, fSes, fTg, fPm, fEq, fNormal, fTable;
+		// [ATT] session rectangles: fill transparency, outline only, outline transparency
+		private int rtrF, rtrB;
+		private bool rbord;
+		private Dictionary<string, Brush> attCache = new Dictionary<string, Brush>();
+		private Dictionary<ICTlevelsTextSize, SimpleFont> fontCache = new Dictionary<ICTlevelsTextSize, SimpleFont>();
+		// [LVL] candles of max(15m, chart timeframe): number of the current one, the last six (high, low, open,
+		// close, first bar time) and the average range of the completed ones (EMA)
+		private const int BodyMax = 6;
+		private int bkN;
+		private long bkId = long.MinValue;
+		private List<double> bkH = new List<double>(), bkL = new List<double>(), bkO = new List<double>(), bkC = new List<double>();
+		private List<DateTime> bkT = new List<DateTime>();
+		private double bkRng = double.NaN;
+		private bool flatHi, flatLo;  // [LVL] flat top / bottom of this chart candle and the previous one
+		private SimpleFont fTg, fPm, fEq, fNormal, fTable;
 
 		// per bar
 		private DateTime barTz;
@@ -262,6 +291,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 				IsSuspendedWhileInactive = true;
 
 				ZoneMode = ICTlevelsZoneMode.Auto;
+				Attenuation = 2;
+				DoBody = true;
 				ComputeVisible = false;
 				Xoff = 2;
 				ShowCap = true;
@@ -431,19 +462,25 @@ namespace NinjaTrader.NinjaScript.Indicators
 			preOn = DoPremarket && tfsecs <= 300;
 			rdx = tfsecs <= 60 ? 4 : 2;
 
-			fDay = MkFont(DayLabelSize, false);
-			fSes = MkFont(SesLabelSize, false);
 			fTg = MkFont(TgLabelSize, false);
 			fPm = MkFont(PmLabelSize, false);
 			fEq = MkFont(EqLabelSize, true);
 			fNormal = MkFont(ICTlevelsTextSize.Normal, false);
 			fTable = MkFont(ICTlevelsTextSize.Large, false);
 
-			daysty = new Sty(DayLineStyle, DayWidth, DayColor);
-			daymaxsty = new Sty(DayMaxMinStyle, DayMaxMinWidth, DayMaxColor);
-			dayminsty = new Sty(DayMaxMinStyle, DayMaxMinWidth, DayMinColor);
-			sesmaxsty = new Sty(SesStyle, SesWidth, SesMaxColor);
-			sesminsty = new Sty(SesStyle, SesWidth, SesMinColor);
+			attCache.Clear();
+			fontCache.Clear();
+			// [ATT] day lines minor, day / session max and min normal; session rectangles: filled and lighter at 1,
+			// outline only from 2 on (fainter each level)
+			rtrF = Attenuation == 1 ? AttT(RectTransparency, 1) : RectTransparency;
+			rbord = RectBorderOnly || Attenuation >= 2;
+			rtrB = Attenuation >= 2 ? (int)Math.Floor(Math.Min(100.0, RectTransparency / 2 + (100 - RectTransparency / 2) * (Attenuation - 1) * 0.2))
+				: RectTransparency / 2;
+			daysty = new Sty(DayLineStyle, AttW(DayWidth, 2), AttL(DayColor, 2));
+			daymaxsty = new Sty(DayMaxMinStyle, AttW(DayMaxMinWidth, 1), AttL(DayMaxColor, 1));
+			dayminsty = new Sty(DayMaxMinStyle, AttW(DayMaxMinWidth, 1), AttL(DayMinColor, 1));
+			sesmaxsty = new Sty(SesStyle, AttW(SesWidth, 1), AttL(SesMaxColor, 1));
+			sesminsty = new Sty(SesStyle, AttW(SesWidth, 1), AttL(SesMinColor, 1));
 			gapsty = new Sty(NdogStyle, NdogWidth, NdogColor);
 			wgapsty = new Sty(NwogStyle, NwogWidth, NwogColor);
 			Sty nysty = new Sty(DayLineStyle, 1, NYColor);
@@ -521,6 +558,14 @@ namespace NinjaTrader.NinjaScript.Indicators
 			twO = twH = twL = double.NaN;
 			tgDir = 0;
 			tgMon = tgHit = false;
+			bkN = 0;
+			bkId = long.MinValue;
+			bkH.Clear();
+			bkL.Clear();
+			bkO.Clear();
+			bkC.Clear();
+			bkT.Clear();
+			bkRng = double.NaN;
 
 			atrC = ATR(BarsArray[0], 14);
 			atrD = ATR(BarsArray[1], 14);
@@ -598,6 +643,10 @@ namespace NinjaTrader.NinjaScript.Indicators
 			bool newDBar = dailySeq != dailySeqSeen;
 			dailySeqSeen = dailySeq;
 
+			// ---------------------------------------------------- [LVL] candles of max(15m, chart timeframe)
+			bool bkNew = BkUpdate();
+			ComputeFlats();
+
 			// ---------------------------------------------------- days, sessions, premarket
 			if (inWin)
 			{
@@ -605,6 +654,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 				{
 					IZone d = MkZone("D", null);
 					d.isday = true;
+					d.islvl = true;
 					d.isweek = newWeek;
 					d.lnsty = daysty;
 					d.maxsty = daymaxsty;
@@ -642,6 +692,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 						if (!Starts(zi))
 							continue;
 						IZone s = MkZone(zi.name, zi);
+						s.islvl = true;
 						s.drawmaxmin = DoSesMaxMin;
 						s.drawrect = rectOn;
 						s.drawlbl = DoSesLabel;
@@ -675,6 +726,13 @@ namespace NinjaTrader.NinjaScript.Indicators
 						KillZ(premarkets[0]);
 						premarkets.RemoveAt(0);
 					}
+				}
+				if (bkNew)
+				{
+					foreach (IZone z in days)
+						SwTest(z);
+					foreach (IZone z in zones)
+						SwTest(z);
 				}
 				RunActive();
 				RunMon();
@@ -879,7 +937,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 				{
 					if (m.Inside(tsec))
 					{
-						BackBrush = MacroBgColor;
+						BackBrush = AttL(MacroBgColor, 1);
 						break;
 					}
 				}
@@ -919,6 +977,37 @@ namespace NinjaTrader.NinjaScript.Indicators
 		{
 			if (DoReh && DoDayLabel && DoDayMaxMin)
 				MarkRel(days, RelTol * Nz(datr));
+			// [LVL] REH / REL between day and session levels (same tolerance as the flat tops / bottoms), body levels
+			// shown (newest first, sessions then days, at most BodyMax per side); zones whose levels changed redraw
+			foreach (IZone z in zones.Concat(days))
+			{
+				z.hx = false;
+				z.lx = false;
+				z.bhx = false;
+				z.blx = false;
+			}
+			double xtol = Math.Max(2 * TickSize, 0.1 * Nz(bkRng));
+			XMark(true, xtol);
+			XMark(false, xtol);
+			int nbh = 0, nbl = 0;
+			foreach (List<IZone> arr in new[] { zones, days })
+			{
+				for (int k = arr.Count - 1; k >= 0; k--)
+				{
+					IZone z = arr[k];
+					z.bhOn = BodyOk(z, true) && nbh < BodyMax;
+					z.blOn = BodyOk(z, false) && nbl < BodyMax;
+					nbh += z.bhOn ? 1 : 0;
+					nbl += z.blOn ? 1 : 0;
+					string sig = string.Join("|", z.hsw, z.lsw, z.hrel, z.lrel, z.hrelc, z.lrelc, z.hx, z.lx, z.hxt, z.lxt,
+						z.bhOn, z.blOn, z.bhx, z.blx, z.bhxt, z.blxt, z.bhi, z.blo, z.hmode, z.lmode);
+					if (sig != z.sig)
+					{
+						z.sig = sig;
+						z.dirty = true;
+					}
+				}
+			}
 			RefreshList(days);
 			RefreshList(zones);
 			RefreshList(premarkets);
@@ -935,6 +1024,11 @@ namespace NinjaTrader.NinjaScript.Indicators
 			}
 			DrawTgif();
 			double gtol = CombTol * Nz(datr);
+			// [ATT] the last NDOG is important (and the gap that shows it when combined)
+			for (int i = 0; i < dgaps.Count; i++)
+				dgaps[i].imp = i == dgaps.Count - 1;
+			foreach (IGap g in wgaps)
+				g.imp = false;
 			if (CombGaps)
 				CombineGaps(dgaps, wgaps, gtol);
 			else
@@ -955,7 +1049,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 				if (i == rthogs.Count - 1)
 				{
 					RRight(rthogs[i], RthogColor);
-					OctRight(rthogs[i], RthogColor);    // octants: latest RTHOG only (removed at the close, like the quadrants)
+					OctRight(rthogs[i], AttL(RthogColor, 1));    // octants: latest RTHOG only (removed at the close, like the quadrants)
 				}
 				else if (i == rthogs.Count - 2)
 					RRight(rthogs[i], RthogOldColor);
@@ -964,12 +1058,12 @@ namespace NinjaTrader.NinjaScript.Indicators
 				CombinePo3(rthogs[rthogs.Count - 1], premarkets[premarkets.Count - 1], PmCTol * Nz(datr));
 			if (DoEqhl)
 			{
-				DrawEq(hpv, true, "", EqhColor);
-				DrawEq(lpv, false, "", EqlColor);
+				DrawEq(hpv, true, "", AttL(EqhColor, 1));
+				DrawEq(lpv, false, "", AttL(EqlColor, 1));
 				if (DoEqDaily)
 				{
-					DrawEq(hpvD, true, " D", EqhColor);
-					DrawEq(lpvD, false, " D", EqlColor);
+					DrawEq(hpvD, true, " D", AttL(EqhColor, 1));
+					DrawEq(lpvD, false, " D", AttL(EqlColor, 1));
 				}
 			}
 			if (DoMonth)
@@ -995,11 +1089,11 @@ namespace NinjaTrader.NinjaScript.Indicators
 		{
 			if (DoTgif && tgDir != 0 && !double.IsNaN(tgV1))
 			{
-				Brush c = tgDir == 1 ? TgDownColor : TgUpColor;
+				Brush c = AttL(tgDir == 1 ? TgDownColor : TgUpColor, 0);
 				DateTime x1 = TRight(Xoff);
-				DLine(TagPfx + "tg1", tgT0, tgV1, x1, tgV1, c, TgStyle, TgWidth);
+				DLine(TagPfx + "tg1", tgT0, tgV1, x1, tgV1, c, TgStyle, AttW(TgWidth, 0));
 				DText(TagPfx + "tg1L", "TGIF" + (TgP1 * 100).ToString("0.#", CultureInfo.InvariantCulture), x1, tgV1, c, fTg, 0);
-				DLine(TagPfx + "tg2", tgT0, tgV2, x1, tgV2, c, TgStyle, TgWidth);
+				DLine(TagPfx + "tg2", tgT0, tgV2, x1, tgV2, c, TgStyle, AttW(TgWidth, 0));
 				DText(TagPfx + "tg2L", "TGIF" + (TgP2 * 100).ToString("0.#", CultureInfo.InvariantCulture), x1, tgV2, c, fTg, 0);
 			}
 			else
@@ -1043,10 +1137,10 @@ namespace NinjaTrader.NinjaScript.Indicators
 			m.x2 = t1.AddSeconds(tfsecs);
 			m.lx = TRight(Xoff);
 			m.y = p;
-			m.c = c;
-			m.tc = c;
+			m.c = AttL(c, 1);      // [ATT] months: normal rank
+			m.tc = m.c;
 			m.sty = MonStyle;
-			m.w = MonWidth;
+			m.w = AttW(MonWidth, 1);
 			m.txt = txt;
 			m.font = fNormal;
 			m.ray = true;
@@ -1104,7 +1198,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 			z.dead = true;
 			PmClear(z);
 			string tg = ZTag(z);
-			foreach (string s in new[] { "v", "v2", "hi", "lo", "hiL", "loL", "eq", "eqL", "op", "opL", "r" })
+			foreach (string s in new[] { "v", "v2", "hi", "lo", "hiL", "loL", "eq", "eqL", "op", "opL", "r", "bh", "bhL", "bl", "blL" })
 				Rm(tg + s);
 		}
 
@@ -1119,8 +1213,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 			if (z.drawvlines || (z.isday && DoLines))
 			{
 				if (!drawn.Contains(tg + "v"))
-					DVLine(tg + "v", z.tstart, z.lnsty.col, z.isweek ? WeekLineStyle : z.lnsty.sty,
-						z.isweek ? WeekWidth : z.lnsty.wid);
+					DVLine(tg + "v", z.tstart, z.isweek ? AttL(DayColor, 1) : z.lnsty.col, z.isweek ? WeekLineStyle : z.lnsty.sty,
+						z.isweek ? AttW(WeekWidth, 1) : z.lnsty.wid);
 				if (z.drawvlines && z.tend.HasValue && !drawn.Contains(tg + "v2"))
 					DVLine(tg + "v2", z.tend.Value.AddSeconds(tfsecs), z.lnsty.col, z.lnsty.sty, z.lnsty.wid);
 			}
@@ -1128,24 +1222,40 @@ namespace NinjaTrader.NinjaScript.Indicators
 			{
 				DateTime hx = z.hidonet.HasValue ? Mn(z.hidonet.Value, re) : re;
 				DateTime lx = z.lodonet.HasValue ? Mn(z.lodonet.Value, re) : re;
-				DLine(tg + "hi", z.hit, z.hi, hx, z.hi, z.maxsty.col, z.maxsty.sty, z.maxsty.wid);
-				DLine(tg + "lo", z.lot, z.lo, lx, z.lo, z.minsty.col, z.minsty.sty, z.minsty.wid);
+				ICTlevelsTextSize sz0 = z.isday ? DayLabelSize : SesLabelSize;
+				// [LVL] days and sessions: style by importance, and their body levels
+				Brush hc = z.maxsty.col, lc = z.minsty.col;
+				DashStyleHelper hs = z.maxsty.sty, ls = z.minsty.sty;
+				int hw = z.maxsty.wid, lw = z.minsty.wid;
+				ICTlevelsTextSize hsz = sz0, lsz = sz0;
+				if (z.islvl)
+				{
+					ZSide(z, true, z.bhOn, sz0, out hc, out hs, out hw, out hsz);
+					ZSide(z, false, z.blOn, sz0, out lc, out ls, out lw, out lsz);
+				}
+				DLine(tg + "hi", z.hit, z.hi, hx, z.hi, hc, hs, hw);
+				DLine(tg + "lo", z.lot, z.lo, lx, z.lo, lc, ls, lw);
+				ZBody(z, true, z.islvl && z.bhOn, re);
+				ZBody(z, false, z.islvl && z.blOn, re);
 				if (z.drawlbl)
 				{
-					SimpleFont f = z.isday ? fDay : fSes;
-					string hn = z.name + " hi";
-					string ln = z.name + " lo";
+					// REH / REL first: "REH Asia", "reh day"; between levels, one combined label ("REH Asia body + day")
+					string hb = ZName(z, true), lb0 = ZName(z, false);
+					string hn = z.hrel ? "REH " + hb : z.hrelc ? "reh " + hb : hb + (z.isday ? " high" : " hi");
+					string ln = z.lrel ? "REL " + lb0 : z.lrelc ? "rel " + lb0 : lb0 + (z.isday ? " low" : " lo");
+					if (z.hx)
+						hn = z.hxt;
+					if (z.lx)
+						ln = z.lxt;
 					if (z.isday)
 					{
-						hn = double.IsNaN(z.pwhi) || z.hi >= z.pwhi ? "week high" : "day high";
-						ln = double.IsNaN(z.pwlo) || z.lo <= z.pwlo ? "week low" : "day low";
-						if (z.hmode == 1)
+						if (z.hmode == 1 && !z.hx)
 							hn = "day REHs";
-						if (z.lmode == 1)
+						if (z.lmode == 1 && !z.lx)
 							ln = "day RELs";
 					}
-					TinyLbl(tg + "hiL", !z.hidonet.HasValue && z.hmode != 2, re, z.hi, hn, z.maxsty.col, f);
-					TinyLbl(tg + "loL", !z.lodonet.HasValue && z.lmode != 2, re, z.lo, ln, z.minsty.col, f);
+					TinyLbl(tg + "hiL", !z.hidonet.HasValue && (z.hmode != 2 || z.hx) && hn.Length > 0, re, z.hi, hn, hc, FontOf(hsz));
+					TinyLbl(tg + "loL", !z.lodonet.HasValue && (z.lmode != 2 || z.lx) && ln.Length > 0, re, z.lo, ln, lc, FontOf(lsz));
 				}
 			}
 			if (z.isday && DoEq)
@@ -1153,16 +1263,172 @@ namespace NinjaTrader.NinjaScript.Indicators
 				double eq = (z.hi + z.lo) / 2.0;
 				DateTime ex = z.extendt ?? re;
 				DateTime x0 = Mn(z.hit, z.lot);
-				DLine(tg + "eq", x0, eq, ex, eq, EqColor, EqStyle, EqWidth);
-				DText(tg + "eqL", "eq", ex, eq, EqColor, fNormal, 0);
+				DLine(tg + "eq", x0, eq, ex, eq, AttL(EqColor, 2), EqStyle, AttW(EqWidth, 2));
+				DText(tg + "eqL", "eq", ex, eq, AttL(EqColor, 2), fNormal, 0);
 			}
 			if (z.isday && DoOpen)
 			{
-				DLine(tg + "op", z.tstart, z.op, xe, z.op, OpenColor, OpenStyle, OpenWidth);
-				DText(tg + "opL", "M.O.", xe, z.op, OpenColor, fNormal, 0);
+				// [ATT] the last midnight open is important, older ones minor
+				int rk = days.Count > 0 && z == days[days.Count - 1] ? 0 : 2;
+				DLine(tg + "op", z.tstart, z.op, xe, z.op, AttL(OpenColor, rk), OpenStyle, AttW(OpenWidth, rk));
+				DText(tg + "opL", "M.O.", xe, z.op, AttL(OpenColor, rk), fNormal, 0);
 			}
 			if (z.drawrect && z.lnsty != null)
-				DRect(tg + "r", z.tstart, z.hi, xe, z.lo, z.lnsty.col, 100 - RectTransparency, RectBorderOnly);
+			{
+				// [ATT] filled (lighter at attenuation 1), or outline only (rectangle border, or attenuation 2 and up)
+				if (rbord)
+					DRectB(tg + "r", z.tstart, z.hi, xe, z.lo, z.lnsty.col, rtrB, Attenuation < 3 ? 2 : 1);
+				else
+					DRect(tg + "r", z.tstart, z.hi, xe, z.lo, z.lnsty.col, 100 - rtrF);
+			}
+		}
+
+		// [LVL] name of a day / session level for its label: Asia, London, ..., day or week
+		private static string ZName(IZone z, bool hi)
+		{
+			if (!z.isday)
+				return z.name;
+			bool wk = hi ? double.IsNaN(z.pwhi) || z.hi >= z.pwhi : double.IsNaN(z.pwlo) || z.lo <= z.pwlo;
+			return wk ? "week" : "day";
+		}
+
+		// [LVL] the body level of side hi is shown: high (low) untaken and beyond the body, body not taken later
+		// (also for the current day / session, once its body level is decided)
+		private bool BodyOk(IZone z, bool hi)
+		{
+			bool ok = z.drawmaxmin && DoBody;
+			return hi ? ok && !z.hidonet.HasValue && !double.IsNaN(z.bhi) && z.bhi < z.hi && !z.bhtk
+				: ok && !z.lodonet.HasValue && !double.IsNaN(z.blo) && z.blo > z.lo && !z.bltk;
+		}
+
+		// [LVL] style of the high (low) of a day / session: rank of an untaken high / low: swing or flat (REH / REL)
+		// 0 (important: line 1 wider, label 1 size up; 2 and 2 for a REH / REL), not known yet 1, not a swing 1
+		// (sessions) or 2 (days); a taken one is 1. A body level drawn below (above) it takes the importance: the
+		// high (low) is dotted meanwhile.
+		private void ZSide(IZone z, bool hi, bool bodyShown, ICTlevelsTextSize sz0, out Brush c, out DashStyleHelper sty,
+			out int w, out ICTlevelsTextSize sz)
+		{
+			bool isrel = hi ? z.hrel || z.hrelc || z.hx : z.lrel || z.lrelc || z.lx;
+			int sw = hi ? z.hsw : z.lsw;
+			bool taken = hi ? z.hidonet.HasValue : z.lodonet.HasValue;
+			int rk = taken ? 1 : sw > 0 || isrel ? 0 : sw == 0 ? 1 : z.isday ? 2 : 1;
+			if (bodyShown)
+				rk = Math.Max(rk, 1);
+			Brush c0 = z.isday ? (hi ? DayMaxColor : DayMinColor) : (hi ? SesMaxColor : SesMinColor);
+			int w0 = z.isday ? DayMaxMinWidth : SesWidth;
+			bool rel = rk == 0 && isrel;
+			c = AttL(c0, rk);
+			sty = bodyShown ? DashStyleHelper.Dot : (z.isday ? DayMaxMinStyle : SesStyle);
+			w = rk == 0 ? Math.Min(4, AttW(w0, 0) + (rel ? 2 : 1)) : AttW(w0, rk);
+			sz = rk == 0 ? (rel ? SizeUp(SizeUp(sz0)) : SizeUp(sz0)) : sz0;
+		}
+
+		// [LVL] body level of side hi (want: draw it): important, solid (wider, label 1 size up; 2 and 2 when it is
+		// a REH / REL with another level)
+		private void ZBody(IZone z, bool hi, bool want, DateTime x)
+		{
+			string tg = ZTag(z) + (hi ? "bh" : "bl");
+			if (!want)
+			{
+				Rm(tg);
+				Rm(tg + "L");
+				return;
+			}
+			double p = hi ? z.bhi : z.blo;
+			bool bx = hi ? z.bhx : z.blx;
+			Brush c = AttL(z.isday ? (hi ? DayMaxColor : DayMinColor) : (hi ? SesMaxColor : SesMinColor), 0);
+			int w = Math.Min(4, AttW(2, 0) + (bx ? 1 : 0));
+			ICTlevelsTextSize bsz = SizeUp(z.isday ? DayLabelSize : SesLabelSize);
+			if (bx)
+				bsz = SizeUp(bsz);
+			string txt = bx ? (hi ? z.bhxt : z.blxt) : (z.isday ? "day" : z.name) + (hi ? " body hi" : " body lo");
+			DLine(tg, hi ? z.bht : z.blt, p, x, p, c, DashStyleHelper.Solid, w);
+			if (txt.Length > 0)
+				DText(tg + "L", txt, x, p, c, FontOf(bsz), 0);
+			else
+				Rm(tg + "L");
+		}
+
+		// [LVL] untaken highs (lows) of days and sessions, and their body levels, within tol of another one are REHs
+		// (RELs): hx / lx, bhx / blx; the outermost level of a group carries the combined label, the others none
+		private void XMark(bool hi, double tol)
+		{
+			List<double> v = new List<double>();
+			List<IZone> zs = new List<IZone>();
+			List<bool> isb = new List<bool>();
+			foreach (List<IZone> arr in new[] { zones, days })
+			{
+				foreach (IZone z in arr)
+				{
+					if (z.drawmaxmin && !(hi ? z.hidonet.HasValue : z.lodonet.HasValue))
+					{
+						v.Add(hi ? z.hi : z.lo);
+						zs.Add(z);
+						isb.Add(false);
+					}
+					if (BodyOk(z, hi))
+					{
+						v.Add(hi ? z.bhi : z.blo);
+						zs.Add(z);
+						isb.Add(true);
+					}
+				}
+			}
+			int n = v.Count;
+			if (n < 2)
+				return;
+			int[] cid = new int[n];
+			for (int a = 0; a < n; a++)
+				cid[a] = a;
+			for (int a = 0; a < n - 1; a++)
+			{
+				for (int b = a + 1; b < n; b++)
+				{
+					if (cid[a] != cid[b] && Math.Abs(v[a] - v[b]) <= tol)
+					{
+						int from = cid[b], xto = cid[a];
+						for (int k = 0; k < n; k++)
+							if (cid[k] == from)
+								cid[k] = xto;
+					}
+				}
+			}
+			for (int c = 0; c < n; c++)
+			{
+				int lead = -1, nm = 0;
+				bool multi = false;
+				IZone z0 = null;
+				string txt = hi ? "REH" : "REL";
+				for (int k = 0; k < n; k++)
+				{
+					if (cid[k] != c)
+						continue;
+					nm += 1;
+					if (z0 == null)
+						z0 = zs[k];
+					else if (zs[k] != z0)
+						multi = true;
+					if (lead < 0 || (hi ? v[k] > v[lead] : v[k] < v[lead]))
+						lead = k;
+					txt += (nm == 1 ? " " : " + ") + ZName(zs[k], hi) + (isb[k] ? " body" : "");
+				}
+				if (!multi)
+					continue;
+				for (int k = 0; k < n; k++)
+				{
+					if (cid[k] != c)
+						continue;
+					IZone z = zs[k];
+					string t = k == lead ? txt : "";
+					if (isb[k])
+					{
+						if (hi) { z.bhx = true; z.bhxt = t; }
+						else { z.blx = true; z.blxt = t; }
+					}
+					else if (hi) { z.hx = true; z.hxt = t; }
+					else { z.lx = true; z.lxt = t; }
+				}
+			}
 		}
 
 		private void TinyLbl(string tag, bool show, DateTime x, double y, string txt, Brush c, SimpleFont f)
@@ -1187,11 +1453,142 @@ namespace NinjaTrader.NinjaScript.Indicators
 			{
 				z.hit = Time[0];
 				z.hi = High[0];
+				z.hbk = bkN;
+				z.hsw = 0;
+				z.hrel = false;
+				z.bhi = double.NaN;
+				z.hrelc = flatHi && Time[1] >= z.tstart;
 			}
+			else if (z.hit == Time[1] && flatHi)
+				z.hrelc = true;
 			if (Low[0] <= z.lo)
 			{
 				z.lot = Time[0];
 				z.lo = Low[0];
+				z.lbk = bkN;
+				z.lsw = 0;
+				z.lrel = false;
+				z.blo = double.NaN;
+				z.lrelc = flatLo && Time[1] >= z.tstart;
+			}
+			else if (z.lot == Time[1] && flatLo)
+				z.lrelc = true;
+			if (!double.IsNaN(z.bhi) && High[0] > z.bhi)
+				z.bhtk = true;
+			if (!double.IsNaN(z.blo) && Low[0] < z.blo)
+				z.bltk = true;
+		}
+
+		// [LVL] bucket of the bar (candles of max(15m, chart timeframe), by bar open time); true on a new one
+		private bool BkUpdate()
+		{
+			long bkTicks = (long)Math.Max(900, tfsecs) * TimeSpan.TicksPerSecond;
+			long cur = Time[0].AddSeconds(-tfsecs).Ticks / bkTicks;
+			if (cur != bkId)
+			{
+				if (bkH.Count > 0)
+				{
+					double r = bkH[bkH.Count - 1] - bkL[bkL.Count - 1];
+					bkRng = double.IsNaN(bkRng) ? r : bkRng * 0.9 + r * 0.1;
+				}
+				bkId = cur;
+				bkN += 1;
+				bkH.Add(High[0]);
+				bkL.Add(Low[0]);
+				bkO.Add(Open[0]);
+				bkC.Add(Close[0]);
+				bkT.Add(Time[0]);
+				if (bkH.Count > 6)
+				{
+					bkH.RemoveAt(0);
+					bkL.RemoveAt(0);
+					bkO.RemoveAt(0);
+					bkC.RemoveAt(0);
+					bkT.RemoveAt(0);
+				}
+				return true;
+			}
+			int k = bkH.Count - 1;
+			bkH[k] = Math.Max(bkH[k], High[0]);
+			bkL[k] = Math.Min(bkL[k], Low[0]);
+			bkC[k] = Close[0];
+			return false;
+		}
+
+		// [LVL] flat top / bottom of this chart candle and the previous one: highs (lows) within tolerance (2 ticks
+		// or a tenth of the chart ATR) and both upper (lower) wicks within that tolerance or a fifth of the range
+		private void ComputeFlats()
+		{
+			double tick = TickSize;
+			double tol0 = Math.Max(2 * tick, 0.1 * Nz(atrC[0]));
+			double tol1 = Math.Max(2 * tick, 0.1 * Nz(atrC[1]));
+			double wm0 = Math.Max(tol0, 0.2 * (High[0] - Low[0]));
+			double wm1 = Math.Max(tol1, 0.2 * (High[1] - Low[1]));
+			double uw0 = High[0] - Math.Max(Open[0], Close[0]);
+			double uw1 = High[1] - Math.Max(Open[1], Close[1]);
+			double lw0 = Math.Min(Open[0], Close[0]) - Low[0];
+			double lw1 = Math.Min(Open[1], Close[1]) - Low[1];
+			flatHi = Math.Abs(High[0] - High[1]) <= tol0 && uw0 <= wm0 && uw1 <= wm1;
+			flatLo = Math.Abs(Low[0] - Low[1]) <= tol0 && lw0 <= wm0 && lw1 <= wm1;
+		}
+
+		// [LVL] candles i and j (bucket indexes) make a flat top (bottom): highs (lows) within tolerance (2 ticks or
+		// a tenth of the average candle range) and both upper (lower) wicks within that tolerance or a fifth of the
+		// candle range
+		private bool BkFlat(int i, int j, bool hi)
+		{
+			double tol = Math.Max(2 * TickSize, 0.1 * Nz(bkRng));
+			double wi = hi ? bkH[i] - Math.Max(bkO[i], bkC[i]) : Math.Min(bkO[i], bkC[i]) - bkL[i];
+			double wj = hi ? bkH[j] - Math.Max(bkO[j], bkC[j]) : Math.Min(bkO[j], bkC[j]) - bkL[j];
+			double d = hi ? Math.Abs(bkH[i] - bkH[j]) : Math.Abs(bkL[i] - bkL[j]);
+			return d <= tol && wi <= Math.Max(tol, 0.2 * (bkH[i] - bkL[i])) && wj <= Math.Max(tol, 0.2 * (bkH[j] - bkL[j]));
+		}
+
+		// [LVL] a high (low) is a swing when the candles before and after it have lower highs (higher lows); decided
+		// when the candle after it completes. Same time: flat (REH / REL) with the candle before or after it. The
+		// body level is the highest (lowest) body of its candle and two candles before and after it, decided when
+		// the last of those completes.
+		private void SwTest(IZone z)
+		{
+			int n = bkH.Count;
+			if (z.hsw == 0 && z.hbk >= 0 && z.hbk == bkN - 2)
+			{
+				z.hsw = n >= 4 && bkH[n - 4] < z.hi && bkH[n - 2] < z.hi ? 1 : -1;
+				z.hrel = n >= 4 && (BkFlat(n - 4, n - 3, true) || BkFlat(n - 3, n - 2, true));
+			}
+			if (z.lsw == 0 && z.lbk >= 0 && z.lbk == bkN - 2)
+			{
+				z.lsw = n >= 4 && bkL[n - 4] > z.lo && bkL[n - 2] > z.lo ? 1 : -1;
+				z.lrel = n >= 4 && (BkFlat(n - 4, n - 3, false) || BkFlat(n - 3, n - 2, false));
+			}
+			const int k = 2;
+			if (z.hbk >= 0 && z.hbk == bkN - 1 - k && n >= 2)
+			{
+				z.bhi = double.NaN;
+				z.bhtk = false;
+				for (int j = Math.Max(n - 2 - 2 * k, 0); j <= n - 2; j++)
+				{
+					double bt = Math.Max(bkO[j], bkC[j]);
+					if (double.IsNaN(z.bhi) || bt > z.bhi)
+					{
+						z.bhi = bt;
+						z.bht = bkT[j];
+					}
+				}
+			}
+			if (z.lbk >= 0 && z.lbk == bkN - 1 - k && n >= 2)
+			{
+				z.blo = double.NaN;
+				z.bltk = false;
+				for (int j = Math.Max(n - 2 - 2 * k, 0); j <= n - 2; j++)
+				{
+					double bb = Math.Min(bkO[j], bkC[j]);
+					if (double.IsNaN(z.blo) || bb < z.blo)
+					{
+						z.blo = bb;
+						z.blt = bkT[j];
+					}
+				}
 			}
 		}
 
@@ -1239,6 +1636,10 @@ namespace NinjaTrader.NinjaScript.Indicators
 					z.hidonet = Time[0];
 					z.dirty = true;
 				}
+				if (!double.IsNaN(z.bhi) && High[0] > z.bhi)
+					z.bhtk = true;
+				if (!double.IsNaN(z.blo) && Low[0] < z.blo)
+					z.bltk = true;
 				if (!z.lodonet.HasValue && Low[0] < z.lo)
 				{
 					z.lodonet = Time[0];
@@ -1341,6 +1742,9 @@ namespace NinjaTrader.NinjaScript.Indicators
 				x1 = z.tclose.Value;
 			DateTime x0 = (z.tend ?? Time[0]).AddSeconds(-(double)tfsecs * rdx);
 			string nm = z.dstr;
+			// [ATT] quadrants and stddevs minor, PMKT high / low normal
+			Brush c2 = AttL(PmColor, 2), c1 = AttL(PmColor, 1);
+			int w2 = AttW(PmWidth, 2), w1 = AttW(PmWidth, 1);
 			if (r > 0)
 			{
 				if (DoPmQ && r / 4.0 > PmQMin)
@@ -1348,8 +1752,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 					for (int k = 1; k <= 3; k++)
 					{
 						string pt = k == 1 ? "dq" : k == 2 ? "ce" : "uq";
-						z.qlines.Add(MkLL(tg + "q" + k, x0, x1, z.lo + k * r / 4.0, PmColor, k == 2 ? PmCeStyle : PmQuadStyle,
-							PmWidth, "PMKT " + pt + " " + nm, PmColor, fPm, false));
+						z.qlines.Add(MkLL(tg + "q" + k, x0, x1, z.lo + k * r / 4.0, c2, k == 2 ? PmCeStyle : PmQuadStyle,
+							w2, "PMKT " + pt + " " + nm, c2, fPm, false));
 					}
 				}
 				if (DoPmPo3)
@@ -1364,14 +1768,14 @@ namespace NinjaTrader.NinjaScript.Indicators
 						{
 							if (i <= nu)
 							{
-								z.sdlines.Add(MkLL(tg + "su" + i, x0, x1, z.hi + i * u, PmColor, PmPo3Style, PmWidth,
-									"PMKT" + SdName(i, u, r, 1), PmColor, fPm, false));
+								z.sdlines.Add(MkLL(tg + "su" + i, x0, x1, z.hi + i * u, c2, PmPo3Style, w2,
+									"PMKT" + SdName(i, u, r, 1), c2, fPm, false));
 								z.sdnames.Add(SdName(i, u, r, 1));
 							}
 							if (i <= nd)
 							{
-								z.sdlines.Add(MkLL(tg + "sd" + i, x0, x1, z.lo - i * u, PmColor, PmPo3Style, PmWidth,
-									"PMKT" + SdName(i, u, r, -1), PmColor, fPm, false));
+								z.sdlines.Add(MkLL(tg + "sd" + i, x0, x1, z.lo - i * u, c2, PmPo3Style, w2,
+									"PMKT" + SdName(i, u, r, -1), c2, fPm, false));
 								z.sdnames.Add(SdName(i, u, r, -1));
 							}
 						}
@@ -1380,8 +1784,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 				// high and low of the range, solid lines, whenever quadrants or stddevs are drawn
 				if (z.qlines.Count > 0 || z.sdlines.Count > 0)
 				{
-					z.qlines.Add(MkLL(tg + "qh", x0, x1, z.hi, PmColor, DashStyleHelper.Solid, PmWidth, "PMKT hi " + nm, PmColor, fPm, false));
-					z.qlines.Add(MkLL(tg + "ql", x0, x1, z.lo, PmColor, DashStyleHelper.Solid, PmWidth, "PMKT lo " + nm, PmColor, fPm, false));
+					z.qlines.Add(MkLL(tg + "qh", x0, x1, z.hi, c1, DashStyleHelper.Solid, w1, "PMKT hi " + nm, c1, fPm, false));
+					z.qlines.Add(MkLL(tg + "ql", x0, x1, z.lo, c1, DashStyleHelper.Solid, w1, "PMKT lo " + nm, c1, fPm, false));
 				}
 			}
 			RemoveStale(oldQ, z.qlines);
@@ -1459,20 +1863,25 @@ namespace NinjaTrader.NinjaScript.Indicators
 		private void GDraw(IGap g, DateTime t0, double h, double l, double tol)
 		{
 			Sty st = g.isw ? wgapsty : gapsty;
+			// [ATT] NWOGs and the last NDOG important, older NDOGs minor; NWOG: thinner lines and lighter fill at 3 and 4
+			int rk = g.isw || g.imp ? 0 : 2;
+			int rkw = g.isw && Attenuation >= 3 ? 1 : rk;
+			Brush col = AttL(st.col, rk);
+			int wid = AttW(st.wid, rkw);
 			string tg = GTag(g);
 			DateTime x = TRight(Xoff);
-			DLine(tg + "h", t0, h, x, h, st.col, st.sty, st.wid);
-			DLine(tg + "l", t0, l, x, l, st.col, st.sty, st.wid);
+			DLine(tg + "h", t0, h, x, h, col, st.sty, wid);
+			DLine(tg + "l", t0, l, x, l, col, st.sty, wid);
 			bool small = Math.Abs(h - l) <= tol;
 			string b = GName(g);
 			string dt = " " + g.dstr;
-			DText(tg + "hL", small ? b + dt : b + " hi" + dt, x, small ? (h + l) / 2.0 : h, st.col, fNormal, 0);
+			DText(tg + "hL", small ? b + dt : b + " hi" + dt, x, small ? (h + l) / 2.0 : h, col, fNormal, 0);
 			if (small)
 				Rm(tg + "lL");
 			else
-				DText(tg + "lL", b + " lo" + dt, x, l, st.col, fNormal, 0);
+				DText(tg + "lL", b + " lo" + dt, x, l, col, fNormal, 0);
 			if (DoGapRect)
-				DRect(tg + "r", t0, h, x, l, st.col, 100 - GapRectTransparency);
+				DRect(tg + "r", t0, h, x, l, st.col, 100 - AttT(GapRectTransparency, rkw));
 		}
 
 		private void KillG(IGap g)
@@ -1539,6 +1948,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 					rep.n += 1;
 					rep.uhi = Math.Max(rep.uhi, g.hi);
 					rep.ulo = Math.Min(rep.ulo, g.lo);
+					rep.imp = rep.imp || g.imp;
 					g.show = false;
 				}
 			}
@@ -1557,6 +1967,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 					if (d.show && Math.Abs(d.uhi - w.uhi) <= tol && Math.Abs(d.ulo - w.ulo) <= tol)
 					{
 						w.nd += d.n;
+						w.imp = w.imp || d.imp;
 						d.show = false;
 					}
 				}
@@ -1624,8 +2035,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 				double p = Math.Min(g.cl, g.op);
 				string nm = DateStr();
 				foreach (int k in new[] { 1, 3, 5, 7 })
-					g.octs.Add(MkLL(tg + "oc" + k, x0, x1, p + k * ody, RthogColor, RthogQuadStyle, 1,
-						"RTHOG " + k + "/8 " + nm, RthogColor, fNormal, false));
+					g.octs.Add(MkLL(tg + "oc" + k, x0, x1, p + k * ody, AttL(RthogColor, 1), RthogQuadStyle, 1,
+						"RTHOG " + k + "/8 " + nm, AttL(RthogColor, 1), fNormal, false));
 			}
 		}
 
@@ -1661,8 +2072,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 		{
 			g.cl = c;
 			g.tstart = t;
-			g.cline = MkLL(RTag(g) + "cl", t, TRight(Xoff), c, RthogColor, RthogStyle, RthogWidth,
-				"new RTHOG settlement", RthogColor, fNormal, false);
+			g.cline = MkLL(RTag(g) + "cl", t, TRight(Xoff), c, AttL(RthogColor, 0), RthogStyle, AttW(RthogWidth, 0),
+				"new RTHOG settlement", AttL(RthogColor, 0), fNormal, false);
 		}
 
 		private void RQuads(IRthog g)
@@ -1675,8 +2086,10 @@ namespace NinjaTrader.NinjaScript.Indicators
 				DateTime x0 = g.tend.Value.AddSeconds(-(double)tfsecs * rdx);
 				DateTime x1 = TRight(Xoff);
 				string nm = DateStr();
-				g.dq = MkLL(tg + "dq", x0, x1, p + qdy, RthogColor, RthogQuadStyle, RthogWidth, "RTHOG dq " + nm, RthogColor, fNormal, false);
-				g.uq = MkLL(tg + "uq", x0, x1, p + 3 * qdy, RthogColor, RthogQuadStyle, RthogWidth, "RTHOG uq " + nm, RthogColor, fNormal, false);
+				Brush cm = AttL(RthogColor, 1);
+				int wm = AttW(RthogWidth, 1);
+				g.dq = MkLL(tg + "dq", x0, x1, p + qdy, cm, RthogQuadStyle, wm, "RTHOG dq " + nm, cm, fNormal, false);
+				g.uq = MkLL(tg + "uq", x0, x1, p + 3 * qdy, cm, RthogQuadStyle, wm, "RTHOG uq " + nm, cm, fNormal, false);
 			}
 			else
 				KillQ(g);
@@ -1703,14 +2116,14 @@ namespace NinjaTrader.NinjaScript.Indicators
 				{
 					if (i <= nu)
 					{
-						g.po3.Add(MkLL(tg + "su" + i, x0, x1, pu0 + i * u, RthogColor, RthogPo3Style, RthogWidth,
-							"RTHOG" + SdName(i, u, gap, 1), RthogColor, fNormal, false));
+						g.po3.Add(MkLL(tg + "su" + i, x0, x1, pu0 + i * u, AttL(RthogColor, 2), RthogPo3Style, AttW(RthogWidth, 2),
+							"RTHOG" + SdName(i, u, gap, 1), AttL(RthogColor, 2), fNormal, false));
 						g.po3names.Add(SdName(i, u, gap, 1));
 					}
 					if (i <= nd)
 					{
-						g.po3.Add(MkLL(tg + "sd" + i, x0, x1, pd0 - i * u, RthogColor, RthogPo3Style, RthogWidth,
-							"RTHOG" + SdName(i, u, gap, -1), RthogColor, fNormal, false));
+						g.po3.Add(MkLL(tg + "sd" + i, x0, x1, pd0 - i * u, AttL(RthogColor, 2), RthogPo3Style, AttW(RthogWidth, 2),
+							"RTHOG" + SdName(i, u, gap, -1), AttL(RthogColor, 2), fNormal, false));
 						g.po3names.Add(SdName(i, u, gap, -1));
 					}
 				}
@@ -1732,9 +2145,11 @@ namespace NinjaTrader.NinjaScript.Indicators
 			string nm = DateStr();
 			double mid = (g.cl + g.op) / 2.0;
 			bool up = g.op > g.cl;
-			g.mline = MkLL(tg + "ce", x0, x1, mid, RthogColor, RthogStyle, RthogWidth, "RTHOG ce " + nm, RthogColor, fNormal, false);
-			g.opline = MkLL(tg + "op", Time[0], x1, g.op, RthogColor, RthogStyle, RthogWidth,
-				(up ? "RTHOG hi " : "RTHOG lo ") + nm, RthogColor, fNormal, false);
+			Brush c0 = AttL(RthogColor, 0);
+			int w0 = AttW(RthogWidth, 0);
+			g.mline = MkLL(tg + "ce", x0, x1, mid, c0, RthogStyle, w0, "RTHOG ce " + nm, c0, fNormal, false);
+			g.opline = MkLL(tg + "op", Time[0], x1, g.op, c0, RthogStyle, w0,
+				(up ? "RTHOG hi " : "RTHOG lo ") + nm, c0, fNormal, false);
 			if (g.cline != null)
 			{
 				g.cline.txt = (up ? "RTHOG lo " : "RTHOG hi ") + nm;
@@ -1744,7 +2159,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 			{
 				g.rect = true;
 				g.rx0 = x0;
-				DRect(tg + "rect", x0, g.op, x1, g.cl, RthogColor, 100 - GapRectTransparency);
+				DRect(tg + "rect", x0, g.op, x1, g.cl, RthogColor, 100 - AttT(GapRectTransparency, 0));
 			}
 			else
 			{
@@ -1778,31 +2193,36 @@ namespace NinjaTrader.NinjaScript.Indicators
 			double mid = (g.cl + g.op) / 2.0;
 			DateTime ts = g.tstart.Value;
 			DateTime te = g.tend.Value;
-			g.cline = MkLL(tg + "ocl", ts.AddSeconds(-d), ts.AddSeconds(d), g.cl, RthogOldColor, RthogStyle, RthogWidth,
-				"rthog.cl", PineBlack, fNormal, false);
-			g.cline2 = MkLL(tg + "ocl2", te.AddSeconds(-d), te.AddSeconds(d), g.cl, RthogOldColor, RthogStyle, RthogWidth,
-				"rthog.cl", PineBlack, fNormal, ExtendGaps);
-			g.mline = MkLL(tg + "oce", te.AddSeconds(-d), te.AddSeconds(d), mid, RthogOldColor, RthogStyle, RthogWidth,
-				"rthog.ce", PineBlack, fNormal, ExtendGaps);
-			g.opline = MkLL(tg + "oop", te.AddSeconds(-d), te.AddSeconds(d), g.op, RthogOldColor, RthogStyle, RthogWidth,
-				"rthog.op", PineBlack, fNormal, ExtendGaps);
+			// [ATT] old RTHOGs: minor
+			Brush co = AttL(RthogOldColor, 2), to = AttL(PineBlack, 2);
+			int wo = AttW(RthogWidth, 2);
+			g.cline = MkLL(tg + "ocl", ts.AddSeconds(-d), ts.AddSeconds(d), g.cl, co, RthogStyle, wo,
+				"rthog.cl", to, fNormal, false);
+			g.cline2 = MkLL(tg + "ocl2", te.AddSeconds(-d), te.AddSeconds(d), g.cl, co, RthogStyle, wo,
+				"rthog.cl", to, fNormal, ExtendGaps);
+			g.mline = MkLL(tg + "oce", te.AddSeconds(-d), te.AddSeconds(d), mid, co, RthogStyle, wo,
+				"rthog.ce", to, fNormal, ExtendGaps);
+			g.opline = MkLL(tg + "oop", te.AddSeconds(-d), te.AddSeconds(d), g.op, co, RthogStyle, wo,
+				"rthog.op", to, fNormal, ExtendGaps);
 		}
 
 		// right-edge update, final bar only
-		private void RRight(IRthog g, Brush c)
+		// [ATT] current and previous RTHOG important, quadrants normal, stddevs minor
+		private void RRight(IRthog g, Brush c0)
 		{
 			if (g.isold)
 				return;
 			DateTime x = TRight(Xoff);
+			Brush c = AttL(c0, 0), cm = AttL(c0, 1), cs = AttL(c0, 2);
 			SetR(g.cline, x, c);
 			SetR(g.mline, x, c);
 			SetR(g.opline, x, c);
-			SetR(g.uq, x, c);
-			SetR(g.dq, x, c);
+			SetR(g.uq, x, cm);
+			SetR(g.dq, x, cm);
 			if (g.rect)
-				DRect(RTag(g) + "rect", g.rx0, g.op, x, g.cl, RthogColor, 100 - GapRectTransparency);
+				DRect(RTag(g) + "rect", g.rx0, g.op, x, g.cl, RthogColor, 100 - AttT(GapRectTransparency, 0));
 			foreach (LL l in g.po3)
-				SetR(l, x, c);
+				SetR(l, x, cs);
 		}
 
 		// stddev lines of the RTHOG and the premarket range at almost the same price share one label:
@@ -1998,7 +2418,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 				bool up = !double.IsNaN(v.pl) && !double.IsNaN(v.pr) && (isHigh ? v.pr > v.pl : v.pr < v.pl);
 				string txt = (up ? (isHigh ? "eqH" : "eqL") : (isHigh ? "EQH" : "EQL")) + sfx;
 				string tg = PTag(v);
-				DLine(tg + "ln", v.t, v.p, x, v.p, c, EqhlStyle, EqhlWidth);
+				DLine(tg + "ln", v.t, v.p, x, v.p, c, EqhlStyle, AttW(EqhlWidth, 1));
 				DText(tg + "lb", txt, x, v.p, c, fEq, 0);
 			}
 		}
@@ -2012,6 +2432,59 @@ namespace NinjaTrader.NinjaScript.Indicators
 			SolidColorBrush br = new SolidColorBrush(Color.FromArgb(a, r, g, b));
 			br.Freeze();
 			return br;
+		}
+
+		// [ATT] dimming steps of a rank (0 important, 1 normal, 2 minor) at the attenuation level
+		private int AttE(int rank)
+		{
+			int a = Math.Max(0, Math.Min(4, Attenuation));
+			return a == 0 ? 0 : rank == 0 ? (a >= 4 ? 2 : a >= 2 ? 1 : 0) : rank == 1 ? a : a + 1;
+		}
+
+		// line / text color of a rank: more transparent (Pine attL), cached
+		private Brush AttL(Brush c, int rank)
+		{
+			int e = AttE(rank);
+			if (e == 0 || c == null)
+				return c;
+			string key = c.ToString() + "|" + c.Opacity.ToString(CultureInfo.InvariantCulture) + "|" + e;
+			Brush b;
+			if (!attCache.TryGetValue(key, out b))
+			{
+				b = c.Clone();
+				b.Opacity = c.Opacity * (1.0 - Math.Min(e * 0.18, 0.9));
+				b.Freeze();
+				attCache[key] = b;
+			}
+			return b;
+		}
+
+		private int AttW(int w, int rank)
+		{
+			return Math.Max(1, w - (AttE(rank) >= 2 ? 1 : 0));
+		}
+
+		// fill transparency of a rank
+		private int AttT(int t, int rank)
+		{
+			return (int)Math.Floor(Math.Min(100.0, t + (100 - t) * AttE(rank) * 0.2));
+		}
+
+		// one label size up (important levels)
+		private static ICTlevelsTextSize SizeUp(ICTlevelsTextSize s)
+		{
+			return s >= ICTlevelsTextSize.Huge ? ICTlevelsTextSize.Huge : s + 1;
+		}
+
+		private SimpleFont FontOf(ICTlevelsTextSize s)
+		{
+			SimpleFont f;
+			if (!fontCache.TryGetValue(s, out f))
+			{
+				f = MkFont(s, false);
+				fontCache[s] = f;
+			}
+			return f;
 		}
 
 		private static Brush Fz(Brush b)
@@ -2183,6 +2656,18 @@ namespace NinjaTrader.NinjaScript.Indicators
 			drawn.Add(tag);
 		}
 
+		// [ATT] rectangle outline only: the color with transparency transp, width w
+		private void DRectB(string tag, DateTime t1, double y1, DateTime t2, double y2, Brush c, int transp, int w)
+		{
+			Brush b = c.Clone();
+			b.Opacity = c.Opacity * (100 - Math.Max(0, Math.Min(100, transp))) / 100.0;
+			b.Freeze();
+			Rectangle r = Draw.Rectangle(this, tag, false, t1, y1, t2, y2, b, Brushes.Transparent, 0);
+			if (r != null && r.OutlineStroke != null)
+				r.OutlineStroke.Width = w;
+			drawn.Add(tag);
+		}
+
 		// left-aligned text at (t, y), like a Pine label.style_label_left with a transparent background
 		private void DText(string tag, string txt, DateTime t, double y, Brush c, SimpleFont f, int yoff)
 		{
@@ -2276,6 +2761,11 @@ namespace NinjaTrader.NinjaScript.Indicators
 		[NinjaScriptProperty]
 		[Display(Name = "show object cap warning (no effect in NT8)", GroupName = "Time & Settings", Order = 104)]
 		public bool ShowCap { get; set; }
+
+		[NinjaScriptProperty]
+		[Range(0, 4)]
+		[Display(Name = "Attenuation", GroupName = "Enable / Filter", Order = 0, Description = "Dims the drawings, 0: as configured, 4: the most dimmed (2 by default). Levels have three ranks: important (the last M.O., the untaken high / low of the previous day and of the last two ended sessions, the current and previous RTHOG, TGIF, NWOGs, the last NDOG, swing highs / lows and body levels), normal (months, other day and session max/min, week lines, current RTHOG quadrants and octants, PMKT high / low, EQH / EQL, macro background) and minor (day lines, eq, older M.O.s, older NDOGs, old RTHOGs, stddevs, PMKT quadrants). Each level dims minor drawings the most and important ones the least; widths go down by 1 when dimmed enough. Session rectangles: filled and lighter at 1, outline only from 2 on. Gap rectangles fade with the rank of their gap.")]
+		public int Attenuation { get; set; }
 
 		[NinjaScriptProperty]
 		[Display(Name = "Month max/min/close (last 3 months)", GroupName = "Enable / Filter", Order = 1)]
@@ -2409,6 +2899,10 @@ namespace NinjaTrader.NinjaScript.Indicators
 		[NinjaScriptProperty]
 		[Display(Name = "day label size", GroupName = "Day Settings", Order = 314)]
 		public ICTlevelsTextSize DayLabelSize { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "body high / low levels (days and sessions)", GroupName = "Day Settings", Order = 325, Description = "While the high (low) of a day or session is not taken, also draw a line at the highest (lowest) 15m candle body around it (two candles before and after) when that is below (above) the wick: price often takes the body level but not the wick. Removed once price takes the body later, or takes the high (low). The most recent 6 per side are drawn.")]
+		public bool DoBody { get; set; }
 
 		[NinjaScriptProperty]
 		[Display(Name = "REH/REL labels", GroupName = "Day Settings", Order = 315)]

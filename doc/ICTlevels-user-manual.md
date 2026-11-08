@@ -344,7 +344,7 @@ Attenuation dims the drawings without changing their settings. Drawings have thr
 | 3 | 18% fainter | 54% fainter, width -1 | 72% fainter, width -1 | outline only, fainter, width 1 |
 | 4 | 36% fainter, width -1 | 72% fainter, width -1 | 90% fainter, width -1 | outline only, fainter, width 1 |
 
-"Fainter" is the share of the remaining opacity that is taken away, for lines and label text. Widths never go below 1. Gap rectangles fade with the rank of their gap (20% per step), so the rectangles of older NDOGs are gone at level 4. NWOGs keep their line color as important but get the width and fill of a normal drawing at levels 3 and 4. In NinjaTrader and Tradovate attenuation is not available yet.
+"Fainter" is the share of the remaining opacity that is taken away, for lines and label text. Widths never go below 1. Gap rectangles fade with the rank of their gap (20% per step), so the rectangles of older NDOGs are gone at level 4. NWOGs keep their line color as important but get the width and fill of a normal drawing at levels 3 and 4. NinjaTrader and Tradovate have the same attenuation, swing and REH / REL emphasis and body levels. Tradovate ignores the transparency of line and text colors, so there a fainter color is the color blended into the chart background: set "attbg" (white by default) to your chart background color.
 
 ### 5.2 Time & Settings
 
@@ -415,7 +415,7 @@ Attenuation dims the drawings without changing their settings. Drawings have thr
 | Sessions to keep | 20 (min 3) | How many sessions to keep, all four kinds together. Values above 40 are reduced to 40. Also the number of premarket ranges kept. |
 | Draw session rectangles | on | Draws a shaded box for each session. |
 | transparency | 75 | Transparency of the session boxes (0 opaque, 100 invisible). |
-| Session rectangles: border only | off | Draws only the outline of each session box, 2 px wide, in the session color with half the transparency above (37 at the default 75), and no fill. On Tradovate the outline is drawn solid, without the transparency. |
+| Session rectangles: border only | off | Draws only the outline of each session box, 2 px wide, in the session color with half the transparency above (37 at the default 75), and no fill. On Tradovate the outline color is blended into the chart background (attbg) instead. |
 | No session rectangles at or under | on | Hides the session boxes on low timeframes. |
 | timeframe | 5 (5 minutes) | Boxes are hidden when the chart timeframe is at or below this value and below 15 minutes. Setting a timeframe of 15m or more hides them on every chart below 15m. |
 | ses. | on | Draws the session high and low lines (also used for the premarket high and low). |
