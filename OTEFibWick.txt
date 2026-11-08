@@ -24,7 +24,7 @@ var wickdx = input.int(1, "bars",  inline = "wick", group=GW,
      tooltip="0 for auto or number of bars for segment width")
 var wswing = input.bool(true, "keep CEs of swing high/low wicks", group=GW,
      tooltip="older candles keep only these. Uses the swing bars left/right from the Fib section")
-var wrecent = input.int(5, "always show CEs of the last candles", group=GW, minval=0)
+var wrecent = input.int(10, "always show CEs of the last candles", group=GW, minval=0)
 var wfvg = input.bool(true, "keep CEs of wicks starting an FVG", group=GW,
      tooltip="the wick of the first candle of an FVG, on the side of the gap")
 var wnext = input.int(2, "extend", group=GW, minval=0, maxval=10, inline="wx")
