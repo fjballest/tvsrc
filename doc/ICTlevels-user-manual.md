@@ -328,9 +328,9 @@ The first group: one switch per feature, so you can turn features on and off wit
 
 Attenuation dims the drawings without changing their settings. Drawings have three ranks:
 
-- Important: month lines, TGIF levels, NWOGs, the last NDOG and the current RTHOG.
-- Normal: day and session max/min, week vertical lines, the previous RTHOG, the PMKT high and low, EQH / EQL and the macro background.
-- Minor: day vertical lines, eq, M.O., older NDOGs, old RTHOGs, and the RTHOG and PMKT quadrants, octants and deviations.
+- Important: the last midnight open (M.O.), the untaken high and low of the last two ended sessions, the current and previous RTHOG, TGIF levels, NWOGs and the last NDOG.
+- Normal: month lines, day max/min, the other session max/min, week vertical lines, the quadrants, octants and deviations of the current RTHOG, the PMKT high and low, EQH / EQL and the macro background.
+- Minor: day vertical lines, eq, older M.O.s, older NDOGs, old RTHOGs (the short marks), and the PMKT quadrants and deviations.
 
 | Level | Important | Normal | Minor | Session rectangles |
 | --- | --- | --- | --- | --- |

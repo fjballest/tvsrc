@@ -35,9 +35,10 @@ type Sty
 const string G_EN = "Enable / Filter"
 int attLvl = input.int(0, "Attenuation", minval = 0, maxval = 4, group = G_EN,
      tooltip = "Dims the drawings, 0: as configured, 4: the most dimmed. Levels have three ranks: important "
-     + "(months, TGIF, NWOGs, the last NDOG, the current RTHOG), normal (day and session max/min, week lines, "
-     + "the previous RTHOG, PMKT high / low, EQH / EQL, macro background) and minor (day lines, eq, M.O., older "
-     + "NDOGs, old RTHOGs, RTHOG and PMKT quadrants, octants and stddevs). Each level dims minor drawings the "
+     + "(the last M.O., the untaken high / low of the last two ended sessions, the current and previous RTHOG, "
+     + "TGIF, NWOGs, the last NDOG), normal (months, day and other session max/min, week lines, current RTHOG "
+     + "quadrants, octants and stddevs, PMKT high / low, EQH / EQL, macro background) and minor (day lines, eq, "
+     + "older M.O.s, older NDOGs, old RTHOGs, PMKT quadrants and stddevs). Each level dims minor drawings the "
      + "most and important ones the least; widths go down by 1 when dimmed enough. Session rectangles: filled "
      + "and lighter at 1, outline only from 2 on. Gap rectangles fade with the rank of their gap.")
 // [ATT] dimming steps of a rank (0 important, 1 normal, 2 minor) at the attenuation level
@@ -1298,12 +1299,12 @@ method rquads(RTHOG g) =>
         int x0 = g.tend - tfms * rdx
         int x1 = tright(xoff)
         string nm = timestr()
-        [l1, b1] = mkLL(x0, x1, p + qdy, attL(lrgapcolor, 2), rgapqlnsty, attW(rgapwid, 2), "RTHOG dq " + nm,
-             attL(lrgapcolor, 2))
+        [l1, b1] = mkLL(x0, x1, p + qdy, attL(lrgapcolor, 1), rgapqlnsty, attW(rgapwid, 1), "RTHOG dq " + nm,
+             attL(lrgapcolor, 1))
         g.dqline := l1
         g.dqlabel := b1
-        [l2, b2] = mkLL(x0, x1, p + 3 * qdy, attL(lrgapcolor, 2), rgapqlnsty, attW(rgapwid, 2), "RTHOG uq " + nm,
-             attL(lrgapcolor, 2))
+        [l2, b2] = mkLL(x0, x1, p + 3 * qdy, attL(lrgapcolor, 1), rgapqlnsty, attW(rgapwid, 1), "RTHOG uq " + nm,
+             attL(lrgapcolor, 1))
         g.uqline := l2
         g.uqlabel := b2
 
@@ -1321,8 +1322,8 @@ method roct(RTHOG g) =>
         float p = math.min(g.cl, g.op)
         string nm = timestr()
         for k in array.from(1, 3, 5, 7)
-            [l, b] = mkLL(x0, x1, p + k * ody, attL(lrgapcolor, 2), rgapqlnsty, 1, "RTHOG " + str.tostring(k)
-                 + "/8 " + nm, attL(lrgapcolor, 2))
+            [l, b] = mkLL(x0, x1, p + k * ody, attL(lrgapcolor, 1), rgapqlnsty, 1, "RTHOG " + str.tostring(k)
+                 + "/8 " + nm, attL(lrgapcolor, 1))
             g.oclines.push(l)
             g.oclabels.push(b)
 
@@ -1363,14 +1364,14 @@ method rpo3(RTHOG g) =>
         int nd = sdCount(rthogpo3num, rthogauto, pd0, u, g.xlo, -1)
         for i = 1 to math.max(nu, nd)
             if i <= nu
-                [l1, b1] = mkLL(x0, x1, pu0 + i * u, attL(lrgapcolor, 2), rgappo3lnsty, attW(rgapwid, 2),
-                     "RTHOG" + sdName(i, u, gap, 1), attL(lrgapcolor, 2))
+                [l1, b1] = mkLL(x0, x1, pu0 + i * u, attL(lrgapcolor, 1), rgappo3lnsty, attW(rgapwid, 1),
+                     "RTHOG" + sdName(i, u, gap, 1), attL(lrgapcolor, 1))
                 g.po3lines.push(l1)
                 g.po3labels.push(b1)
                 g.po3names.push(sdName(i, u, gap, 1))
             if i <= nd
-                [l2, b2] = mkLL(x0, x1, pd0 - i * u, attL(lrgapcolor, 2), rgappo3lnsty, attW(rgapwid, 2),
-                     "RTHOG" + sdName(i, u, gap, -1), attL(lrgapcolor, 2))
+                [l2, b2] = mkLL(x0, x1, pd0 - i * u, attL(lrgapcolor, 1), rgappo3lnsty, attW(rgapwid, 1),
+                     "RTHOG" + sdName(i, u, gap, -1), attL(lrgapcolor, 1))
                 g.po3lines.push(l2)
                 g.po3labels.push(b2)
                 g.po3names.push(sdName(i, u, gap, -1))
@@ -1446,12 +1447,12 @@ method setOld(RTHOG g) =>
             g.opline.set_extend(extend.right)
 
 // right-edge update, last bar only
-// [ATT] rk: rank of the gap (0 current, 1 previous); quadrants and stddevs are minor
+// [ATT] rk: rank of the gap (current and previous: 0); quadrants and stddevs are normal
 method right(RTHOG g, color c0, int rk) =>
     if not g.isold
         int x = tright(xoff)
         color c = attL(c0, rk)
-        color cm = attL(c0, 2)
+        color cm = attL(c0, 1)
         int w = attW(rgapwid, rk)
         setR(g.cline, g.clabel, x, c, w)
         setR(g.mline, g.mlabel, x, c, w)
@@ -1669,10 +1670,10 @@ if inWin and tfok and doeqhl and doeqd
 // ============================================================ months
 getm(MonLn m, int t, float p, color c, string txt) =>
     if na(m.ln)
-        m.ln := line.new(t, p, t + tfms, p, xloc = xloc.bar_time, extend = extend.right, color = attL(c, 0),
-             width = attW(monwid, 0), style = monsty)
+        m.ln := line.new(t, p, t + tfms, p, xloc = xloc.bar_time, extend = extend.right, color = attL(c, 1),
+             width = attW(monwid, 1), style = monsty)
         m.lbl := label.new(tright(xoff), p, txt, xloc = xloc.bar_time,
-             style = label.style_label_left, color = transparent, textcolor = attL(c, 0))
+             style = label.style_label_left, color = transparent, textcolor = attL(c, 1))
     else
         m.ln.set_xy1(t, p)
         m.ln.set_xy2(t + tfms, p)
@@ -1737,6 +1738,34 @@ if finalBar and tfok
     for z in premarkets
         if z.live()
             z.refresh()
+    // [ATT] the last midnight open and the untaken high / low of the last two ended sessions are important
+    if attLvl > 0
+        for [i, z] in days
+            if not na(z.opln)
+                int rk = i == days.size() - 1 ? 0 : 2
+                z.opln.set_color(attL(opcolor, rk))
+                z.opln.set_width(attW(opwid, rk))
+                z.oplabel.set_textcolor(attL(opcolor, rk))
+        int nend = 0
+        int nzs = zones.size()
+        for k = 0 to math.max(nzs - 1, 0)
+            Zone z = nzs > 0 ? zones.get(nzs - 1 - k) : na
+            if na(z)
+                break
+            if not na(z.tend)
+                nend += 1
+                int rh = nend <= 2 and na(z.hidonet) ? 0 : 1
+                int rl = nend <= 2 and na(z.lodonet) ? 0 : 1
+                if not na(z.maxln)
+                    z.maxln.set_color(attL(sesmmaxcol, rh))
+                    z.maxln.set_width(attW(sesmwid, rh))
+                if not na(z.minln)
+                    z.minln.set_color(attL(sesmmincol, rl))
+                    z.minln.set_width(attW(sesmwid, rl))
+                if not na(z.maxlbl)
+                    z.maxlbl.set_textcolor(attL(sesmmaxcol, rh))
+                if not na(z.minlbl)
+                    z.minlbl.set_textcolor(attL(sesmmincol, rl))
     if preOn
         int npm = premarkets.size()
         for [i, z] in premarkets
@@ -1761,9 +1790,9 @@ if finalBar and tfok
     for [i, g] in rthogs
         if i == rthogs.size() - 1
             g.right(lrgapcolor, 0)
-            g.octRight(attL(lrgapcolor, 2))    // octants: latest RTHOG only (removed at the close, like the quadrants)
+            g.octRight(attL(lrgapcolor, 1))    // octants: latest RTHOG only (removed at the close, like the quadrants)
         else if i == rthogs.size() - 2
-            g.right(rgapcolor, 1)
+            g.right(rgapcolor, 0)
     if preOn and rthogs.size() > 0 and premarkets.size() > 0
         combinePo3(rthogs.last(), premarkets.last(), pmctol * nz(datr, 0.0))
     if doeqhl
