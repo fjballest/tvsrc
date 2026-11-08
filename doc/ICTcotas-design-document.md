@@ -169,7 +169,9 @@ All objects use `xloc.bar_time`. The left edge is the level's time `t` and the r
 
 1. A filled rectangle between `hi` and `lo`, only when `kfill` is true. Its transparency is `fvgtr` for FVGs and `vitr` for the rest.
 2. A high line, a low line and a CE line, each only when `kshow` allows it. Wick levels show only the CE.
-3. A label at the right end of each line when labels are on.
+3. A label at the right end of each line when labels are on, or a single label at the CE (text without the part, "D VI") when the labels would overlap: the distance between neighbouring labels (half the range when the CE is shown, else the range) is below `lblmrg` times the daily ATR `dAtr`. `dAtr` is an RMA(14) of the true range of completed daily candles (chart candles on D charts and above), updated when a new daily candle starts; the ports compute it the same way from their daily candles.
+
+Attenuation (`attLvl`, 0 by default) uses the ICTlevels functions `attE`, `attL`, `attW` and `attT` with the rank of the level (`rank`): weekly and monthly levels are important, daily and 4H normal, 15m and 1H minor, and VIs, wick CEs and ULW CEs one rank below FVGs of their timeframe. Line and label colors, widths and fill transparencies of all three drawing methods go through them. Tradovate blends faded colors into `attbg` because it ignores color alpha.
 
 Line width is the base width of the kind plus `tfi * wextra`, so weekly levels are thicker than daily ones and monthly ones thicker still. High and low lines use the hi/lo style of the kind, the CE line its CE style. Wick levels use their single style for the line.
 

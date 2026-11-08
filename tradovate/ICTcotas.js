@@ -9,7 +9,7 @@
  * closed through become IFVGs. Mitigated levels are removed.
  *
  * Port of the TradingView Pine Script v6 indicator ICTcotas.txt
- * (md5 7558566fb97c1311f1f5d3ebc233dd6f), (c) franjballest, Mozilla Public
+ * (md5 5e2a811deb31af26d2385e8517f8d4b3), (c) franjballest, Mozilla Public
  * License 2.0 (https://mozilla.org/MPL/2.0/). Same logic, same inputs (as
  * camelCase parameters) and the same defaults.
  *
@@ -156,6 +156,7 @@ function newState(keys) {
         wcur: new Array(16).fill(null),   // open wick group level: tfi * 2 + side
         uid: 0,
         tfsecs: 0,
+        datr: null,   // daily ATR(14): RMA of the true range of completed daily candles
         aggs: {
             d: new HtfAgg(keys.d), w: new HtfAgg(keys.w), m: new HtfAgg(keys.m),
             m15: new HtfAgg(keys.m15), h1: new HtfAgg(keys.h1), h4: new HtfAgg(keys.h4)
@@ -173,7 +174,7 @@ function cloneState(S) {
     const wcur = S.wcur.map(l => (l ? map.get(l) || Object.assign({}, l) : null));
     const aggs = {};
     for (const k in S.aggs) aggs[k] = S.aggs[k].clone();
-    return { lvls, wcur, uid: S.uid, tfsecs: S.tfsecs, aggs };
+    return { lvls, wcur, uid: S.uid, tfsecs: S.tfsecs, datr: S.datr, aggs };
 }
 
 // ============================================================ engine
@@ -404,6 +405,13 @@ class Engine {
         const wkOk = c.doWeekly && tfs < 604800;
         const monOk = c.doMonthly && tfs < 2592000;
         const tfc = {};
+        if (ev.d) {
+            const d1 = A.d.get(1), d2 = A.d.get(2);
+            if (d1 && d2) {
+                const tr = Math.max(d1.h - d1.l, Math.abs(d1.h - d2.c), Math.abs(d1.l - d2.c));
+                this.S.datr = this.S.datr === null ? tr : (this.S.datr * 13 + tr) / 14;
+            }
+        }
         if (dayOk && ev.d) { this.processTf(0, A.d, j); tfc[0] = A.d.get(1).c; }
         if (wkOk && ev.w) { this.processTf(1, A.w, j); tfc[1] = A.w.get(1).c; }
         if (monOk && ev.m) { this.processTf(2, A.m, j); tfc[2] = A.m.get(1).c; }
@@ -450,6 +458,8 @@ function buildConfig(p, chart) {
         wExtra: clamp(Math.round(num(p.wExtra, 1)), 0, 2),
         mmode: mit === "ce" ? 1 : mit === "wick" ? 2 : mit === "close" ? 3 : 0,
         sessHour: clamp(num(p.sessionStartHour, 18), 0, 23),
+        attLvl: clamp(Math.round(num(p.attLvl, 0)), 0, 4),
+        attbg: str(p.attbg, "#FFFFFF"),
 
         dBull: str(p.dBull, "#4CAF50"), dBear: str(p.dBear, "#F23645"),
         wBull: str(p.wBull, "#089981"), wBear: str(p.wBear, "#FF9800"),
@@ -460,6 +470,7 @@ function buildConfig(p, chart) {
         lblDir: bool(p.lblDir, false),
         lblFont: font(p.lblSize, "normal"),
         xOff: Math.max(1, Math.round(num(p.xOff, 2))),
+        lblMerge: Math.max(0, num(p.lblMerge, 0.05)),
         txtD: str(p.txtD, "D"), txtW: str(p.txtW, "W"), txtM: str(p.txtM, "M"),
         pTxtHi: str(p.pTxtHi, "hi"), pTxtLo: str(p.pTxtLo, "lo"), pTxtCe: str(p.pTxtCe, "CE"),
 
@@ -548,6 +559,41 @@ function buildConfig(p, chart) {
 }
 
 // ============================================================ drawing
+// [ATT] attenuation (Pine attE / attL / attW / attT): dimming steps of a rank (0 important, 1 normal, 2 minor)
+// at the attenuation level. Tradovate ignores the alpha of line and text colors, so a dimmed color is the
+// color blended into the chart background (attbg) by the fraction Pine makes transparent.
+function attE(c, rank) {
+    const a = c.attLvl;
+    return a === 0 ? 0 : rank === 0 ? (a >= 4 ? 2 : a >= 2 ? 1 : 0) : rank === 1 ? a : a + 1;
+}
+function hexRgb(col) {
+    let h = String(col || "").trim().replace("#", "");
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    const v = parseInt(h.substring(0, 6), 16);
+    return Number.isNaN(v) ? null : [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+}
+function blend(col, bg, f) {
+    const a = hexRgb(col), b = hexRgb(bg);
+    if (!a || !b || f <= 0) return col;
+    const m = k => Math.round(a[k] + (b[k] - a[k]) * Math.min(1, f)).toString(16).padStart(2, "0");
+    return "#" + m(0) + m(1) + m(2);
+}
+function attL(c, col, rank) {
+    const e = attE(c, rank);
+    return e === 0 ? col : blend(col, c.attbg || "#FFFFFF", Math.min(e * 0.18, 0.9));
+}
+function attW(c, w, rank) {
+    return Math.max(1, w - (attE(c, rank) >= 2 ? 1 : 0));
+}
+function attT(c, t, rank) {
+    return Math.floor(Math.min(100, t + (100 - t) * attE(c, rank) * 0.2));
+}
+// [ATT] rank of a level: weekly / monthly important, daily / 4H normal, 15m / 1H minor;
+// volume imbalances and wick levels one rank lower than FVGs
+function rankOf(l) {
+    const b = l.tfi === 1 || l.tfi === 2 || l.tfi === 7 || l.tfi === 8 ? 0 : l.tfi === 0 || l.tfi === 5 || l.tfi === 6 ? 1 : 2;
+    return Math.min(2, b + (l.kind === 0 || l.kind === 3 ? 0 : 1));
+}
 function tcol(c, tfi, d) {
     if (tfi >= 3) return c.mfCol[tfi - 3][d === 1 ? 0 : 1];
     if (tfi === 0) return d === 1 ? c.dBull : c.dBear;
@@ -607,33 +653,42 @@ function textItem(key, x, y, text, color, size, bold, align) {
     };
 }
 
-// level of kind 0, 1, 2 or 4 (Pine draw)
-function drawLvl(c, l, x, items) {
-    const col = tcol(c, l.tfi, l.dir);
-    const w = kwid(c, l.kind, l.tfi);
+// level of kind 0, 1, 2 or 4 (Pine draw). datr: daily ATR, for one label when hi / lo / CE labels overlap
+function drawLvl(c, l, x, items, datr) {
+    const rk = rankOf(l);
+    const col = attL(c, tcol(c, l.tfi, l.dir), rk);
+    const w = attW(c, kwid(c, l.kind, l.tfi), rk);
     const s1 = ksty(c, l.kind);
     const s2 = kcesty(c, l.kind);
     const k = "ictc" + l.id;
-    if (kfill(c, l.kind)) items.push(rectItem(k + "bx", l.t, l.hi, x, l.lo, col, l.kind === 0 ? c.fvgTr : c.viTr));
+    const shi = kshow(c, l.kind, 0), slo = kshow(c, l.kind, 1), sce = kshow(c, l.kind, 2);
+    const gap = sce && (shi || slo) ? (l.hi - l.lo) / 2 : l.hi - l.lo;
+    const nl = (shi ? 1 : 0) + (slo ? 1 : 0) + (sce ? 1 : 0);
+    const one = c.doLbl && c.lblMerge > 0 && datr !== null && datr !== undefined && nl >= 2 && gap < c.lblMerge * datr;
+    if (kfill(c, l.kind)) items.push(rectItem(k + "bx", l.t, l.hi, x, l.lo, tcol(c, l.tfi, l.dir), attT(c, l.kind === 0 ? c.fvgTr : c.viTr, rk)));
     const parts = [[0, l.hi, s1, c.pTxtHi, "hi"], [1, l.lo, s1, c.pTxtLo, "lo"], [2, l.ce, s2, c.pTxtCe, "ce"]];
     for (const [part, y, s, txt, nm] of parts) {
         if (!kshow(c, l.kind, part)) continue;
         items.push(linesItem(k + nm, [seg(l.t, y, x, y)], col, w, s));
-        if (c.doLbl) items.push(textItem(k + nm + "lb", x, y, lbltxt(c, l, txt), col, c.lblFont, c.lblBold, "left"));
+        if (c.doLbl && !one) items.push(textItem(k + nm + "lb", x, y, lbltxt(c, l, txt), col, c.lblFont, c.lblBold, "left"));
     }
+    if (one) items.push(textItem(k + "celb", x, sce ? l.ce : (l.hi + l.lo) / 2, lbltxt(c, l, "").trim(), col, c.lblFont, c.lblBold, "left"));
 }
 
 // FVG by timeframe (Pine drawM)
 function drawMf(c, l, x, items) {
-    const col = c.mfCol[l.tfi - 3][l.dir === 1 ? 0 : 1];
+    const rk = rankOf(l);
+    const cf = c.mfCol[l.tfi - 3][l.dir === 1 ? 0 : 1];
+    const col = attL(c, cf, rk);
+    const mw = attW(c, c.mfWid, rk);
     const k = "ictc" + l.id;
-    if (c.mfFill === "always") items.push(rectItem(k + "fill", l.t, l.hi, x, l.lo, col, c.mfTr));
+    if (c.mfFill === "always") items.push(rectItem(k + "fill", l.t, l.hi, x, l.lo, cf, attT(c, c.mfTr, rk)));
     items.push(linesItem(k + "bx", [
         seg(l.t, l.hi, x, l.hi), seg(x, l.hi, x, l.lo), seg(x, l.lo, l.t, l.lo), seg(l.t, l.lo, l.t, l.hi)
-    ], col, c.mfWid, c.mfSty));
-    if (c.mfShowCe) items.push(linesItem(k + "ce", [seg(l.t, l.ce, x, l.ce)], col, c.mfWid, c.mfCeSty));
+    ], col, mw, c.mfSty));
+    if (c.mfShowCe) items.push(linesItem(k + "ce", [seg(l.t, l.ce, x, l.ce)], col, mw, c.mfCeSty));
     if (c.mfShowForm && l.tfm !== null && l.tfm >= l.t) {
-        items.push(linesItem(k + "form", [seg(l.tfm, l.hi, l.tfm, l.lo)], col, c.mfWid > 1 ? c.mfWid - 1 : c.mfWid, DASH.solid));
+        items.push(linesItem(k + "form", [seg(l.tfm, l.hi, l.tfm, l.lo)], col, mw > 1 ? mw - 1 : mw, DASH.solid));
     }
     if (c.mfLbl && (c.mfLShowTf || c.mfLShowType || c.mfLShowDir)) {
         const y = c.mfLVert === "high" ? l.hi : c.mfLVert === "low" ? l.lo : l.ce;
@@ -651,23 +706,26 @@ function drawMf(c, l, x, items) {
 // FVG by timeframe in the right margin (Pine drawMM): box in its timeframe column, CE line, arrow label,
 // extended levels
 function drawMfMargin(c, l, eng, lastIdx, items) {
-    const col = c.mfCol[l.tfi - 3][l.dir === 1 ? 0 : 1];
+    const rk = rankOf(l);
+    const cf = c.mfCol[l.tfi - 3][l.dir === 1 ? 0 : 1];
+    const col = attL(c, cf, rk);
+    const mw = attW(c, c.mfWid, rk);
     const k = "ictc" + l.id;
     let cn = 0;
     for (let j = 0; j < l.tfi - 3; j++) if (eng.mfEnabled(j)) cn++;
     const x0 = lastIdx + c.mfMOff + cn * (c.mfMW + 1);
     const x1 = x0 + c.mfMW;
-    if (c.mfFill !== "never") items.push(rectItem(k + "fill", x0, l.hi, x1, l.lo, col, c.mfTr));
+    if (c.mfFill !== "never") items.push(rectItem(k + "fill", x0, l.hi, x1, l.lo, cf, attT(c, c.mfTr, rk)));
     items.push(linesItem(k + "bx", [
         seg(x0, l.hi, x1, l.hi), seg(x1, l.hi, x1, l.lo), seg(x1, l.lo, x0, l.lo), seg(x0, l.lo, x0, l.hi)
-    ], col, c.mfWid, c.mfSty));
-    if (c.mfShowCe) items.push(linesItem(k + "ce", [seg(x0, l.ce, x1, l.ce)], col, c.mfWid, c.mfCeSty));
+    ], col, mw, c.mfSty));
+    if (c.mfShowCe) items.push(linesItem(k + "ce", [seg(x0, l.ce, x1, l.ce)], col, mw, c.mfCeSty));
     if (c.mfExt) {
         // "for" N candles, "start" of the FVG, or "creation": end of its third candle
         const xs = c.mfExtTo === "start" ? l.t : c.mfExtTo === "creation" ? (l.tfm !== null ? l.tfm : l.t)
             : lastIdx - c.mfExtN;
-        items.push(linesItem(k + "ext", [seg(xs, l.hi, x0, l.hi), seg(xs, l.lo, x0, l.lo)], col, c.mfWid, c.mfSty));
-        if (c.mfShowCe) items.push(linesItem(k + "extce", [seg(xs, l.ce, x0, l.ce)], col, c.mfWid, c.mfCeSty));
+        items.push(linesItem(k + "ext", [seg(xs, l.hi, x0, l.hi), seg(xs, l.lo, x0, l.lo)], col, mw, c.mfSty));
+        if (c.mfShowCe) items.push(linesItem(k + "extce", [seg(xs, l.ce, x0, l.ce)], col, mw, c.mfCeSty));
     }
     if (c.mfLbl) {
         const y = c.mfLVert === "high" ? l.hi : c.mfLVert === "low" ? l.lo : l.ce;
@@ -688,7 +746,7 @@ function drawAll(c, eng, lastIdx, lastBar) {
             if (c.mfMargin) drawMfMargin(c, l, eng, lastIdx, items);
             else drawMf(c, l, x, items);
         }
-        else drawLvl(c, l, x, items);
+        else drawLvl(c, l, x, items, eng.S.datr);
     }
     const tfs = eng.tfsecs();
     const any = (c.doDaily && tfs < 86400) || (c.doWeekly && tfs < 604800) || (c.doMonthly && tfs < 2592000);
@@ -870,6 +928,8 @@ module.exports = {
             never: "Never", ce: "CE touched", wick: "Fully filled (wick)", close: "Fully filled (close)"
         }, "wick"),
         sessionStartHour: int(18, 0),
+        attLvl: predef.paramSpecs.number(0, 1, 0),
+        attbg: predef.paramSpecs.color("#FFFFFF"),
         // Colors (by timeframe)
         dBull: predef.paramSpecs.color("#4CAF50"),
         dBear: predef.paramSpecs.color("#F23645"),
@@ -883,6 +943,7 @@ module.exports = {
         lblDir: predef.paramSpecs.bool(false),
         lblSize: sizeEnum("normal"),
         xOff: int(2, 1),
+        lblMerge: predef.paramSpecs.number(0.05, 0.01, 0),
         txtD: predef.paramSpecs.text("D"),
         txtW: predef.paramSpecs.text("W"),
         txtM: predef.paramSpecs.text("M"),

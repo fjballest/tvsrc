@@ -82,6 +82,8 @@ Timeframe-level labels sit just to the right of each line end and read:
 | `1H UW CE` | Upper wick CE from 1H candles (by-timeframe wick option) |
 | `D FVG+ hi` | Same as `D FVG hi` with **direction (+/-)** on: + bullish, - bearish |
 
+When the hi, lo and CE labels of a level would sit too close to read (closer than **one label when hi / lo / CE closer than x daily ATR**, 0.05 of the daily ATR(14) by default), the level gets a single label without the part, `D VI`, at its CE instead of three labels on top of each other. The lines are still drawn.
+
 The sign is added only to FVG, IFVG and VI labels, never to wick labels. All words (D, W, M, FVG, IFVG, VI, UW, LW, hi, lo, CE) can be changed in the settings. Box labels of the by-timeframe layer are described in section 7.
 
 ## 4. Fair Value Gaps and IFVGs (D / W / M)
@@ -239,6 +241,7 @@ The tables follow the order of the settings dialog. Several controls often share
 | Monthly | on | Levels from monthly candles. Chart timeframe must be lower than 1M |
 | extra line width per timeframe step | 1 (0 to 2) | Extra width added to weekly lines (1 step) and monthly lines (2 steps) over daily ones. 0 makes all timeframes the same width. Does not affect the by-timeframe layer |
 | remove when | Fully filled (wick) | Mitigation rule for all levels (see table below). FVGs follow the IFVG rule instead while it is enabled; IFVGs, VIs and wick CEs always follow this rule |
+| Attenuation | 0 (0 to 4) | Dims the drawings without changing their settings. 0 draws everything as configured; 4 is the most dimmed (see below) |
 
 Mitigation rules (tested on every chart bar):
 
@@ -250,6 +253,16 @@ Mitigation rules (tested on every chart bar):
 | Fully filled (close) | a candle of the level's own timeframe closes below its low | a candle of the level's own timeframe closes above its high |
 
 For a wick CE, "low" and "high" are the ends of the wick.
+
+Attenuation ranks (a first version, to be tuned):
+
+| Rank | Levels |
+| ------- | -------------- |
+| important | weekly and monthly FVGs and IFVGs (lines and boxes) |
+| normal | daily and 4H FVGs and IFVGs; weekly and monthly VIs, wick CEs and ULW CEs |
+| minor | 15m and 1H FVG boxes; daily VIs, wick CEs and ULW CEs; 1H and 4H wick CEs |
+
+Each attenuation level makes minor drawings the most transparent and important ones the least (as in ICTlevels): lines, labels and fills fade, and widths go down by 1 when dimmed enough (never below 1). In Tradovate a faded color is the color blended into the chart background: set **attbg** (white by default) to your chart background color.
 
 ### Colors (by timeframe)
 
@@ -273,6 +286,7 @@ Fills use these colors with the transparency set in each section.
 | direction (+/-) | off | Appends + (bullish) or - (bearish) to FVG, IFVG and VI labels |
 | size | normal | tiny, small, normal, large or huge, for line labels |
 | offset | 2 (min 1) | Bars between the last bar and the right end of all lines, boxes and labels |
+| one label when hi / lo / CE closer than x daily ATR | 0.05 | A level whose hi, lo and CE labels would be closer than this fraction of the daily ATR(14) gets one label (`D VI`) at its CE. 0 always uses one label per line |
 | text: daily | D | Timeframe text for daily levels |
 | weekly | W | Timeframe text for weekly levels |
 | monthly | M | Timeframe text for monthly levels |

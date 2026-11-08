@@ -45,6 +45,22 @@ string mitig = input.string("Fully filled (wick)", "remove when",
      + "filled means price crossed the far edge: the low of a "
      + "bullish level, the high of a bearish one (by wick or by "
      + "close of the level's own timeframe). FVGs follow the IFVG rule instead when it is enabled.")
+int attLvl = input.int(0, "Attenuation", minval = 0, maxval = 4, group = G_GEN,
+     tooltip = "Dims the drawings, 0: as configured (default), 4: the most dimmed. Levels have three ranks: "
+     + "important (weekly and monthly), normal (daily and 4H) and minor (15m and 1H). Volume imbalances, "
+     + "wick CEs and ULW CEs are one rank lower than FVGs of the same timeframe. Each level dims minor "
+     + "drawings the most and important ones the least; widths go down by 1 when dimmed enough.")
+// [ATT] dimming steps of a rank (0 important, 1 normal, 2 minor) at the attenuation level
+attE(int rank) =>
+    attLvl == 0 ? 0 : rank == 0 ? (attLvl >= 4 ? 2 : attLvl >= 2 ? 1 : 0) : rank == 1 ? attLvl : attLvl + 1
+// line / text color, width and fill transparency of a rank
+attL(color c, int rank) =>
+    int e = attE(rank)
+    e == 0 ? c : color.new(c, color.t(c) + (100 - color.t(c)) * math.min(e * 0.18, 0.9))
+attW(int w, int rank) =>
+    math.max(1, w - (attE(rank) >= 2 ? 1 : 0))
+attT(int t, int rank) =>
+    int(math.min(100, t + (100 - t) * attE(rank) * 0.2))
 
 const string G_COL = "Colors (by timeframe)"
 color dbull = input.color(color.green, "daily: bull", group = G_COL, inline = "c1")
@@ -66,6 +82,11 @@ string lblsize = input.string("normal", "size", options = ["tiny", "small", "nor
      "huge"], group = G_LBL, inline = "l2")
 int xoff = input.int(2, "offset", minval = 1, group = G_LBL, inline = "l2",
      tooltip = "Bars between the last bar and the labels")
+float lblmrg = input.float(0.05, "one label when hi / lo / CE closer than x daily ATR", minval = 0.0,
+     step = 0.01, group = G_LBL, inline = "l2b",
+     tooltip = "When the hi, lo and CE labels of a level would be closer than this fraction of the daily "
+     + "ATR(14), the level gets a single label (\"D VI\") at its CE instead of three overlapping ones. "
+     + "0 to always use one label per line")
 string txtd = input.string("D", "text: daily", group = G_LBL, inline = "l3")
 string txtw = input.string("W", "weekly", group = G_LBL, inline = "l3")
 string txtm = input.string("M", "monthly", group = G_LBL, inline = "l3")
@@ -255,6 +276,8 @@ int mmode = mitig == "CE touched" ? 1 : mitig == "Fully filled (wick)" ? 2
 string lblsz = getsize(lblsize)
 string mflsz = getsize(mflsize)
 var int tfirst = time
+// daily ATR(14) (RMA of the true range of completed daily candles; chart candles on D charts and above)
+var float dAtr = na
 
 type Lvl
     int kind    // 0 FVG / IFVG, 1 volume imbalance, 2 wick, 3 FVG by timeframe, 4 ULW CE (both wicks of a candle)
@@ -405,15 +428,35 @@ mkLbl(label cur, int x, float p, string txt, color c) =>
         r.set_textcolor(c)
     r
 
+// [ATT] rank of a level: weekly / monthly important, daily / 4H normal, 15m / 1H minor;
+// volume imbalances and wick levels one rank lower than FVGs
+method rank(Lvl l) =>
+    int b = l.tfi == 1 or l.tfi == 2 or l.tfi == 7 or l.tfi == 8 ? 0 : l.tfi == 0 or l.tfi == 5 or l.tfi == 6
+         ? 1 : 2
+    math.min(2, b + (l.kind == 0 or l.kind == 3 ? 0 : 1))
+
+rmLbl(label lb) =>
+    if not na(lb)
+        lb.delete()
+    label(na)
+
 // create or update the objects of a level, right edge at the last bar
 method draw(Lvl l) =>
     int x = tright(xoff)
-    color c = tcol(l.tfi, l.dir)
-    int w = kwid(l.kind, l.tfi)
+    int rk = l.rank()
+    color c = attL(tcol(l.tfi, l.dir), rk)
+    int w = attW(kwid(l.kind, l.tfi), rk)
     string s1 = ksty(l.kind)
     string s2 = kcesty(l.kind)
+    // one label for the level when its hi / lo / CE labels would overlap
+    bool shi = kshow(l.kind, 0)
+    bool slo = kshow(l.kind, 1)
+    bool sce = kshow(l.kind, 2)
+    float gap = sce and (shi or slo) ? (l.hi - l.lo) / 2 : l.hi - l.lo
+    int nl = (shi ? 1 : 0) + (slo ? 1 : 0) + (sce ? 1 : 0)
+    bool one = dolbl and lblmrg > 0 and not na(dAtr) and nl >= 2 and gap < lblmrg * dAtr
     if kfill(l.kind)
-        color bg = color.new(c, l.kind == 0 ? fvgtr : vitr)
+        color bg = color.new(tcol(l.tfi, l.dir), attT(l.kind == 0 ? fvgtr : vitr, rk))
         if na(l.bx)
             l.bx := box.new(l.t, l.hi, x, l.lo, xloc = xloc.bar_time, border_color = transparent,
                  bgcolor = bg)
@@ -421,18 +464,27 @@ method draw(Lvl l) =>
             l.bx.set_lefttop(l.t, l.hi)
             l.bx.set_rightbottom(x, l.lo)
             l.bx.set_bgcolor(bg)
-    if kshow(l.kind, 0)
+    if shi
         l.hiln := mkLine(l.hiln, l.t, l.hi, x, c, s1, w)
-        if dolbl
+        l.hiln.set_width(w)
+        if dolbl and not one
             l.hilb := mkLbl(l.hilb, x, l.hi, lbltxt(l, ptxthi), c)
-    if kshow(l.kind, 1)
+    if slo
         l.loln := mkLine(l.loln, l.t, l.lo, x, c, s1, w)
-        if dolbl
+        l.loln.set_width(w)
+        if dolbl and not one
             l.lolb := mkLbl(l.lolb, x, l.lo, lbltxt(l, ptxtlo), c)
-    if kshow(l.kind, 2)
+    if sce
         l.celn := mkLine(l.celn, l.t, l.ce, x, c, s2, w)
-        if dolbl
-            l.celb := mkLbl(l.celb, x, l.ce, lbltxt(l, ptxtce), c)
+        l.celn.set_width(w)
+    if one
+        l.hilb := rmLbl(l.hilb)
+        l.lolb := rmLbl(l.lolb)
+        l.celb := mkLbl(l.celb, x, sce ? l.ce : (l.hi + l.lo) / 2, str.trim(lbltxt(l, "")), c)
+    else if sce and dolbl
+        l.celb := mkLbl(l.celb, x, l.ce, lbltxt(l, ptxtce), c)
+    else
+        l.celb := rmLbl(l.celb)
     true
 
 // margin column of timeframe i: its rank among the enabled timeframes
@@ -459,13 +511,15 @@ mkLineI(line cur, int x1, float p, int x2, color c, string sty, int w) =>
 // The margin objects are placed by bar index (bar times to the right of the last bar collapse while the
 // market is closed); the extended levels use bar time up to the last bar, then a bar-index link to the box.
 method drawMM(Lvl l) =>
-    color c = mfcol(l.tfi - 3, l.dir)
-    color bg = mffill == "never" ? transparent : color.new(c, mftr)
+    int rk = l.rank()
+    color c = attL(mfcol(l.tfi - 3, l.dir), rk)
+    int mw = attW(mfwid, rk)
+    color bg = mffill == "never" ? transparent : color.new(mfcol(l.tfi - 3, l.dir), attT(mftr, rk))
     int x0 = bar_index + mfmoff + mfCol(l.tfi - 3) * (mfmw + 1)
     int x1 = x0 + mfmw
     if na(l.bx)
         l.bx := box.new(x0, l.hi, x1, l.lo, xloc = xloc.bar_index, border_color = c,
-             border_style = mfsty, border_width = mfwid, bgcolor = bg)
+             border_style = mfsty, border_width = mw, bgcolor = bg)
     else
         l.bx.set_lefttop(x0, l.hi)
         l.bx.set_rightbottom(x1, l.lo)
@@ -474,7 +528,7 @@ method drawMM(Lvl l) =>
     if mfshowce
         if na(l.cebx)
             l.cebx := box.new(x0, l.ce, x1, l.ce, xloc = xloc.bar_index, border_color = c,
-                 border_style = mfcesty, border_width = mfwid, bgcolor = transparent)
+                 border_style = mfcesty, border_width = mw, bgcolor = transparent)
         else
             l.cebx.set_lefttop(x0, l.ce)
             l.cebx.set_rightbottom(x1, l.ce)
@@ -482,13 +536,13 @@ method drawMM(Lvl l) =>
     if mfext
         int xs = mfextto == "to start" ? l.t : mfextto == "to creation" ? nz(l.tfm, l.t)
              : time[math.min(mfextn, bar_index)]
-        l.hiln := mkLine(l.hiln, xs, l.hi, time, c, mfsty, mfwid)
-        l.loln := mkLine(l.loln, xs, l.lo, time, c, mfsty, mfwid)
-        l.hiln2 := mkLineI(l.hiln2, bar_index, l.hi, x0, c, mfsty, mfwid)
-        l.loln2 := mkLineI(l.loln2, bar_index, l.lo, x0, c, mfsty, mfwid)
+        l.hiln := mkLine(l.hiln, xs, l.hi, time, c, mfsty, mw)
+        l.loln := mkLine(l.loln, xs, l.lo, time, c, mfsty, mw)
+        l.hiln2 := mkLineI(l.hiln2, bar_index, l.hi, x0, c, mfsty, mw)
+        l.loln2 := mkLineI(l.loln2, bar_index, l.lo, x0, c, mfsty, mw)
         if mfshowce
-            l.celn := mkLine(l.celn, xs, l.ce, time, c, mfcesty, mfwid)
-            l.celn2 := mkLineI(l.celn2, bar_index, l.ce, x0, c, mfcesty, mfwid)
+            l.celn := mkLine(l.celn, xs, l.ce, time, c, mfcesty, mw)
+            l.celn2 := mkLineI(l.celn2, bar_index, l.ce, x0, c, mfcesty, mw)
     if mflbl
         float y = mflvert == "High" ? l.hi : mflvert == "Low" ? l.lo : l.ce
         // thin boxes: the timeframe on one line, the arrow on the next
@@ -508,11 +562,13 @@ method drawMM(Lvl l) =>
 // FVG by timeframe: outline box (optionally filled), CE box and label
 method drawM(Lvl l) =>
     int x = tright(xoff)
-    color c = mfcol(l.tfi - 3, l.dir)
-    color bg = mffill == "always" ? color.new(c, mftr) : transparent
+    int rk = l.rank()
+    color c = attL(mfcol(l.tfi - 3, l.dir), rk)
+    int mw = attW(mfwid, rk)
+    color bg = mffill == "always" ? color.new(mfcol(l.tfi - 3, l.dir), attT(mftr, rk)) : transparent
     if na(l.bx)
         l.bx := box.new(l.t, l.hi, x, l.lo, xloc = xloc.bar_time, border_color = c,
-             border_style = mfsty, border_width = mfwid, bgcolor = bg)
+             border_style = mfsty, border_width = mw, bgcolor = bg)
     else
         l.bx.set_lefttop(l.t, l.hi)
         l.bx.set_rightbottom(x, l.lo)
@@ -521,7 +577,7 @@ method drawM(Lvl l) =>
     if mfshowce
         if na(l.cebx)
             l.cebx := box.new(l.t, l.ce, x, l.ce, xloc = xloc.bar_time, border_color = c,
-                 border_style = mfcesty, border_width = mfwid, bgcolor = transparent)
+                 border_style = mfcesty, border_width = mw, bgcolor = transparent)
         else
             l.cebx.set_lefttop(l.t, l.ce)
             l.cebx.set_rightbottom(x, l.ce)
@@ -529,7 +585,7 @@ method drawM(Lvl l) =>
     if mfshowform and not na(l.tfm) and l.tfm >= l.t
         if na(l.vln)
             l.vln := line.new(l.tfm, l.hi, l.tfm, l.lo, xloc = xloc.bar_time, color = c,
-                 style = line.style_solid, width = mfwid>1?mfwid-1:mfwid)
+                 style = line.style_solid, width = mw > 1 ? mw - 1 : mw)
         else
             l.vln.set_xy1(l.tfm, l.hi)
             l.vln.set_xy2(l.tfm, l.lo)
@@ -763,6 +819,9 @@ var string setUsed = ""
      : timeframe.period)
 
 bool newD = dayOk and dT != nz(dT[1], dT)
+if dT != nz(dT[1], dT) and not na(dH1) and not na(dC2)
+    float tr = math.max(dH1 - dL1, math.abs(dH1 - dC2), math.abs(dL1 - dC2))
+    dAtr := na(dAtr) ? tr : (dAtr * 13 + tr) / 14
 bool newW = wkOk and wT != nz(wT[1], wT)
 bool newM = monOk and mT != nz(mT[1], mT)
 

@@ -7,7 +7,7 @@
 // FVGs closed through become IFVGs. Mitigated levels are removed.
 //
 // Port of the TradingView Pine Script v6 indicator ICTcotas.txt by franjballest
-// (source md5 7558566fb97c1311f1f5d3ebc233dd6f). Mozilla Public License 2.0.
+// (source md5 5e2a811deb31af26d2385e8517f8d4b3). Mozilla Public License 2.0.
 //
 // Install:
 //   1. Copy this file to  Documents\NinjaTrader 8\bin\Custom\Indicators\ICTcotas.cs
@@ -169,6 +169,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 		private DateTime tfirst;
 		private int nextId;
 		private bool dirty;
+		private double dAtr = double.NaN;    // daily ATR(14): RMA of the true range of completed daily candles
+		private Dictionary<string, Brush> attCache = new Dictionary<string, Brush>();
 
 		private int tfsecs;
 		private bool dayOk;
@@ -210,6 +212,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 				DoMonthly = true;
 				WidthExtra = 1;
 				Mitigation = ICTcotasMitigation.FullyFilledWick;
+				Attenuation = 0;
 
 				// Colors (Pine v6 palette)
 				DailyBull = MakeBrush(0x4C, 0xAF, 0x50);   // green
@@ -225,6 +228,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 				LabelDirection = false;
 				LabelSize = ICTcotasLabelSize.Normal;
 				LabelOffset = 2;
+				LabelMerge = 0.05;
 				TextDaily = "D";
 				TextWeekly = "W";
 				TextMonthly = "M";
@@ -457,6 +461,13 @@ namespace NinjaTrader.NinjaScript.Indicators
 				return;
 			lastKey[k] = key;
 
+			if (k == SerDay)
+			{
+				double tr = Math.Max(Highs[k][off] - Lows[k][off], Math.Max(Math.Abs(Highs[k][off] - Closes[k][off + 1]),
+					Math.Abs(Lows[k][off] - Closes[k][off + 1])));
+				dAtr = double.IsNaN(dAtr) ? tr : (dAtr * 13 + tr) / 14;
+			}
+
 			if (k == SerDay && dayOk)
 				ProcessTf(0, k, off);
 			if (k == SerWeek && wkOk)
@@ -555,6 +566,50 @@ namespace NinjaTrader.NinjaScript.Indicators
 		private Brush TCol(int tfi, int d)
 		{
 			return d == 1 ? bullB[tfi] : bearB[tfi];
+		}
+
+		// [ATT] dimming steps of a rank (0 important, 1 normal, 2 minor) at the attenuation level (Pine attE)
+		private int AttE(int rank)
+		{
+			int a = Math.Max(0, Math.Min(4, Attenuation));
+			return a == 0 ? 0 : rank == 0 ? (a >= 4 ? 2 : a >= 2 ? 1 : 0) : rank == 1 ? a : a + 1;
+		}
+
+		// line / text color of a rank: more transparent (Pine attL), cached
+		private Brush AttL(Brush c, int rank)
+		{
+			int e = AttE(rank);
+			if (e == 0 || c == null)
+				return c;
+			string key = c.ToString() + "|" + c.Opacity.ToString(System.Globalization.CultureInfo.InvariantCulture) + "|" + e;
+			Brush b;
+			if (!attCache.TryGetValue(key, out b))
+			{
+				b = c.Clone();
+				b.Opacity = c.Opacity * (1.0 - Math.Min(e * 0.18, 0.9));
+				b.Freeze();
+				attCache[key] = b;
+			}
+			return b;
+		}
+
+		private int AttW(int w, int rank)
+		{
+			return Math.Max(1, w - (AttE(rank) >= 2 ? 1 : 0));
+		}
+
+		// fill transparency of a rank
+		private int AttT(int t, int rank)
+		{
+			return (int)Math.Floor(Math.Min(100.0, t + (100 - t) * AttE(rank) * 0.2));
+		}
+
+		// [ATT] rank of a level: weekly / monthly important, daily / 4H normal, 15m / 1H minor;
+		// volume imbalances and wick levels one rank lower than FVGs
+		private static int Rank(Lvl l)
+		{
+			int b = l.Tfi == 1 || l.Tfi == 2 || l.Tfi == 7 || l.Tfi == 8 ? 0 : l.Tfi == 0 || l.Tfi == 5 || l.Tfi == 6 ? 1 : 2;
+			return Math.Min(2, b + (l.Kind == 0 || l.Kind == 3 ? 0 : 1));
 		}
 
 		private DashStyleHelper KSty(int k)
@@ -933,34 +988,53 @@ namespace NinjaTrader.NinjaScript.Indicators
 		{
 			int sba = BarsAgoOf(l.T);
 			int eba = -LabelOffset;
-			Brush c = TCol(l.Tfi, l.Dir);
-			int w = KWid(l.Kind, l.Tfi);
+			int rk = Rank(l);
+			Brush c = AttL(TCol(l.Tfi, l.Dir), rk);
+			int w = AttW(KWid(l.Kind, l.Tfi), rk);
 			DashStyleHelper s1 = KSty(l.Kind);
 			DashStyleHelper s2 = KCeSty(l.Kind);
+			// one label for the level when its hi / lo / CE labels would overlap
+			bool shi = KShow(l.Kind, 0), slo = KShow(l.Kind, 1), sce = KShow(l.Kind, 2);
+			double gap = sce && (shi || slo) ? (l.Hi - l.Lo) / 2 : l.Hi - l.Lo;
+			int nl = (shi ? 1 : 0) + (slo ? 1 : 0) + (sce ? 1 : 0);
+			bool one = ShowLabels && LabelMerge > 0 && !double.IsNaN(dAtr) && nl >= 2 && gap < LabelMerge * dAtr;
 
 			if (KFill(l.Kind))
 			{
-				int opacity = 100 - (l.Kind == 0 ? FvgTransparency : ViTransparency);
-				Draw.Rectangle(this, Tag(l, "bx"), false, sba, l.Hi, eba, l.Lo, Brushes.Transparent, c, opacity);
+				int opacity = 100 - AttT(l.Kind == 0 ? FvgTransparency : ViTransparency, rk);
+				Draw.Rectangle(this, Tag(l, "bx"), false, sba, l.Hi, eba, l.Lo, Brushes.Transparent, TCol(l.Tfi, l.Dir), opacity);
 			}
-			if (KShow(l.Kind, 0))
+			if (shi)
 			{
 				Draw.Line(this, Tag(l, "hl"), false, sba, l.Hi, eba, l.Hi, c, s1, w);
-				if (ShowLabels)
+				if (ShowLabels && !one)
 					DrawLabel(Tag(l, "hb"), eba, l.Hi, LblTxt(l, TextHigh), c, lblFont, TextAlignment.Left);
 			}
-			if (KShow(l.Kind, 1))
+			if (slo)
 			{
 				Draw.Line(this, Tag(l, "ll"), false, sba, l.Lo, eba, l.Lo, c, s1, w);
-				if (ShowLabels)
+				if (ShowLabels && !one)
 					DrawLabel(Tag(l, "lb"), eba, l.Lo, LblTxt(l, TextLow), c, lblFont, TextAlignment.Left);
 			}
-			if (KShow(l.Kind, 2))
-			{
+			if (sce)
 				Draw.Line(this, Tag(l, "cl"), false, sba, l.Ce, eba, l.Ce, c, s2, w);
-				if (ShowLabels)
-					DrawLabel(Tag(l, "cb"), eba, l.Ce, LblTxt(l, TextCE), c, lblFont, TextAlignment.Left);
+			if (one)
+			{
+				RmTag(l, "hb");
+				RmTag(l, "lb");
+				DrawLabel(Tag(l, "cb"), eba, sce ? l.Ce : (l.Hi + l.Lo) / 2, LblTxt(l, "").Trim(), c, lblFont, TextAlignment.Left);
 			}
+			else if (sce && ShowLabels)
+				DrawLabel(Tag(l, "cb"), eba, l.Ce, LblTxt(l, TextCE), c, lblFont, TextAlignment.Left);
+			else
+				RmTag(l, "cb");
+		}
+
+		private void RmTag(Lvl l, string part)
+		{
+			string tag = "ICTc_" + l.Id + "_" + part;
+			if (l.Tags.Remove(tag))
+				RemoveDrawObject(tag);
 		}
 
 		// margin column of timeframe i: its rank among the enabled timeframes
@@ -976,26 +1050,29 @@ namespace NinjaTrader.NinjaScript.Indicators
 		// FVG by timeframe in the right margin: box in its timeframe column, CE line, arrow label, extended levels
 		private void DrawMM(Lvl l)
 		{
-			Brush c = TCol(l.Tfi, l.Dir);
+			int rk = Rank(l);
+			Brush c = AttL(TCol(l.Tfi, l.Dir), rk);
+			Brush cf = TCol(l.Tfi, l.Dir);
+			int mw = AttW(MfWidth, rk);
 			int x0 = -(MfMarginOffset + MfCol(l.Tfi - 3) * (MfMarginWidth + 1));
 			int x1 = x0 - MfMarginWidth;
 
 			NinjaTrader.NinjaScript.DrawingTools.Rectangle r = Draw.Rectangle(this, Tag(l, "bx"), false,
-				x0, l.Hi, x1, l.Lo, c, MfFill == ICTcotasFill.Never ? Brushes.Transparent : c,
-				MfFill == ICTcotasFill.Never ? 0 : 100 - MfTransparency);
+				x0, l.Hi, x1, l.Lo, c, MfFill == ICTcotasFill.Never ? Brushes.Transparent : cf,
+				MfFill == ICTcotasFill.Never ? 0 : 100 - AttT(MfTransparency, rk));
 			if (r != null)
-				r.OutlineStroke = new Stroke(c, MfStyle, MfWidth);
+				r.OutlineStroke = new Stroke(c, MfStyle, mw);
 			if (MfShowCE)
-				Draw.Line(this, Tag(l, "cbx"), false, x0, l.Ce, x1, l.Ce, c, MfCEStyle, MfWidth);
+				Draw.Line(this, Tag(l, "cbx"), false, x0, l.Ce, x1, l.Ce, c, MfCEStyle, mw);
 
 			if (MfExtend)
 			{
 				int xs = MfExtendTo == ICTcotasExtendTo.ToStart ? BarsAgoOf(l.T)
 					: MfExtendTo == ICTcotasExtendTo.ToCreation ? BarsAgoOf(l.HasTfm ? l.Tfm : l.T) : MfExtendBars;
-				Draw.Line(this, Tag(l, "hl"), false, xs, l.Hi, x0, l.Hi, c, MfStyle, MfWidth);
-				Draw.Line(this, Tag(l, "ll"), false, xs, l.Lo, x0, l.Lo, c, MfStyle, MfWidth);
+				Draw.Line(this, Tag(l, "hl"), false, xs, l.Hi, x0, l.Hi, c, MfStyle, mw);
+				Draw.Line(this, Tag(l, "ll"), false, xs, l.Lo, x0, l.Lo, c, MfStyle, mw);
 				if (MfShowCE)
-					Draw.Line(this, Tag(l, "cl"), false, xs, l.Ce, x0, l.Ce, c, MfCEStyle, MfWidth);
+					Draw.Line(this, Tag(l, "cl"), false, xs, l.Ce, x0, l.Ce, c, MfCEStyle, mw);
 			}
 
 			if (MfLabels)
@@ -1015,22 +1092,25 @@ namespace NinjaTrader.NinjaScript.Indicators
 		{
 			int sba = BarsAgoOf(l.T);
 			int eba = -LabelOffset;
-			Brush c = TCol(l.Tfi, l.Dir);
+			int rk = Rank(l);
+			Brush c = AttL(TCol(l.Tfi, l.Dir), rk);
+			Brush cf = TCol(l.Tfi, l.Dir);
+			int mw = AttW(MfWidth, rk);
 
 			NinjaTrader.NinjaScript.DrawingTools.Rectangle r = Draw.Rectangle(this, Tag(l, "bx"), false,
-				sba, l.Hi, eba, l.Lo, c, MfFill == ICTcotasFill.Always ? c : Brushes.Transparent,
-				MfFill == ICTcotasFill.Always ? 100 - MfTransparency : 0);
+				sba, l.Hi, eba, l.Lo, c, MfFill == ICTcotasFill.Always ? cf : Brushes.Transparent,
+				MfFill == ICTcotasFill.Always ? 100 - AttT(MfTransparency, rk) : 0);
 			if (r != null)
-				r.OutlineStroke = new Stroke(c, MfStyle, MfWidth);
+				r.OutlineStroke = new Stroke(c, MfStyle, mw);
 
 			if (MfShowCE)
-				Draw.Line(this, Tag(l, "cbx"), false, sba, l.Ce, eba, l.Ce, c, MfCEStyle, MfWidth);
+				Draw.Line(this, Tag(l, "cbx"), false, sba, l.Ce, eba, l.Ce, c, MfCEStyle, mw);
 
 			if (MfShowFormation && l.HasTfm && l.Tfm >= l.T)
 			{
 				int fba = BarsAgoOf(l.Tfm);
 				Draw.Line(this, Tag(l, "vl"), false, fba, l.Hi, fba, l.Lo, c, DashStyleHelper.Solid,
-					MfWidth > 1 ? MfWidth - 1 : MfWidth);
+					mw > 1 ? mw - 1 : mw);
 			}
 
 			if (MfLabels && (MfLabelShowTf || MfLabelShowType || MfLabelShowDir))
@@ -1075,6 +1155,11 @@ namespace NinjaTrader.NinjaScript.Indicators
 		[NinjaScriptProperty]
 		[Display(Name = "Remove when", Description = "When a level is considered mitigated and removed. Fully filled means price crossed the far edge (by wick, or by a close of the level's own timeframe). FVGs follow the IFVG rule instead when it is enabled.", GroupName = GGen, Order = 5)]
 		public ICTcotasMitigation Mitigation { get; set; }
+
+		[NinjaScriptProperty]
+		[Range(0, 4)]
+		[Display(Name = "Attenuation", Description = "Dims the drawings, 0: as configured (default), 4: the most dimmed. Levels have three ranks: important (weekly and monthly), normal (daily and 4H) and minor (15m and 1H). Volume imbalances, wick CEs and ULW CEs are one rank lower than FVGs of the same timeframe. Each level dims minor drawings the most and important ones the least; widths go down by 1 when dimmed enough.", GroupName = GGen, Order = 6)]
+		public int Attenuation { get; set; }
 
 		// ---------------------------------------------------------------- Colors
 		[NinjaScriptProperty]
@@ -1170,6 +1255,11 @@ namespace NinjaTrader.NinjaScript.Indicators
 		[Range(1, int.MaxValue)]
 		[Display(Name = "Offset", Description = "Bars between the last bar and the labels", GroupName = GLbl, Order = 5)]
 		public int LabelOffset { get; set; }
+
+		[NinjaScriptProperty]
+		[Range(0, double.MaxValue)]
+		[Display(Name = "One label when hi / lo / CE closer than x daily ATR", Description = "When the hi, lo and CE labels of a level would be closer than this fraction of the daily ATR(14), the level gets a single label (D VI) at its CE instead of three overlapping ones. 0 to always use one label per line", GroupName = GLbl, Order = 12)]
+		public double LabelMerge { get; set; }
 
 		[NinjaScriptProperty]
 		[Display(Name = "Text: daily", GroupName = GLbl, Order = 6)]
