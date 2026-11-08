@@ -4,7 +4,7 @@
 // quadrants and standard deviations, premarket range, EQH/EQL, PO3 lines, TGIF levels, macros,
 // silver bullet and a session/macro status text. Draws levels only: no plots, no signals, no alerts.
 //
-// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 541dee28a673cd51828b3654d22ddf7e),
+// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 8ae6e30348bcf2cfe3637af7ab51ae4a),
 // © franjballest, Mozilla Public License 2.0 (https://mozilla.org/MPL/2.0/).
 //
 // Install:
@@ -246,6 +246,9 @@ namespace NinjaTrader.NinjaScript.Indicators
 		private List<double> bkH = new List<double>(), bkL = new List<double>(), bkO = new List<double>(), bkC = new List<double>();
 		private List<DateTime> bkT = new List<DateTime>();
 		private double bkRng = double.NaN;
+		// [MON] previous months (year * 12 + month) whose high / low was taken by a completed day candle that opened
+		// and closed beyond it
+		private HashSet<int> mTkH = new HashSet<int>(), mTkL = new HashSet<int>();
 		private bool flatHi, flatLo;  // [LVL] flat top / bottom of this chart candle and the previous one
 		private SimpleFont fTg, fPm, fEq, fNormal, fTable;
 
@@ -566,6 +569,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 			bkC.Clear();
 			bkT.Clear();
 			bkRng = double.NaN;
+			mTkH.Clear();
+			mTkL.Clear();
 
 			atrC = ATR(BarsArray[0], 14);
 			atrD = ATR(BarsArray[1], 14);
@@ -957,6 +962,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 			if (CurrentBars[1] < 0)
 				return;
 			datr = atrD[0];
+			MonTaken();
 			dph = double.NaN;
 			dpl = double.NaN;
 			int L = EqLenD;
@@ -967,6 +973,29 @@ namespace NinjaTrader.NinjaScript.Indicators
 				dpt = Time[L + 1];   // start of the pivot day (close of the day before)
 			}
 			dailySeq++;
+		}
+
+		// [MON] the daily bar that just completed takes a previous month high (low) when it opened and closed above
+		// (below) it, after that month
+		private void MonTaken()
+		{
+			if (BarsArray.Length < 3 || CurrentBars[2] < 0)
+				return;
+			DateTime dt = Times[1][0];
+			double bt = Math.Min(Opens[1][0], Closes[1][0]);
+			double bb = Math.Max(Opens[1][0], Closes[1][0]);
+			for (int k = 0; k < 3 && k <= CurrentBars[2]; k++)
+			{
+				DateTime mt = Times[2][k];
+				DateTime ms = new DateTime(mt.Year, mt.Month, 1);
+				if (dt < ms.AddMonths(1))
+					continue;
+				int key = ms.Year * 12 + ms.Month;
+				if (bt > Highs[2][k])
+					mTkH.Add(key);
+				if (bb < Lows[2][k])
+					mTkL.Add(key);
+			}
 		}
 
 		#endregion
@@ -1118,13 +1147,15 @@ namespace NinjaTrader.NinjaScript.Indicators
 				DateTime ms = new DateTime(mt.Year, mt.Month, 1);
 				DateTime tc = ms.AddMonths(1);
 				string suf = " " + ms.ToString("MMM", CultureInfo.InvariantCulture);
-				GetM(k * 3, ms, Highs[2][k], MonMaxColor, "max" + suf, first);
-				GetM(k * 3 + 1, ms, Lows[2][k], MonMinColor, "min" + suf, first);
-				GetM(k * 3 + 2, tc, Closes[2][k], MonCloseColor, "close" + suf, first);
+				int key = ms.Year * 12 + ms.Month;
+				GetM(k * 3, ms, Highs[2][k], MonMaxColor, "max" + suf, first, mTkH.Contains(key));
+				GetM(k * 3 + 1, ms, Lows[2][k], MonMinColor, "min" + suf, first, mTkL.Contains(key));
+				GetM(k * 3 + 2, tc, Closes[2][k], MonCloseColor, "close" + suf, first, false);
 			}
 		}
 
-		private void GetM(int idx, DateTime t, double p, Brush c, string txt, DateTime first)
+		// month line and label, normal rank; a taken high / low is drawn in the close color and minor
+		private void GetM(int idx, DateTime t, double p, Brush c, string txt, DateTime first, bool tk)
 		{
 			DateTime t1 = t < first ? first : t;
 			LL m = mls[idx];
@@ -1137,10 +1168,10 @@ namespace NinjaTrader.NinjaScript.Indicators
 			m.x2 = t1.AddSeconds(tfsecs);
 			m.lx = TRight(Xoff);
 			m.y = p;
-			m.c = AttL(c, 1);      // [ATT] months: normal rank
+			m.c = tk ? AttL(MonCloseColor, 2) : AttL(c, 1);      // [ATT] months: normal rank
 			m.tc = m.c;
 			m.sty = MonStyle;
-			m.w = AttW(MonWidth, 1);
+			m.w = tk ? AttW(MonWidth, 2) : AttW(MonWidth, 1);
 			m.txt = txt;
 			m.font = fNormal;
 			m.ray = true;

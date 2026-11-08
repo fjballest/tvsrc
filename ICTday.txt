@@ -1842,23 +1842,85 @@ if inWin and tfok and doeqhl and doeqd
             addPiv(lpvD, dpl, dpt, false, tolD)
 
 // ============================================================ months
-getm(MonLn m, int t, float p, color c, string txt) =>
+// [MON] a previous month high (low) is taken once a completed day candle opens and closes above (below) it, both
+// after that month. Evaluated on the daily bars (their whole history), the day before each bar ([1] with
+// lookahead_on): month keys (year * 12 + month of the day close) of the last three completed months, newest
+// first, and their taken flags
+monKey(int t) =>
+    year(t) * 12 + month(t)
+monTaken() =>
+    var array<int> mk = array.new<int>()
+    var array<float> mh = array.new<float>()
+    var array<float> ml = array.new<float>()
+    var array<bool> th = array.new<bool>()
+    var array<bool> tl = array.new<bool>()
+    var int ck = na
+    var float ch = na
+    var float cl = na
+    int k = monKey(time_close[1])
+    if not na(time_close[1])
+        if na(ck) or k != ck
+            if not na(ck)
+                mk.push(ck)
+                mh.push(ch)
+                ml.push(cl)
+                th.push(false)
+                tl.push(false)
+                if mk.size() > 3
+                    mk.shift()
+                    mh.shift()
+                    ml.shift()
+                    th.shift()
+                    tl.shift()
+            ck := k
+            ch := high[1]
+            cl := low[1]
+        else
+            ch := math.max(ch, high[1])
+            cl := math.min(cl, low[1])
+        int nm = mk.size()
+        if nm > 0
+            for i = 0 to nm - 1
+                if math.min(open[1], close[1]) > mh.get(i)
+                    th.set(i, true)
+                if math.max(open[1], close[1]) < ml.get(i)
+                    tl.set(i, true)
+    int n = mk.size()
+    [n > 0 ? mk.get(n - 1) : na, n > 0 ? th.get(n - 1) : false, n > 0 ? tl.get(n - 1) : false,
+         n > 1 ? mk.get(n - 2) : na, n > 1 ? th.get(n - 2) : false, n > 1 ? tl.get(n - 2) : false,
+         n > 2 ? mk.get(n - 3) : na, n > 2 ? th.get(n - 3) : false, n > 2 ? tl.get(n - 3) : false]
+
+[mk1, mth1, mtl1, mk2, mth2, mtl2, mk3, mth3, mtl3] = request.security(syminfo.tickerid, "D", monTaken(),
+     lookahead = barmerge.lookahead_on)
+
+// taken flags of the month that starts at t (month bar time; a week later is safely inside the month)
+monTk(int t, bool hi) =>
+    int k = monKey(t + 7 * 86400000)
+    k == mk1 ? (hi ? mth1 : mtl1) : k == mk2 ? (hi ? mth2 : mtl2) : k == mk3 ? (hi ? mth3 : mtl3) : false
+
+// month line and label, normal rank; a taken high / low is drawn in the close color and minor
+getm(MonLn m, int t, float p, color c, string txt, bool tk = false) =>
+    color cc = tk ? attL(monccol, 2) : attL(c, 1)
+    int w = tk ? attW(monwid, 2) : attW(monwid, 1)
     if na(m.ln)
-        m.ln := line.new(t, p, t + tfms, p, xloc = xloc.bar_time, extend = extend.right, color = attL(c, 1),
-             width = attW(monwid, 1), style = monsty)
+        m.ln := line.new(t, p, t + tfms, p, xloc = xloc.bar_time, extend = extend.right, color = cc,
+             width = w, style = monsty)
         m.lbl := label.new(tright(xoff), p, txt, xloc = xloc.bar_time,
-             style = label.style_label_left, color = transparent, textcolor = attL(c, 1))
+             style = label.style_label_left, color = transparent, textcolor = cc)
     else
         m.ln.set_xy1(t, p)
         m.ln.set_xy2(t + tfms, p)
+        m.ln.set_color(cc)
+        m.ln.set_width(w)
         m.lbl.set_xy(tright(xoff), p)
         m.lbl.set_text(txt)
+        m.lbl.set_textcolor(cc)
     true
 drawMonth(int idx, float h, float l, float c, int t, int tc) =>
     if not na(h) and not na(t)
         string suf = " " + str.format_time(t + 7 * 86400000, "MMM") + "\n"
-        getm(mls.get(idx * 3), t, h, monmaxcol, "max" + suf)
-        getm(mls.get(idx * 3 + 1), t, l, monmincol, "min" + suf)
+        getm(mls.get(idx * 3), t, h, monmaxcol, "max" + suf, monTk(t, true))
+        getm(mls.get(idx * 3 + 1), t, l, monmincol, "min" + suf, monTk(t, false))
         getm(mls.get(idx * 3 + 2), tc, c, monccol, "close" + suf)
 
 [mh1, ml1, mc1, mt1, mtc1,

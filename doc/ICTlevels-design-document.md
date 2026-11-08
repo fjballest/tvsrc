@@ -165,6 +165,8 @@ With `doeq3`, 3-candle swings (`ta.pivothigh` / `ta.pivotlow` with one bar on ea
 
 One `request.security` call on `M` returns high, low and close of the previous three months, with the bar times. `drawMonth` creates each line once and then only updates it, extended to the right, with a label such as "max Sep".
 
+Taken months (`[MON]`): a second `request.security` call on `D` runs `monTaken()` over the whole daily history, one day late (`[1]` values, `lookahead_on`, so nothing repaints). It builds month highs and lows from the daily bars (month key `monKey(time_close)`, year * 12 + month), keeps the last three completed months and flags a high (low) taken when a later completed day has `min(open, close)` above it (`max(open, close)` below it). It returns the keys and flags newest first; `monTk(t, hi)` matches a month bar time (plus a week, safely inside the month) to them. `getm(..., tk)` draws a taken high / low in `monccol` at rank 2 (attenuation), recoloring on every last-bar update. Ports: Ninja `MonTaken()` on each daily bar (`mTkH` / `mTkL` month keys, `GetM(..., tk)`); Tradovate `tkH` / `tkL` on the month bars, set when a chart-built day completes.
+
 ### Macros and table
 
 Macro, session and silver bullet windows are tested with `inside(tsec)`. During a macro the chart background can be tinted (`domacrobg`, only when the chart timeframe is below 15m), and the table shows the names of the active session, macro and silver bullet, plus a warning when the object cap forced limits.

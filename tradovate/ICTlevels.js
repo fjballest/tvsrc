@@ -11,7 +11,7 @@
  *   It draws levels only: no signals, no alerts, no plots.
  *
  *   It is a port of the TradingView Pine Script v6 indicator ICTlevels.txt
- *   (md5 541dee28a673cd51828b3654d22ddf7e). Parameter names are the Pine variable names and the
+ *   (md5 8ae6e30348bcf2cfe3637af7ab51ae4a). Parameter names are the Pine variable names and the
  *   defaults are the Pine defaults; see "doc/ICTlevels-user-manual.md" for what every level means.
  *
  * How to install
@@ -700,13 +700,26 @@ class ICTlevels {
                 newDBar = true;
                 const db = S.dcur;
                 S.dbars.push({ h: db.h, l: db.l, i0: db.i0 });
+                // [MON] the completed day takes a previous month high (low) when it opened and closed above (below)
+                // it, after that month
+                const dmk = Math.floor(db.key / 100);
+                for (const m of S.mbars) {
+                    if (m.key < dmk) {
+                        if (Math.min(db.o, db.c) > m.h) {
+                            m.tkH = true;
+                        }
+                        if (Math.max(db.o, db.c) < m.l) {
+                            m.tkL = true;
+                        }
+                    }
+                }
                 if (S.dbars.length > 200) {
                     S.dbars.shift();
                 }
                 atrPush(S.datrS, db.h, db.l, db.c);
                 S.datr = S.datrS.val;
             }
-            S.dcur = { key: dkey, h: high, l: low, c: close, i0: i };
+            S.dcur = { key: dkey, o: open, h: high, l: low, c: close, i0: i };
         } else {
             S.dcur.h = Math.max(S.dcur.h, high);
             S.dcur.l = Math.min(S.dcur.l, low);
@@ -720,7 +733,7 @@ class ICTlevels {
                     S.mbars.shift();
                 }
             }
-            S.mcur = { key: mkey, h: high, l: low, c: close, i0: i, full: !!S.mcur };
+            S.mcur = { key: mkey, h: high, l: low, c: close, i0: i, full: !!S.mcur, tkH: false, tkL: false };
         } else {
             S.mcur.h = Math.max(S.mcur.h, high);
             S.mcur.l = Math.min(S.mcur.l, low);
@@ -1549,12 +1562,14 @@ class ICTlevels {
                 }
                 const tc = k === 0 ? S.mcur.i0 : ms[k - 1].i0;
                 const suf = " " + MONTHS[(m.key % 100) - 1];
-                // [ATT] months: normal rank
-                const mw = attW(P, P.monwid, 1);
-                const cx = attL(P, P.monmaxcol, 1), cn = attL(P, P.monmincol, 1), cc = attL(P, P.monccol, 1);
-                G.line(m.i0, m.i0 + 1, m.h, cx, P.monsty, mw, true);
+                // [ATT] months: normal rank; [MON] a taken high / low is drawn in the close color and minor
+                const mw = attW(P, P.monwid, 1), mt = attW(P, P.monwid, 2);
+                const ct = attL(P, P.monccol, 2);
+                const cx = m.tkH ? ct : attL(P, P.monmaxcol, 1), cn = m.tkL ? ct : attL(P, P.monmincol, 1);
+                const cc = attL(P, P.monccol, 1);
+                G.line(m.i0, m.i0 + 1, m.h, cx, P.monsty, m.tkH ? mt : mw, true);
                 G.text(xr, m.h, "max" + suf, cx, 12);
-                G.line(m.i0, m.i0 + 1, m.l, cn, P.monsty, mw, true);
+                G.line(m.i0, m.i0 + 1, m.l, cn, P.monsty, m.tkL ? mt : mw, true);
                 G.text(xr, m.l, "min" + suf, cn, 12);
                 G.line(tc, tc + 1, m.c, cc, P.monsty, mw, true);
                 G.text(xr, m.c, "close" + suf, cc, 12);
