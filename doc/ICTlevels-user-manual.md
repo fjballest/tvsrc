@@ -322,6 +322,7 @@ The first group: one switch per feature, so you can turn features on and off wit
 | Label in dialog | Default | What it does |
 | --- | --- | --- |
 | Attenuation | 2 (0 to 4) | Dims the drawings: 0 as configured, 4 the most dimmed. See below. |
+| Ignore wicks longer than (daily ATRs) | 6 | Bad data filter. A wick longer than this many daily ATRs (chart, daily or monthly candle) is taken as a bad print: the candle's high or low is taken at its body, so day, session, week and month highs and lows, swings, EQH / EQL and ranges leave it out. 0 turns it off. Also in ICTgaps and ICTday |
 | Month max/min/close (last 3 months) | on | Draws the high, low and close of the last three completed months. |
 | TGIF levels | on | Draws the TGIF levels on Friday, or on Monday, while they apply. |
 | Sessions | on | Draws the Asia, London, NY AM and NY PM sessions and their high and low. |

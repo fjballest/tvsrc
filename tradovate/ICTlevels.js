@@ -11,7 +11,7 @@
  *   It draws levels only: no signals, no alerts, no plots.
  *
  *   It is a port of the TradingView Pine Script v6 indicator ICTlevels.txt
- *   (md5 bbdcc99a1af3144046223614003b83a2). Parameter names are the Pine variable names and the
+ *   (md5 d83834d3fbab817754763faa623ba49d). Parameter names are the Pine variable names and the
  *   defaults are the Pine defaults; see "doc/ICTlevels-user-manual.md" for what every level means.
  *
  * How to install
@@ -73,6 +73,7 @@ const PARAMS = {
     // Enable / Filter
     attLvl: ps.number(2, 1, 0),
     attbg: ps.color("#FFFFFF"),
+    badatr: ps.number(6, 0.5, 0),
     domonth: ps.bool(true),
     dotgif: ps.bool(true),
     doses: ps.bool(true),
@@ -665,7 +666,15 @@ class ICTlevels {
     step(d, i, last) {
         const S = this.S, C = this.C, P = this.P;
         const t = d.timestamp().getTime();
-        const open = d.open(), high = d.high(), low = d.low(), close = d.close();
+        const open = d.open(), close = d.close();
+        let high = d.high(), low = d.low();
+        // bad data: a wick longer than badatr daily ATRs is a bad print, not price; the high / low is taken at the
+        // body, so the day and month bars built from the chart (and the daily ATR) leave it out too
+        if (P.badatr > 0 && S.datr !== null) {
+            const lim = P.badatr * S.datr, bt = Math.max(open, close), bb = Math.min(open, close);
+            if (high - bt > lim) high = bt;
+            if (bb - low > lim) low = bb;
+        }
         const pv = S.prev;
         if (pv && t > pv.t) {
             const dt = (t - pv.t) / 1000;

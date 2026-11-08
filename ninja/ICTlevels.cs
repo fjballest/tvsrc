@@ -4,7 +4,7 @@
 // quadrants and standard deviations, premarket range, EQH/EQL, PO3 lines, TGIF levels, macros,
 // silver bullet and a session/macro status text. Draws levels only: no plots, no signals, no alerts.
 //
-// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 bbdcc99a1af3144046223614003b83a2),
+// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 d83834d3fbab817754763faa623ba49d),
 // © franjballest, Mozilla Public License 2.0 (https://mozilla.org/MPL/2.0/).
 //
 // Install:
@@ -266,7 +266,32 @@ namespace NinjaTrader.NinjaScript.Indicators
 		private bool winSet;
 
 		// daily series (completed bars)
-		private ATR atrC, atrD;
+		private Series<double> cAtr;   // chart ATR(14), RMA of the cleaned true range
+
+		// bad data: a wick longer than BadAtr daily ATRs is a bad print, not price; the high / low is taken at the
+		// body. The daily ATR (datr) is built from daily candles cleaned with the ATR so far, so a bad print does not
+		// inflate it. Hc / Lc read the series in progress.
+		private double CH(int k, int i)
+		{
+			double h = Highs[k][i], b = Math.Max(Opens[k][i], Closes[k][i]);
+			return BadAtr > 0 && !double.IsNaN(datr) && h - b > BadAtr * datr ? b : h;
+		}
+
+		private double CL(int k, int i)
+		{
+			double l = Lows[k][i], b = Math.Min(Opens[k][i], Closes[k][i]);
+			return BadAtr > 0 && !double.IsNaN(datr) && b - l > BadAtr * datr ? b : l;
+		}
+
+		private double Hc(int i)
+		{
+			return CH(BarsInProgress, i);
+		}
+
+		private double Lc(int i)
+		{
+			return CL(BarsInProgress, i);
+		}
 		private double datr = double.NaN, dph = double.NaN, dpl = double.NaN;
 		private DateTime dpt;
 		private int dailySeq, dailySeqSeen;
@@ -300,6 +325,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 
 				ZoneMode = ICTlevelsZoneMode.Auto;
 				Attenuation = 2;
+				BadAtr = 6;
 				DoBody = true;
 				ComputeVisible = false;
 				Xoff = 2;
@@ -579,8 +605,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 			mTkL.Clear();
 			dMo = dXo = double.NaN;
 
-			atrC = ATR(BarsArray[0], 14);
-			atrD = ATR(BarsArray[1], 14);
+			cAtr = new Series<double>(this);
 		}
 
 		private void FreezeBrushes()
@@ -629,7 +654,14 @@ namespace NinjaTrader.NinjaScript.Indicators
 				OnDailyBar();
 				return;
 			}
-			if (BarsInProgress != 0 || !tfok)
+			if (BarsInProgress != 0)
+				return;
+			{
+				double ch = Hc(0), cl = Lc(0);
+				double tr = CurrentBar < 1 ? ch - cl : Math.Max(ch, Close[1]) - Math.Min(cl, Close[1]);
+				cAtr[0] = CurrentBar < 1 || double.IsNaN(cAtr[1]) ? tr : (cAtr[1] * 13 + tr) / 14;
+			}
+			if (!tfok)
 				return;
 
 			barTz = ToTz(Time[0].AddSeconds(-tfsecs));   // bar open time in the target time zone
@@ -774,8 +806,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 						tgT0 = Time[0];
 					}
 					twO = Open[0];
-					twH = High[0];
-					twL = Low[0];
+					twH = Hc(0);
+					twL = Lc(0);
 				}
 				else if (!double.IsNaN(twO))
 				{
@@ -792,8 +824,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 						tgDir = 0;
 						tgMon = false;
 					}
-					twH = Math.Max(twH, High[0]);
-					twL = Math.Min(twL, Low[0]);
+					twH = Math.Max(twH, Hc(0));
+					twL = Math.Min(twL, Lc(0));
 				}
 				if (tgDir != 0)
 				{
@@ -804,7 +836,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 					}
 					tgV1 = tgX - tgDir * TgP1 * tgR;
 					tgV2 = tgX - tgDir * TgP2 * tgR;
-					if (!tgHit && (tgDir == 1 ? Low[0] <= tgV1 : High[0] >= tgV1))
+					if (!tgHit && (tgDir == 1 ? Lc(0) <= tgV1 : Hc(0) >= tgV1))
 						tgHit = true;
 				}
 			}
@@ -880,8 +912,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 					IRthog ag = rthogs[rthogs.Count - 1];
 					if (ag.tend.HasValue && Time[0] > ag.tend.Value)
 					{
-						ag.xhi = Math.Max(ag.xhi, High[0]);
-						ag.xlo = Math.Min(ag.xlo, Low[0]);
+						ag.xhi = Math.Max(ag.xhi, Hc(0));
+						ag.xlo = Math.Min(ag.xlo, Lc(0));
 					}
 				}
 			}
@@ -891,15 +923,15 @@ namespace NinjaTrader.NinjaScript.Indicators
 				IZone az = premarkets[premarkets.Count - 1];
 				if (az.tend.HasValue && Time[0] > az.tend.Value && (!az.tclose.HasValue || Time[0] < az.tclose.Value))
 				{
-					az.xhi = double.IsNaN(az.xhi) ? High[0] : Math.Max(az.xhi, High[0]);
-					az.xlo = double.IsNaN(az.xlo) ? Low[0] : Math.Min(az.xlo, Low[0]);
+					az.xhi = double.IsNaN(az.xhi) ? Hc(0) : Math.Max(az.xhi, Hc(0));
+					az.xlo = double.IsNaN(az.xlo) ? Lc(0) : Math.Min(az.xlo, Lc(0));
 				}
 			}
 
 			// ---------------------------------------------------- EQH / EQL
 			if (inWin && DoEqhl)
 			{
-				double tol = EqTol * Nz(atrC[0]);
+				double tol = EqTol * Nz(cAtr[0]);
 				SweepPivs(hpv, true, tol);
 				SweepPivs(lpv, false, tol);
 				Sweep3(sh3p, sh3t, true);
@@ -973,7 +1005,11 @@ namespace NinjaTrader.NinjaScript.Indicators
 		{
 			if (CurrentBars[1] < 0)
 				return;
-			datr = atrD[0];
+			{
+				double dh = Hc(0), dl = Lc(0);
+				double tr = CurrentBars[1] < 1 ? dh - dl : Math.Max(dh, Closes[1][1]) - Math.Min(dl, Closes[1][1]);
+				datr = double.IsNaN(datr) ? tr : (datr * 13 + tr) / 14;
+			}
 			dph = double.NaN;
 			dpl = double.NaN;
 			int L = EqLenD;
@@ -1020,9 +1056,9 @@ namespace NinjaTrader.NinjaScript.Indicators
 				if (dt < ms.AddMonths(1))
 					continue;
 				int key = ms.Year * 12 + ms.Month;
-				if (dc > Highs[2][k] && xo > Highs[2][k])
+				if (dc > CH(2, k) && xo > CH(2, k))
 					mTkH.Add(key);
-				if (dc < Lows[2][k] && mo < Lows[2][k])
+				if (dc < CL(2, k) && mo < CL(2, k))
 					mTkL.Add(key);
 			}
 		}
@@ -1210,8 +1246,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 				DateTime tc = ms.AddMonths(1);
 				string suf = " " + ms.ToString("MMM", CultureInfo.InvariantCulture);
 				int key = ms.Year * 12 + ms.Month;
-				GetM(k * 3, ms, Highs[2][k], MonMaxColor, "max" + suf, first, mTkH.Contains(key));
-				GetM(k * 3 + 1, ms, Lows[2][k], MonMinColor, "min" + suf, first, mTkL.Contains(key));
+				GetM(k * 3, ms, CH(2, k), MonMaxColor, "max" + suf, first, mTkH.Contains(key));
+				GetM(k * 3 + 1, ms, CL(2, k), MonMinColor, "min" + suf, first, mTkL.Contains(key));
 				GetM(k * 3 + 2, tc, Closes[2][k], MonCloseColor, "close" + suf, first, false);
 			}
 		}
@@ -1273,8 +1309,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 				dstr = DateStr(),
 				tstart = Time[0],
 				op = Open[0],
-				hi = High[0],
-				lo = Low[0],
+				hi = Hc(0),
+				lo = Lc(0),
 				hit = Time[0],
 				lot = Time[0],
 				zi = zi
@@ -1590,10 +1626,10 @@ namespace NinjaTrader.NinjaScript.Indicators
 		// only state, no drawing: cheap per bar
 		private void Upd(IZone z)
 		{
-			if (High[0] >= z.hi)
+			if (Hc(0) >= z.hi)
 			{
 				z.hit = Time[0];
-				z.hi = High[0];
+				z.hi = Hc(0);
 				z.hbk = bkN;
 				z.hsw = 0;
 				z.hrel = false;
@@ -1602,10 +1638,10 @@ namespace NinjaTrader.NinjaScript.Indicators
 			}
 			else if (z.hit == Time[1] && flatHi)
 				z.hrelc = true;
-			if (Low[0] <= z.lo)
+			if (Lc(0) <= z.lo)
 			{
 				z.lot = Time[0];
-				z.lo = Low[0];
+				z.lo = Lc(0);
 				z.lbk = bkN;
 				z.lsw = 0;
 				z.lrel = false;
@@ -1614,9 +1650,9 @@ namespace NinjaTrader.NinjaScript.Indicators
 			}
 			else if (z.lot == Time[1] && flatLo)
 				z.lrelc = true;
-			if (!double.IsNaN(z.bhi) && High[0] > z.bhi)
+			if (!double.IsNaN(z.bhi) && Hc(0) > z.bhi)
 				z.bhtk = true;
-			if (!double.IsNaN(z.blo) && Low[0] < z.blo)
+			if (!double.IsNaN(z.blo) && Lc(0) < z.blo)
 				z.bltk = true;
 		}
 
@@ -1634,8 +1670,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 				}
 				bkId = cur;
 				bkN += 1;
-				bkH.Add(High[0]);
-				bkL.Add(Low[0]);
+				bkH.Add(Hc(0));
+				bkL.Add(Lc(0));
 				bkO.Add(Open[0]);
 				bkC.Add(Close[0]);
 				bkT.Add(Time[0]);
@@ -1650,8 +1686,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 				return true;
 			}
 			int k = bkH.Count - 1;
-			bkH[k] = Math.Max(bkH[k], High[0]);
-			bkL[k] = Math.Min(bkL[k], Low[0]);
+			bkH[k] = Math.Max(bkH[k], Hc(0));
+			bkL[k] = Math.Min(bkL[k], Lc(0));
 			bkC[k] = Close[0];
 			return false;
 		}
@@ -1661,16 +1697,16 @@ namespace NinjaTrader.NinjaScript.Indicators
 		private void ComputeFlats()
 		{
 			double tick = TickSize;
-			double tol0 = Math.Max(2 * tick, 0.1 * Nz(atrC[0]));
-			double tol1 = Math.Max(2 * tick, 0.1 * Nz(atrC[1]));
-			double wm0 = Math.Max(tol0, 0.2 * (High[0] - Low[0]));
-			double wm1 = Math.Max(tol1, 0.2 * (High[1] - Low[1]));
-			double uw0 = High[0] - Math.Max(Open[0], Close[0]);
-			double uw1 = High[1] - Math.Max(Open[1], Close[1]);
-			double lw0 = Math.Min(Open[0], Close[0]) - Low[0];
-			double lw1 = Math.Min(Open[1], Close[1]) - Low[1];
-			flatHi = Math.Abs(High[0] - High[1]) <= tol0 && uw0 <= wm0 && uw1 <= wm1;
-			flatLo = Math.Abs(Low[0] - Low[1]) <= tol0 && lw0 <= wm0 && lw1 <= wm1;
+			double tol0 = Math.Max(2 * tick, 0.1 * Nz(cAtr[0]));
+			double tol1 = Math.Max(2 * tick, 0.1 * Nz(cAtr[1]));
+			double wm0 = Math.Max(tol0, 0.2 * (Hc(0) - Lc(0)));
+			double wm1 = Math.Max(tol1, 0.2 * (Hc(1) - Lc(1)));
+			double uw0 = Hc(0) - Math.Max(Open[0], Close[0]);
+			double uw1 = Hc(1) - Math.Max(Open[1], Close[1]);
+			double lw0 = Math.Min(Open[0], Close[0]) - Lc(0);
+			double lw1 = Math.Min(Open[1], Close[1]) - Lc(1);
+			flatHi = Math.Abs(Hc(0) - Hc(1)) <= tol0 && uw0 <= wm0 && uw1 <= wm1;
+			flatLo = Math.Abs(Lc(0) - Lc(1)) <= tol0 && lw0 <= wm0 && lw1 <= wm1;
 		}
 
 		// [LVL] candles i and j (bucket indexes) make a flat top (bottom): highs (lows) within tolerance (2 ticks or
@@ -1772,16 +1808,16 @@ namespace NinjaTrader.NinjaScript.Indicators
 					monz.RemoveAt(i);
 					continue;
 				}
-				if (!z.hidonet.HasValue && High[0] > z.hi)
+				if (!z.hidonet.HasValue && Hc(0) > z.hi)
 				{
 					z.hidonet = Time[0];
 					z.dirty = true;
 				}
-				if (!double.IsNaN(z.bhi) && High[0] > z.bhi)
+				if (!double.IsNaN(z.bhi) && Hc(0) > z.bhi)
 					z.bhtk = true;
-				if (!double.IsNaN(z.blo) && Low[0] < z.blo)
+				if (!double.IsNaN(z.blo) && Lc(0) < z.blo)
 					z.bltk = true;
-				if (!z.lodonet.HasValue && Low[0] < z.lo)
+				if (!z.lodonet.HasValue && Lc(0) < z.lo)
 				{
 					z.lodonet = Time[0];
 					z.dirty = true;
@@ -2278,8 +2314,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 		{
 			g.op = opv;
 			g.tend = Time[0];
-			g.xhi = High[0];
-			g.xlo = Low[0];
+			g.xhi = Hc(0);
+			g.xlo = Lc(0);
 			string tg = RTag(g);
 			DateTime x1 = TRight(Xoff);
 			DateTime x0 = Time[0].AddSeconds(-(double)tfsecs * rdx);
@@ -2405,18 +2441,18 @@ namespace NinjaTrader.NinjaScript.Indicators
 		// the len bars on each side
 		private double PivotHigh(int len)
 		{
-			double c = High[len];
+			double c = Hc(len);
 			for (int i = 1; i <= len; i++)
-				if (High[len + i] >= c || High[len - i] >= c)
+				if (Hc(len + i) >= c || Hc(len - i) >= c)
 					return double.NaN;
 			return c;
 		}
 
 		private double PivotLow(int len)
 		{
-			double c = Low[len];
+			double c = Lc(len);
 			for (int i = 1; i <= len; i++)
-				if (Low[len + i] <= c || Low[len - i] <= c)
+				if (Lc(len + i) <= c || Lc(len - i) <= c)
 					return double.NaN;
 			return c;
 		}
@@ -2463,7 +2499,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 			{
 				IPiv v = arr[i];
 				double slack = v.eq ? 0.0 : tol;
-				bool swept = isHigh ? High[0] > v.p + slack : Low[0] < v.p - slack;
+				bool swept = isHigh ? Hc(0) > v.p + slack : Lc(0) < v.p - slack;
 				if (swept)
 				{
 					RemovePiv(v);
@@ -2502,7 +2538,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 		{
 			for (int i = ps.Count - 1; i >= 0; i--)
 			{
-				if (isHigh ? High[0] > ps[i] : Low[0] < ps[i])
+				if (isHigh ? Hc(0) > ps[i] : Lc(0) < ps[i])
 				{
 					ps.RemoveAt(i);
 					ts.RemoveAt(i);
@@ -2907,6 +2943,11 @@ namespace NinjaTrader.NinjaScript.Indicators
 		[Range(0, 4)]
 		[Display(Name = "Attenuation", GroupName = "Enable / Filter", Order = 0, Description = "Dims the drawings, 0: as configured, 4: the most dimmed (2 by default). Levels have three ranks: important (the last M.O., the untaken high / low of the previous day and of the last two ended sessions, the current and previous RTHOG, TGIF, NWOGs, the last NDOG, swing highs / lows and body levels), normal (months, other day and session max/min, week lines, current RTHOG quadrants and octants, PMKT high / low, EQH / EQL, macro background) and minor (day lines, eq, older M.O.s, older NDOGs, old RTHOGs, stddevs, PMKT quadrants). Each level dims minor drawings the most and important ones the least; widths go down by 1 when dimmed enough. Session rectangles: filled and lighter at 1, outline only from 2 on. Gap rectangles fade with the rank of their gap.")]
 		public int Attenuation { get; set; }
+
+		[NinjaScriptProperty]
+		[Range(0, double.MaxValue)]
+		[Display(Name = "Ignore wicks longer than (daily ATRs)", GroupName = "Enable / Filter", Order = 10, Description = "Bad data: a wick longer than this many daily ATRs (chart, daily and monthly candles) is taken as a bad print, and the candle's high or low is taken at its body: day, session, week and month highs / lows, swings, EQH / EQL and ranges leave it out. 0: off.")]
+		public double BadAtr { get; set; }
 
 		[NinjaScriptProperty]
 		[Display(Name = "Month max/min/close (last 3 months)", GroupName = "Enable / Filter", Order = 1)]

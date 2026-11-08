@@ -63,6 +63,10 @@ int attLvl = input.int(2, "Attenuation", minval = 0, maxval = 4, group = G_EN,
      + "(day lines, eq, older M.O.s, older NDOGs, old RTHOGs, stddevs, PMKT quadrants). Each level dims minor drawings the "
      + "most and important ones the least; widths go down by 1 when dimmed enough. Session rectangles: filled "
      + "and lighter at 1, outline only from 2 on. Gap rectangles fade with the rank of their gap.")
+float badatr = input.float(6, "Ignore wicks longer than (daily ATRs)", minval = 0, step = 0.5, group = G_EN,
+     tooltip = "Bad data: a wick longer than this many daily ATRs (chart, daily and monthly candles) is taken as a "
+     + "bad print, and the candle's high or low is taken at its body: day, session, week and month highs / lows, "
+     + "swings, EQH / EQL and ranges leave it out. 0: off.")
 // [ATT] dimming steps of a rank (0 important, 1 normal, 2 minor) at the attenuation level
 attE(int rank) =>
     attLvl == 0 ? 0 : rank == 0 ? (attLvl >= 4 ? 2 : attLvl >= 2 ? 1 : 0) : rank == 1 ? attLvl : attLvl + 1
@@ -720,6 +724,38 @@ sdCount(int n, bool auto, float base, float u, float ext, int sgn) =>
 sdName(int i, float u, float r, int sgn) =>
     (sgn > 0 ? "+" : "-") + str.tostring(i * u / r, "#.###")
 
+// ============================================================ bad data
+// a wick longer than badatr daily ATRs is a bad print, not price: the high / low is taken at the body. clD cleans
+// the candles of the context it runs in (daily requests) with an RMA(14) of their cleaned true range, so a bad
+// print does not inflate it either
+clD() =>
+    var float a = na
+    float bt = math.max(open, close)
+    float bb = math.min(open, close)
+    float lim = badatr > 0 and not na(a) ? badatr * a : na
+    float h = not na(lim) and high - bt > lim ? bt : high
+    float l = not na(lim) and bb - low > lim ? bb : low
+    float tr = na(close[1]) ? h - l : math.max(h, close[1]) - math.min(l, close[1])
+    a := na(a) ? tr : (a * 13 + tr) / 14
+    [h, l, a]
+// daily swings and ATR (both from cleaned daily candles): previous completed daily bar only (lookahead_on with
+// [1]), so nothing repaints
+dSw() =>
+    [h, l, a] = clD()
+    [ta.pivothigh(h, eqlenD, eqlenD)[1], ta.pivotlow(l, eqlenD, eqlenD)[1], time[eqlenD + 1], a[1], time]
+[dph, dpl, dpt, datr, dtm] = request.security(syminfo.tickerid, "D", dSw(), lookahead = barmerge.lookahead_on)
+// other candles (chart, months) against the daily ATR
+clH(float o, float h, float c) =>
+    float b = math.max(o, c)
+    badatr > 0 and not na(datr) and h - b > badatr * datr ? b : h
+clL(float o, float l, float c) =>
+    float b = math.min(o, c)
+    badatr > 0 and not na(datr) and b - l > badatr * datr ? b : l
+// the chart candle, cleaned: used everywhere instead of high / low; and its ATR(14) from the cleaned true range
+float cH = clH(open, high, close)
+float cL = clL(open, low, close)
+float cAtr = ta.rma(na(close[1]) ? cH - cL : math.max(cH, close[1]) - math.min(cL, close[1]), 14)
+
 // ============================================================ zones
 // [LVL] candles of max(15m, chart timeframe) for the swing test of day / session highs and lows: number of the
 // current candle and the last six (high, low, open, close, start)
@@ -741,8 +777,8 @@ if na(bkId) or bkCur != bkId
     bkId := bkCur
     bkN += 1
     bkNew := true
-    bkH.push(high)
-    bkL.push(low)
+    bkH.push(cH)
+    bkL.push(cL)
     bkO.push(open)
     bkC.push(close)
     bkT.push(time)
@@ -753,18 +789,18 @@ if na(bkId) or bkCur != bkId
         bkC.shift()
         bkT.shift()
 else
-    bkH.set(bkH.size() - 1, math.max(bkH.last(), high))
-    bkL.set(bkL.size() - 1, math.min(bkL.last(), low))
+    bkH.set(bkH.size() - 1, math.max(bkH.last(), cH))
+    bkL.set(bkL.size() - 1, math.min(bkL.last(), cL))
     bkC.set(bkC.size() - 1, close)
 
 // [LVL] flat top / bottom of this chart candle and the previous one: highs (lows) within tolerance (2 ticks or a
 // tenth of the chart ATR) and both upper (lower) wicks within that tolerance or a fifth of the candle range
-float flTol = math.max(2 * syminfo.mintick, 0.1 * nz(ta.atr(14), 0.0))
-float flWmax = math.max(flTol, 0.2 * (high - low))
-float flUw = high - math.max(open, close)
-float flLw = math.min(open, close) - low
-bool flatHi = math.abs(high - high[1]) <= flTol and flUw <= flWmax and flUw[1] <= flWmax[1]
-bool flatLo = math.abs(low - low[1]) <= flTol and flLw <= flWmax and flLw[1] <= flWmax[1]
+float flTol = math.max(2 * syminfo.mintick, 0.1 * nz(cAtr, 0.0))
+float flWmax = math.max(flTol, 0.2 * (cH - cL))
+float flUw = cH - math.max(open, close)
+float flLw = math.min(open, close) - cL
+bool flatHi = math.abs(cH - cH[1]) <= flTol and flUw <= flWmax and flUw[1] <= flWmax[1]
+bool flatLo = math.abs(cL - cL[1]) <= flTol and flLw <= flWmax and flLw[1] <= flWmax[1]
 
 // [LVL] candles i and j (indexes in the bucket arrays) make a flat top (bottom): highs (lows) within tolerance
 // (2 ticks or a tenth of the average candle range) and both upper (lower) wicks within that tolerance or a fifth
@@ -809,7 +845,7 @@ method swTest(Zone z) =>
     true
 
 mkZone(string name, ZoneInfo zi = na) =>
-    Zone z = Zone.new(name, time, open, high, low, time, time)
+    Zone z = Zone.new(name, time, open, cH, cL, time, time)
     z.zi := zi
     z
 
@@ -1014,9 +1050,9 @@ method live(Zone z) =>
 
 // only state, no drawing: cheap per bar
 method upd(Zone z) =>
-    if high >= z.hi
+    if cH >= z.hi
         z.hit := time
-        z.hi := high
+        z.hi := cH
         z.hbk := bkN
         z.hsw := 0
         z.hrel := false
@@ -1024,9 +1060,9 @@ method upd(Zone z) =>
         z.hrelc := flatHi and time[1] >= z.tstart
     else if z.hit == time[1] and flatHi
         z.hrelc := true
-    if low <= z.lo
+    if cL <= z.lo
         z.lot := time
-        z.lo := low
+        z.lo := cL
         z.lbk := bkN
         z.lsw := 0
         z.lrel := false
@@ -1034,9 +1070,9 @@ method upd(Zone z) =>
         z.lrelc := flatLo and time[1] >= z.tstart
     else if z.lot == time[1] and flatLo
         z.lrelc := true
-    if not na(z.bhi) and high > z.bhi
+    if not na(z.bhi) and cH > z.bhi
         z.bhtk := true
-    if not na(z.blo) and low < z.blo
+    if not na(z.blo) and cL < z.blo
         z.bltk := true
 
 endZone(Zone z) =>
@@ -1093,14 +1129,14 @@ runMon() =>
             monz.remove(i)
         else
             bool ch = false
-            if na(z.hidonet) and high > z.hi
+            if na(z.hidonet) and cH > z.hi
                 z.hidonet := time
                 ch := true
-            if not na(z.bhi) and high > z.bhi
+            if not na(z.bhi) and cH > z.bhi
                 z.bhtk := true
-            if not na(z.blo) and low < z.blo
+            if not na(z.blo) and cL < z.blo
                 z.bltk := true
-            if na(z.lodonet) and low < z.lo
+            if na(z.lodonet) and cL < z.lo
                 z.lodonet := time
                 ch := true
             if ch
@@ -1217,8 +1253,8 @@ if inWin and tfok and dotgif
             tgR := twH - twL
             tgT0 := time
         twO := open
-        twH := high
-        twL := low
+        twH := cH
+        twL := cL
     else if not na(twO)
         if newDay and dow == dayofweek.friday
             clr := true
@@ -1231,8 +1267,8 @@ if inWin and tfok and dotgif
             clr := true
             tgDir := 0
             tgMon := false
-        twH := math.max(twH, high)
-        twL := math.min(twL, low)
+        twH := math.max(twH, cH)
+        twL := math.min(twL, cL)
     if clr
         rmLine(tgL1)
         rmLine(tgL2)
@@ -1268,7 +1304,7 @@ if inWin and tfok and dotgif
             tgL2.set_y2(v2)
             tgL2.set_x2(x1)
             tgB2.set_xy(x1, v2)
-        if not tgHit and (tgDir == 1 ? low <= v1 : high >= v1)
+        if not tgHit and (tgDir == 1 ? cL <= v1 : cH >= v1)
             tgHit := true
 
 // ============================================================ NDOG / NWOG
@@ -1626,8 +1662,8 @@ method rpo3(RTHOG g) =>
 method rends(RTHOG g, float opv) =>
     g.op := opv
     g.tend := time
-    g.xhi := high
-    g.xlo := low
+    g.xhi := cH
+    g.xlo := cL
     int x1 = tright(xoff)
     int x0 = g.tend - tfms * rdx
     string nm = timestr()
@@ -1747,19 +1783,19 @@ if rthOk
     if rthogauto and not mktClose and rthogs.size() > 0
         RTHOG ag = rthogs.last()
         if not na(ag.tend) and time > ag.tend
-            ag.xhi := math.max(ag.xhi, high)
-            ag.xlo := math.min(ag.xlo, low)
+            ag.xhi := math.max(ag.xhi, cH)
+            ag.xlo := math.min(ag.xlo, cL)
 // automatic stddevs: extremes of the latest premarket range from its end until the market close
 if preOn and pmauto and premarkets.size() > 0
     Zone az = premarkets.last()
     if not na(az.tend) and time > az.tend and (na(az.tclose) or time < az.tclose)
-        az.xhi := na(az.xhi) ? high : math.max(az.xhi, high)
-        az.xlo := na(az.xlo) ? low : math.min(az.xlo, low)
+        az.xhi := na(az.xhi) ? cH : math.max(az.xhi, cH)
+        az.xlo := na(az.xlo) ? cL : math.min(az.xlo, cL)
 
 // ============================================================ EQH / EQL
-float atrv = ta.atr(14)
-float ph = ta.pivothigh(high, eqlen, eqlen)
-float pl = ta.pivotlow(low, eqlen, eqlen)
+float atrv = cAtr
+float ph = ta.pivothigh(cH, eqlen, eqlen)
+float pl = ta.pivotlow(cL, eqlen, eqlen)
 int pivT = time[eqlen]
 
 dropFirst(array<Piv> arr, bool wantEq) =>
@@ -1787,7 +1823,7 @@ sweepPivs(array<Piv> arr, bool isHigh, float tol) =>
     while i >= 0
         Piv v = arr.get(i)
         float slack = v.eq ? 0.0 : tol
-        bool swept = isHigh ? high > v.p + slack : low < v.p - slack
+        bool swept = isHigh ? cH > v.p + slack : cL < v.p - slack
         if swept
             rmLine(v.ln)
             rmLabel(v.lb)
@@ -1831,8 +1867,8 @@ drawEq(array<Piv> arr, bool isHigh, string sfx, color c) =>
                 v.lb.set_text(txt)
     true
 // 3-candle swings (one candle on each side), kept until price takes them
-float ph3 = ta.pivothigh(high, 1, 1)
-float pl3 = ta.pivotlow(low, 1, 1)
+float ph3 = ta.pivothigh(cH, 1, 1)
+float pl3 = ta.pivotlow(cL, 1, 1)
 var array<float> sh3p = array.new<float>()
 var array<int> sh3t = array.new<int>()
 var array<float> sl3p = array.new<float>()
@@ -1841,7 +1877,7 @@ var array<int> sl3t = array.new<int>()
 sweep3(array<float> ps, array<int> ts, bool isHigh) =>
     int i = ps.size() - 1
     while i >= 0
-        if isHigh ? high > ps.get(i) : low < ps.get(i)
+        if isHigh ? cH > ps.get(i) : cL < ps.get(i)
             ps.remove(i)
             ts.remove(i)
         i -= 1
@@ -1897,11 +1933,6 @@ if inWin and tfok and doeqhl
     if not na(pl3)
         add3(sl3p, sl3t, pl3, time[1])
 
-// daily swings: previous completed daily bar only (lookahead_on with [1]), so nothing repaints
-[dph, dpl, dpt, datr, dtm] = request.security(syminfo.tickerid, "D",
-     [ta.pivothigh(high, eqlenD, eqlenD)[1], ta.pivotlow(low, eqlenD, eqlenD)[1], time[eqlenD + 1],
-     ta.atr(14)[1], time],
-     lookahead = barmerge.lookahead_on)
 bool newDBar = dtm != nz(dtm[1], dtm)
 
 if inWin and tfok and doeqhl and doeqd
@@ -1931,6 +1962,7 @@ monTaken() =>
     var int ck = na
     var float ch = na
     var float cl = na
+    [dh, dl, da] = clD()
     array<float> o15 = request.security_lower_tf(syminfo.tickerid, "15", open)
     float mo = o15.size() > 0 ? o15.min() : open   // lowest / highest 15m open of the day
     float xo = o15.size() > 0 ? o15.max() : open
@@ -1950,11 +1982,11 @@ monTaken() =>
                     th.shift()
                     tl.shift()
             ck := k
-            ch := high[1]
-            cl := low[1]
+            ch := dh[1]
+            cl := dl[1]
         else
-            ch := math.max(ch, high[1])
-            cl := math.min(cl, low[1])
+            ch := math.max(ch, dh[1])
+            cl := math.min(cl, dl[1])
         int nm = mk.size()
         if nm > 0
             for i = 0 to nm - 1
@@ -2000,13 +2032,20 @@ drawMonth(int idx, float h, float l, float c, int t, int tc) =>
         getm(mls.get(idx * 3 + 1), t, l, monmincol, "min" + suf, monTk(t, false))
         getm(mls.get(idx * 3 + 2), tc, c, monccol, "close" + suf)
 
-[mh1, ml1, mc1, mt1, mtc1,
-     mh2, ml2, mc2, mt2, mtc2,
-     mh3, ml3, mc3, mt3, mtc3] = request.security(syminfo.tickerid, "M",
-     [high[1], low[1], close[1], time[1], time,
-     high[2], low[2], close[2], time[2], time[1],
-     high[3], low[3], close[3], time[3], time[2]],
+[mh1, ml1, mc1, mt1, mtc1, mo1,
+     mh2, ml2, mc2, mt2, mtc2, mo2,
+     mh3, ml3, mc3, mt3, mtc3, mo3] = request.security(syminfo.tickerid, "M",
+     [high[1], low[1], close[1], time[1], time, open[1],
+     high[2], low[2], close[2], time[2], time[1], open[2],
+     high[3], low[3], close[3], time[3], time[2], open[3]],
      lookahead = barmerge.lookahead_on)
+// bad prints out of the month highs / lows
+mh1 := clH(mo1, mh1, mc1)
+ml1 := clL(mo1, ml1, mc1)
+mh2 := clH(mo2, mh2, mc2)
+ml2 := clL(mo2, ml2, mc2)
+mh3 := clH(mo3, mh3, mc3)
+ml3 := clL(mo3, ml3, mc3)
 
 // ============================================================ RTHOG / premarket stddev labels
 // stddev lines of the RTHOG and the premarket range at almost the same price share one
