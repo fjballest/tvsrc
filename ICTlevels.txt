@@ -452,6 +452,10 @@ type Zone
     bool lrel = false
     bool hrelc = false  // [LVL] the same with chart candles (lower timeframes): labeled reh / rel
     bool lrelc = false
+    bool hx = false     // [LVL] untaken high / low (and body level) close to another day / session one: REH / REL
+    bool lx = false
+    bool bhx = false
+    bool blx = false
     int extendt = na
     int tclose = na     // premarket range: market close, the lines never go past it
     float pwhi = na   // highest high of the earlier days of the same week
@@ -936,11 +940,11 @@ method refresh(Zone z) =>
             z.minln.set_xy2(lx, z.lo)
         if z.drawlbl
             string lsz = z.isday ? dlblsz : slblsz
-            string hn = z.name + (z.hrel ? " REH" : z.hrelc ? " reh" : " hi")
-            string ln = z.name + (z.lrel ? " REL" : z.lrelc ? " rel" : " lo")
+            string hn = z.name + (z.hrel or z.hx ? " REH" : z.hrelc ? " reh" : " hi")
+            string ln = z.name + (z.lrel or z.lx ? " REL" : z.lrelc ? " rel" : " lo")
             if z.isday
-                hn := (na(z.pwhi) or z.hi >= z.pwhi ? "week " : "day ") + (z.hrel ? "REH" : z.hrelc ? "reh" : "high")
-                ln := (na(z.pwlo) or z.lo <= z.pwlo ? "week " : "day ") + (z.lrel ? "REL" : z.lrelc ? "rel" : "low")
+                hn := (na(z.pwhi) or z.hi >= z.pwhi ? "week " : "day ") + (z.hrel or z.hx ? "REH" : z.hrelc ? "reh" : "high")
+                ln := (na(z.pwlo) or z.lo <= z.pwlo ? "week " : "day ") + (z.lrel or z.lx ? "REL" : z.lrelc ? "rel" : "low")
                 if z.hmode == 1
                     hn := "day REHs"
                 if z.lmode == 1
@@ -1943,21 +1947,80 @@ lvlRank(Zone z, int sw, bool rel, bool taken) =>
 method zSide(Zone z, bool hi) =>
     line ln = hi ? z.maxln : z.minln
     label lb = hi ? z.maxlbl : z.minlbl
-    int rk = lvlRank(z, hi ? z.hsw : z.lsw, hi ? z.hrel or z.hrelc : z.lrel or z.lrelc, not na(hi ? z.hidonet : z.lodonet))
-    // an untaken body level drawn below (above) it takes the importance
-    if not na(hi ? z.bhln : z.blln) and not (hi ? z.bhtk : z.bltk)
+    bool isrel = hi ? z.hrel or z.hrelc or z.hx : z.lrel or z.lrelc or z.lx
+    int rk = lvlRank(z, hi ? z.hsw : z.lsw, isrel, not na(hi ? z.hidonet : z.lodonet))
+    // an untaken body level drawn below (above) it takes the importance: the high (low) is dotted meanwhile
+    bool bodyOn = not na(hi ? z.bhln : z.blln)
+    if bodyOn
         rk := math.max(rk, 1)
     color c0 = z.isday ? (hi ? daymmaxcol : daymmincol) : (hi ? sesmmaxcol : sesmmincol)
     int w0 = z.isday ? daymwid : sesmwid
     string sz0 = z.isday ? dlblsz : slblsz
     // an important REH / REL (15m or chart candles) stands out one more step than a plain swing
-    bool rel = rk == 0 and (hi ? z.hrel or z.hrelc : z.lrel or z.lrelc)
+    bool rel = rk == 0 and isrel
     if not na(ln)
+        ln.set_style(bodyOn ? line.style_dotted : (hi ? z.maxsty.sty : z.minsty.sty))
         ln.set_color(attL(c0, rk))
         ln.set_width(rk == 0 ? math.min(4, attW(w0, 0) + (rel ? 2 : 1)) : attW(w0, rk))
     if not na(lb)
         lb.set_textcolor(attL(c0, rk))
         lb.set_size(rk == 0 ? (rel ? sizeUp(sizeUp(sz0)) : sizeUp(sz0)) : sz0)
+    true
+
+// the body level of side hi is shown: ended zone, high (low) untaken and beyond the body, body not taken later
+method bodyOk(Zone z, bool hi) =>
+    bool ok = z.drawmaxmin and not na(z.tend) and dobody
+    hi ? ok and na(z.hidonet) and z.bhi < z.hi and not z.bhtk : ok and na(z.lodonet) and z.blo > z.lo and not z.bltk
+
+// [LVL] untaken highs (lows) of days and sessions, and their body levels, that are within tol of another one are
+// REHs (RELs): hx / lx, bhx / blx
+xCollect(array<Zone> arr, array<float> v, array<Zone> zs, array<bool> isb, array<int> ids, bool hi) =>
+    for z in arr
+        int id = z.tstart * 2 + (z.isday ? 1 : 0)
+        if z.drawmaxmin and na(hi ? z.hidonet : z.lodonet)
+            v.push(hi ? z.hi : z.lo)
+            zs.push(z)
+            isb.push(false)
+            ids.push(id)
+        if z.bodyOk(hi)
+            v.push(hi ? z.bhi : z.blo)
+            zs.push(z)
+            isb.push(true)
+            ids.push(id)
+    true
+
+xMark(bool hi, float tol) =>
+    array<float> v = array.new<float>()
+    array<Zone> zs = array.new<Zone>()
+    array<bool> isb = array.new<bool>()
+    array<int> ids = array.new<int>()
+    xCollect(zones, v, zs, isb, ids, hi)
+    xCollect(days, v, zs, isb, ids, hi)
+    int n = v.size()
+    if n > 1
+        for i = 0 to n - 2
+            for j = i + 1 to n - 1
+                if ids.get(i) != ids.get(j) and math.abs(v.get(i) - v.get(j)) <= tol
+                    for k in array.from(i, j)
+                        Zone z = zs.get(k)
+                        if isb.get(k)
+                            if hi
+                                z.bhx := true
+                            else
+                                z.blx := true
+                        else
+                            if hi
+                                z.hx := true
+                            else
+                                z.lx := true
+    true
+
+xReset(array<Zone> arr) =>
+    for z in arr
+        z.hx := false
+        z.lx := false
+        z.bhx := false
+        z.blx := false
     true
 
 // body level of side hi of z (want: draw it), returns whether it is drawn
@@ -1967,15 +2030,15 @@ method zBody(Zone z, bool hi, bool want) =>
     if want
         int x = tright(2)
         float p = hi ? z.bhi : z.blo
-        // important (wider, label 1 size up) until taken after it was decided, then minor
-        bool tk = hi ? z.bhtk : z.bltk
-        color c = attL(z.isday ? (hi ? daymmaxcol : daymmincol) : (hi ? sesmmaxcol : sesmmincol), tk ? 2 : 0)
-        int w = tk ? 1 : attW(2, 0)
-        string bsz = z.isday ? dlblsz : slblsz
-        bsz := tk ? bsz : sizeUp(bsz)
-        string txt = (z.isday ? "day" : z.name) + (hi ? " body hi" : " body lo")
+        // important, solid (wider, label 1 size up; 2 and 2 when it is a REH / REL with another level)
+        bool bx = hi ? z.bhx : z.blx
+        color c = attL(z.isday ? (hi ? daymmaxcol : daymmincol) : (hi ? sesmmaxcol : sesmmincol), 0)
+        int w = math.min(4, attW(2, 0) + (bx ? 1 : 0))
+        string bsz = sizeUp(z.isday ? dlblsz : slblsz)
+        bsz := bx ? sizeUp(bsz) : bsz
+        string txt = (z.isday ? "day" : z.name) + (hi ? (bx ? " body REH" : " body hi") : (bx ? " body REL" : " body lo"))
         if na(ln)
-            ln := line.new(hi ? z.bht : z.blt, p, x, p, xloc = xloc.bar_time, color = c, style = line.style_dotted,
+            ln := line.new(hi ? z.bht : z.blt, p, x, p, xloc = xloc.bar_time, color = c, style = line.style_solid,
                  width = w)
             lb := label.new(x, p, txt, xloc = xloc.bar_time, style = label.style_label_left, color = transparent,
                  textcolor = c, size = bsz)
@@ -1984,6 +2047,7 @@ method zBody(Zone z, bool hi, bool want) =>
             ln.set_color(c)
             ln.set_width(w)
             lb.set_x(x)
+            lb.set_text(txt)
             lb.set_textcolor(c)
             lb.set_size(bsz)
     else
@@ -2007,10 +2071,9 @@ zLevels(array<Zone> arr, int nbh0, int nbl0) =>
     if n > 0
         for k = 0 to n - 1
             Zone z = arr.get(n - 1 - k)
-            bool ended = z.drawmaxmin and not na(z.tend) and dobody
-            if z.zBody(true, ended and na(z.hidonet) and z.bhi < z.hi and nbh < BODYMAX)
+            if z.zBody(true, z.bodyOk(true) and nbh < BODYMAX)
                 nbh += 1
-            if z.zBody(false, ended and na(z.lodonet) and z.blo > z.lo and nbl < BODYMAX)
+            if z.zBody(false, z.bodyOk(false) and nbl < BODYMAX)
                 nbl += 1
             if z.drawmaxmin
                 z.zSide(true)
@@ -2032,6 +2095,12 @@ bgcolor(inMacro ? attL(macrobgcolor, 1) : na)
 if finalBar and tfok
     if doreh and dodaylbl and dodmaxmin
         markRel(days, reltol * nz(datr, 0.0))
+    // [LVL] REH / REL between day and session levels (same tolerance as the flat tops / bottoms)
+    xReset(zones)
+    xReset(days)
+    float xtol = math.max(2 * syminfo.mintick, 0.1 * nz(bkRng, 0.0))
+    xMark(true, xtol)
+    xMark(false, xtol)
     for z in days
         if z.live()
             z.refresh()
