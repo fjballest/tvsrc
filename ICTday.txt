@@ -382,6 +382,8 @@ type Zone
     int lbk = na
     int hsw = 0         // [LVL] the high / low is a swing: 1 yes, -1 no, 0 not known yet
     int lsw = 0
+    bool hrel = false   // [LVL] flat top / bottom: two candles at about the same high / low with almost no wick
+    bool lrel = false
     int extendt = na
     int tclose = na     // premarket range: market close, the lines never go past it
     float pwhi = na   // highest high of the earlier days of the same week
@@ -656,6 +658,15 @@ else
     bkH.set(bkH.size() - 1, math.max(bkH.last(), high))
     bkL.set(bkL.size() - 1, math.min(bkL.last(), low))
 
+// [LVL] flat top / bottom of this candle and the previous one: highs (lows) within tolerance (2 ticks or a tenth
+// of the chart ATR) and both upper (lower) wicks within that tolerance or a fifth of the candle range
+float flTol = math.max(2 * syminfo.mintick, 0.1 * nz(ta.atr(14), 0.0))
+float flWmax = math.max(flTol, 0.2 * (high - low))
+float flUw = high - math.max(open, close)
+float flLw = math.min(open, close) - low
+bool flatHi = math.abs(high - high[1]) <= flTol and flUw <= flWmax and flUw[1] <= flWmax[1]
+bool flatLo = math.abs(low - low[1]) <= flTol and flLw <= flWmax and flLw[1] <= flWmax[1]
+
 // a high (low) is a swing when the candles before and after it have lower highs (higher lows); decided when the
 // candle after it completes (a new candle starts two candles after the one of the high)
 method swTest(Zone z) =>
@@ -811,11 +822,11 @@ method refresh(Zone z) =>
             z.minln.set_xy2(lx, z.lo)
         if z.drawlbl
             string lsz = z.isday ? dlblsz : slblsz
-            string hn = z.name + " hi"
-            string ln = z.name + " lo"
+            string hn = z.name + (z.hrel ? " REH" : " hi")
+            string ln = z.name + (z.lrel ? " REL" : " lo")
             if z.isday
-                hn := na(z.pwhi) or z.hi >= z.pwhi ? "week high" : "day high"
-                ln := na(z.pwlo) or z.lo <= z.pwlo ? "week low" : "day low"
+                hn := (na(z.pwhi) or z.hi >= z.pwhi ? "week " : "day ") + (z.hrel ? "REH" : "high")
+                ln := (na(z.pwlo) or z.lo <= z.pwlo ? "week " : "day ") + (z.lrel ? "REL" : "low")
                 if z.hmode == 1
                     hn := "day REHs"
                 if z.lmode == 1
@@ -868,11 +879,17 @@ method upd(Zone z) =>
         z.hi := high
         z.hbk := bkN
         z.hsw := 0
+        z.hrel := flatHi and time[1] >= z.tstart
+    else if z.hit == time[1] and flatHi
+        z.hrel := true
     if low <= z.lo
         z.lot := time
         z.lo := low
         z.lbk := bkN
         z.lsw := 0
+        z.lrel := flatLo and time[1] >= z.tstart
+    else if z.lot == time[1] and flatLo
+        z.lrel := true
     float bt = math.max(open, close)
     float bb = math.min(open, close)
     if na(z.bhi) or bt >= z.bhi
@@ -1800,15 +1817,15 @@ combinePo3(RTHOG g, Zone z, float tol) =>
     true
 
 // ============================================================ [LVL] high / low importance and body levels
-// rank of an untaken high / low: swing 0 (important: line 1 wider, label 1 size up), not known yet 1, not a swing
+// rank of an untaken high / low: swing or flat (REH / REL) 0 (important: line 1 wider, label 1 size up), not known yet 1, not a swing
 // 1 (sessions) or 2 (days); a taken one is 1
-lvlRank(Zone z, int sw, bool taken) =>
-    taken ? 1 : sw > 0 ? 0 : sw == 0 ? 1 : z.isday ? 2 : 1
+lvlRank(Zone z, int sw, bool rel, bool taken) =>
+    taken ? 1 : sw > 0 or rel ? 0 : sw == 0 ? 1 : z.isday ? 2 : 1
 
 method zSide(Zone z, bool hi) =>
     line ln = hi ? z.maxln : z.minln
     label lb = hi ? z.maxlbl : z.minlbl
-    int rk = lvlRank(z, hi ? z.hsw : z.lsw, not na(hi ? z.hidonet : z.lodonet))
+    int rk = lvlRank(z, hi ? z.hsw : z.lsw, hi ? z.hrel : z.lrel, not na(hi ? z.hidonet : z.lodonet))
     color c0 = z.isday ? (hi ? daymmaxcol : daymmincol) : (hi ? sesmmaxcol : sesmmincol)
     int w0 = z.isday ? daymwid : sesmwid
     string sz0 = z.isday ? dlblsz : slblsz

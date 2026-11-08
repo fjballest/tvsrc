@@ -96,6 +96,7 @@ None of these windows can be changed in the settings, except the premarket range
 - **Equilibrium** ("eq", dashed blue): the midpoint of the day's high and low. The current day's eq moves with the day. A completed day's eq extends through the following day and stops at its end.
 - **Midnight open** ("M.O.", dashed black): the open of the first bar of the day, drawn across the day.
 - **Swing highs and lows are emphasized**: an untaken day or session high (low) that is a swing high (low) is drawn 1 px wider with its label one size larger. It is a swing when the candle before and the candle after it have lower highs (higher lows), using 15m candles (or chart candles above 15m); this is decided when the candle after it completes. A day high or low that is not a swing (made at the edge of the day, or level with a neighbor candle) ranks as minor for attenuation.
+- **Flat tops and bottoms** ("Asia REL", "day REH", "week REL", ...): when the candle that makes a day or session high (low) and its neighbor have about the same high (low), within 2 ticks or a tenth of the chart ATR, with almost no upper (lower) wick (within that tolerance or a fifth of the candle range), the level is labeled REH (REL) instead of hi (lo) and is emphasized like a swing: equal highs and lows like these are likely to be taken later.
 - **Body levels** (dotted, same color, "day body hi", "Asia body lo", ...): while the high (low) of an ended day or session is untaken, a dotted line marks its highest (lowest) candle body when that is below (above) the wick. Price often takes the body level and not the wick, so the body level is a reaction level of its own. It is removed once the high (low) is taken. The 6 most recent per side are drawn.
 
 **How to use it**
@@ -330,7 +331,7 @@ The first group: one switch per feature, so you can turn features on and off wit
 
 Attenuation dims the drawings without changing their settings. Drawings have three ranks:
 
-- Important: the last midnight open (M.O.), untaken day and session highs and lows that are swings, the current and previous RTHOG, TGIF levels, NWOGs and the last NDOG.
+- Important: the last midnight open (M.O.), untaken day and session highs and lows that are swings or flat (REH / REL), the current and previous RTHOG, TGIF levels, NWOGs and the last NDOG.
 - Normal: month lines, session highs and lows that are not swings (or not decided yet), taken highs and lows, body levels, week vertical lines, the quadrants and octants of the current RTHOG, the PMKT high and low, EQH / EQL and the macro background.
 - Minor: day highs and lows that are not swings, day vertical lines, eq, older M.O.s, older NDOGs, old RTHOGs (the short marks), the RTHOG deviations, and the PMKT quadrants and deviations.
 
