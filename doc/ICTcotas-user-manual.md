@@ -406,7 +406,7 @@ With **Turtle soup / continuation indications** on (General), a row of small tri
 | up | traded below its own open and price is now above the previous close (continuation up) | grey ▲ |
 | | nothing of the above | faint circle ○ |
 
-A continuation is cancelled for the rest of the forming candle once a chart bar closes back beyond the previous close. For the timeframe of the chart itself (the forming candle is the forming chart bar) it is cancelled as soon as price trades back beyond the previous close, tick by tick. The candles are built from the chart bars. Timeframes, lowest first: 15m, 1H and 4H on charts up to 15m; 1H, 4H and D on charts up to 1H; 4H and D on charts up to 4H; D on daily charts; none above.
+A continuation is cancelled for the rest of the forming candle once a chart bar closes back beyond the previous close. For the timeframe of the chart itself (the forming candle is the forming chart bar) it is cancelled as soon as price trades back beyond the previous close, tick by tick. The candles are built from the chart bars. Timeframes, lowest first: 15m, 1H and 4H on charts up to 15m; 1H, 4H and D on charts up to 1H; 4H, D and W on charts up to 4H; D and W on daily charts; W on weekly charts; none above.
 
 | Setting | Default | What it does |
 |---|---|---|

@@ -7,7 +7,7 @@
 // FVGs closed through become IFVGs. Mitigated levels are removed.
 //
 // Port of the TradingView Pine Script v6 indicator ICTcotas.txt by franjballest
-// (source md5 723034c463360badb10e28dc3497704f). Mozilla Public License 2.0.
+// (source md5 a1a15795e61ed8d234e4ec029c244edf). Mozilla Public License 2.0.
 //
 // Install:
 //   1. Copy this file to  Documents\NinjaTrader 8\bin\Custom\Indicators\ICTcotas.cs
@@ -1236,7 +1236,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 		// Returns 1 TS up, -1 TS down, 2 continuation up, -2 continuation down, 0 nothing.
 		private int tkBar = -1;
 		private bool tkArmed, tkInv;
-		private static readonly int[] TsSecs = { 900, 3600, 14400, 86400 };
+		private static readonly int[] TsSecs = { 900, 3600, 14400, 86400, 604800 };
 
 		private int TsSig(int i)
 		{
@@ -1294,15 +1294,15 @@ namespace NinjaTrader.NinjaScript.Indicators
 			return 0;
 		}
 
-		private static readonly string[] TsNamesTxt = { "15m", "1H", "4H", "D" };
-		private static readonly int[] TsSer = { Ser15, Ser60, Ser240, SerDay };
+		private static readonly string[] TsNamesTxt = { "15m", "1H", "4H", "D", "W" };
+		private static readonly int[] TsSer = { Ser15, Ser60, Ser240, SerDay, SerWeek };
 
 		// one TextFixed per color, monospaced and padded with no-break spaces so the columns line up
 		private void DrawTs()
 		{
 			string[] tags = { "ICTc_tsu", "ICTc_tsd", "ICTc_tsc", "ICTc_ts0", "ICTc_tsn" };
-			int i0 = tfsecs <= 900 ? 0 : tfsecs <= 3600 ? 1 : tfsecs <= 14400 ? 2 : tfsecs <= 86400 ? 3 : 4;
-			int i1 = tfsecs <= 900 ? 2 : 3;
+			int i0 = tfsecs <= 900 ? 0 : tfsecs <= 3600 ? 1 : tfsecs <= 14400 ? 2 : tfsecs <= 86400 ? 3 : tfsecs <= 604800 ? 4 : 5;
+			int i1 = tfsecs <= 900 ? 2 : tfsecs <= 3600 ? 3 : 4;
 			if (!TsShow || i0 > i1)
 			{
 				foreach (string t in tags)

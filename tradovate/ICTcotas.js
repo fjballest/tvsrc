@@ -9,7 +9,7 @@
  * closed through become IFVGs. Mitigated levels are removed.
  *
  * Port of the TradingView Pine Script v6 indicator ICTcotas.txt
- * (md5 723034c463360badb10e28dc3497704f), (c) franjballest, Mozilla Public
+ * (md5 a1a15795e61ed8d234e4ec029c244edf), (c) franjballest, Mozilla Public
  * License 2.0 (https://mozilla.org/MPL/2.0/). Same logic, same inputs (as
  * camelCase parameters) and the same defaults.
  *
@@ -810,15 +810,15 @@ function drawMfMargin(c, l, eng, lastIdx, items) {
 function drawTs(c, eng, items, tk, idx) {
     if (!c.tsShow) return;
     const tfs = eng.tfsecs();
-    const i0 = tfs <= 900 ? 0 : tfs <= 3600 ? 1 : tfs <= 14400 ? 2 : tfs <= 86400 ? 3 : 4;
-    const i1 = tfs <= 900 ? 2 : 3;
+    const i0 = tfs <= 900 ? 0 : tfs <= 3600 ? 1 : tfs <= 14400 ? 2 : tfs <= 86400 ? 3 : tfs <= 604800 ? 4 : 5;
+    const i1 = tfs <= 900 ? 2 : tfs <= 3600 ? 3 : 4;
     if (i0 > i1) return;
     const A = eng.S.aggs;
-    const aggs = [A.m15, A.h1, A.h4, A.d];
-    const names = ["15m", "1H", "4H", "D"];
+    const aggs = [A.m15, A.h1, A.h4, A.d, A.w];
+    const names = ["15m", "1H", "4H", "D", "W"];
     // the candle of the chart timeframe is the forming chart bar: chart bar closes cannot tell whether a
     // continuation was cancelled within it, so its own ticks (tk, kept across ticks) decide that
-    const ik = [900, 3600, 14400, 86400].indexOf(tfs);
+    const ik = [900, 3600, 14400, 86400, 604800].indexOf(tfs);
     if (tk && ik >= 0) {
         const a = aggs[ik], p = a.tsPrev(), cu = a.cur;
         if (tk.bar !== idx) {

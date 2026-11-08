@@ -986,7 +986,7 @@ if barstate.islast
                 l.celb := rmLbl(l.celb)
 
 // ============================================================ turtle soup / continuation
-// per timeframe (15m, 1H, 4H, D): the previous completed candle and the forming one, built from chart bars
+// per timeframe (15m, 1H, 4H, D, W): the previous completed candle and the forming one, built from chart bars
 type TSt
     float po = na
     float ph = na
@@ -998,10 +998,10 @@ type TSt
     bool armed = false   // a continuation was seen in the forming candle
     bool inv = false     // and then price went back beyond the previous close: no continuation for this candle
 
-var array<TSt> tst = array.from(TSt.new(), TSt.new(), TSt.new(), TSt.new())
-var array<string> tsNames = array.from("15m", "1H", "4H", "D")
+var array<TSt> tst = array.from(TSt.new(), TSt.new(), TSt.new(), TSt.new(), TSt.new())
+var array<string> tsNames = array.from("15m", "1H", "4H", "D", "W")
 array<bool> tsNew = array.from(timeframe.change("15"), timeframe.change("60"), timeframe.change("240"),
-     timeframe.change("D"))
+     timeframe.change("D"), timeframe.change("W"))
 
 // continuation of the previous candle's direction now: price traded against it from the forming open and is
 // back beyond the previous close
@@ -1043,7 +1043,7 @@ method tsSig(TSt s) =>
     r
 
 if dots
-    for i = 0 to 3
+    for i = 0 to 4
         tst.get(i).tsStep(tsNew.get(i))
 
 // the candle of the chart timeframe is the forming chart bar: chart bar closes cannot tell whether a
@@ -1051,7 +1051,7 @@ if dots
 varip int tsTkBar = -1
 varip bool tsTkArm = false
 varip bool tsTkInv = false
-int tsTk = tfsecs == 900 ? 0 : tfsecs == 3600 ? 1 : tfsecs == 14400 ? 2 : tfsecs == 86400 ? 3 : -1
+int tsTk = tfsecs == 900 ? 0 : tfsecs == 3600 ? 1 : tfsecs == 14400 ? 2 : tfsecs == 86400 ? 3 : tfsecs == 604800 ? 4 : -1
 if dots and tsTk >= 0
     TSt s = tst.get(tsTk)
     if bar_index != tsTkBar
@@ -1079,9 +1079,9 @@ tsPos(string p) =>
 bool setInTs = dots and setOn and setlbl and tspos == "top right"
 var table tsTbl = table.new(tsPos(tspos), 5, 2)
 if barstate.islast and dots
-    // 15m, 1H, 4H up to 15m; 1H, 4H, D up to 1H; then 4H and D when not below the chart timeframe
-    int i0 = tfsecs <= 900 ? 0 : tfsecs <= 3600 ? 1 : tfsecs <= 14400 ? 2 : tfsecs <= 86400 ? 3 : 4
-    int i1 = tfsecs <= 900 ? 2 : 3
+    // 15m, 1H, 4H up to 15m; 1H, 4H, D up to 1H; then 4H, D and W when not below the chart timeframe
+    int i0 = tfsecs <= 900 ? 0 : tfsecs <= 3600 ? 1 : tfsecs <= 14400 ? 2 : tfsecs <= 86400 ? 3 : tfsecs <= 604800 ? 4 : 5
+    int i1 = tfsecs <= 900 ? 2 : tfsecs <= 3600 ? 3 : 4
     tsTbl.clear(0, 0, 4, 1)
     string tsz = getsize(tssize)
     int col = setInTs ? 1 : 0
