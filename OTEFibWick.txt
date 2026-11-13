@@ -560,7 +560,8 @@ plotshape(vdn and vsize == "big circle", "high volume (down)", shape.circle, loc
      size = size.small, display = display.pane)
 
 // divergences: a higher swing high with less volume than the previous swing high, or a lower swing low with less
-// volume than the previous swing low (bad prints cleaned, see badatr). Swings are known dvright bars later.
+// volume than the previous swing low (bad prints cleaned, see badatr). Swings are known dvright bars later; with
+// dvright > 1 a dotted "v?" shows one candle after the swing and turns solid "v" when the swing is confirmed.
 float vph = ta.pivothigh(fH, dvleft, dvright)
 float vpl = ta.pivotlow(fL, dvleft, dvright)
 var int vhB = na      // last swing high: bar, price, volume
@@ -572,44 +573,114 @@ var float vlV = na
 var array<line> vdLns = array.new<line>()
 var array<label> vdLbls = array.new<label>()
 
-// volume of the swing dvright bars ago; the push starts after the previous opposite swing (at most dvmax bars)
-swVol(int prevOpp) =>
+// early swings: one candle after them (dotted until the swing is confirmed dvright bars later)
+float eph = ta.pivothigh(fH, dvleft, 1)
+float epl = ta.pivotlow(fL, dvleft, 1)
+var line tHl = na     // early (unconfirmed) divergence at a swing high: line, label, bar, price
+var label tHlb = na
+var int tHb = na
+var float tHp = na
+var line tLl = na     // and at a swing low
+var label tLlb = na
+var int tLb = na
+var float tLp = na
+
+// volume of the swing r bars ago; the push starts after the previous opposite swing (at most dvmax bars)
+swVol(int prevOpp, int r) =>
     float v = na
     if dvmeas == "swing candle"
-        v := dV[dvright]
+        v := dV[r]
     else if dvmeas == "3 candles"
-        v := (dV[dvright - 1] + dV[dvright] + dV[dvright + 1]) / 3
+        v := (dV[r - 1] + dV[r] + dV[r + 1]) / 3
     else
-        int n = na(prevOpp) ? dvmax : math.min(dvmax, bar_index - dvright - prevOpp)
+        int n = na(prevOpp) ? dvmax : math.min(dvmax, bar_index - r - prevOpp)
         v := 0.0
-        for i = dvright to dvright + math.max(n, 1) - 1
+        for i = r to r + math.max(n, 1) - 1
             v += nz(dV[i])
     v
 
-vdDraw(int b0, float p0, int b1, float p1, float v0, float v1, bool hi) =>
+vdNew(int b0, float p0, int b1, float p1, float v0, float v1, bool hi, bool early) =>
     color c = hi ? dvbear : dvbull
-    vdLns.push(line.new(b0, p0, b1, p1, color = c, width = 2))
-    vdLbls.push(label.new(b1, p1, "v", style = hi ? label.style_label_down : label.style_label_up,
+    line ln = line.new(b0, p0, b1, p1, color = c, width = 2, style = early ? line.style_dotted : line.style_solid)
+    label lb = label.new(b1, p1, early ? "v?" : "v", style = hi ? label.style_label_down : label.style_label_up,
          color = color.new(c, 100), textcolor = c, size = size.small,
          tooltip = "volume divergence: " + str.tostring(v0, format.volume) + " then " + str.tostring(v1,
-         format.volume)))
+         format.volume) + (early ? " (not confirmed yet)" : ""))
+    [ln, lb]
+
+vdKeep(line ln, label lb) =>
+    ln.set_style(line.style_solid)
+    lb.set_text("v")
+    vdLns.push(ln)
+    vdLbls.push(lb)
     while vdLns.size() > dvkeep
         vdLns.shift().delete()
         vdLbls.shift().delete()
 
+vdDrop(line ln, label lb) =>
+    if not na(ln)
+        ln.delete()
+    if not na(lb)
+        lb.delete()
+
 if compute and dovdiv
     int b = bar_index - dvright
+    bool early = dvright > 1
+    // swing highs: an early one is dropped once price goes above it, or when it is not confirmed
+    if not na(tHb) and fH > tHp
+        vdDrop(tHl, tHlb)
+        tHb := na
     if not na(vph)
-        float v = swVol(vlB)
-        if not na(vhP) and not na(v) and not na(vhV) and b - vhB <= dvmax and vph > vhP and v < vhV
-            vdDraw(vhB, vhP, b, vph, vhV, v, true)
+        float v = swVol(vlB, dvright)
+        bool dv = not na(vhP) and not na(v) and not na(vhV) and b - vhB <= dvmax and vph > vhP and v < vhV
+        if dv and not na(tHb) and tHb == b
+            vdKeep(tHl, tHlb)
+            tHb := na
+        else if dv
+            [ln, lb] = vdNew(vhB, vhP, b, vph, vhV, v, true, false)
+            vdKeep(ln, lb)
         vhB := b
         vhP := vph
         vhV := v
+    if not na(tHb) and bar_index - tHb >= dvright
+        vdDrop(tHl, tHlb)
+        tHb := na
+    if early and not na(eph)
+        int e = bar_index - 1
+        float v = swVol(vlB, 1)
+        if not na(vhP) and not na(v) and not na(vhV) and e - vhB <= dvmax and eph > vhP and v < vhV
+            vdDrop(tHl, tHlb)
+            [ln, lb] = vdNew(vhB, vhP, e, eph, vhV, v, true, true)
+            tHl := ln
+            tHlb := lb
+            tHb := e
+            tHp := eph
+    // swing lows, mirrored
+    if not na(tLb) and fL < tLp
+        vdDrop(tLl, tLlb)
+        tLb := na
     if not na(vpl)
-        float v = swVol(vhB)
-        if not na(vlP) and not na(v) and not na(vlV) and b - vlB <= dvmax and vpl < vlP and v < vlV
-            vdDraw(vlB, vlP, b, vpl, vlV, v, false)
+        float v = swVol(vhB, dvright)
+        bool dv = not na(vlP) and not na(v) and not na(vlV) and b - vlB <= dvmax and vpl < vlP and v < vlV
+        if dv and not na(tLb) and tLb == b
+            vdKeep(tLl, tLlb)
+            tLb := na
+        else if dv
+            [ln, lb] = vdNew(vlB, vlP, b, vpl, vlV, v, false, false)
+            vdKeep(ln, lb)
         vlB := b
         vlP := vpl
         vlV := v
+    if not na(tLb) and bar_index - tLb >= dvright
+        vdDrop(tLl, tLlb)
+        tLb := na
+    if early and not na(epl)
+        int e = bar_index - 1
+        float v = swVol(vhB, 1)
+        if not na(vlP) and not na(v) and not na(vlV) and e - vlB <= dvmax and epl < vlP and v < vlV
+            vdDrop(tLl, tLlb)
+            [ln, lb] = vdNew(vlB, vlP, e, epl, vlV, v, false, true)
+            tLl := ln
+            tLlb := lb
+            tLb := e
+            tLp := epl
