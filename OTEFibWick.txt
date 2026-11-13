@@ -311,9 +311,8 @@ if dowick and compute and barstate.isconfirmed and bar_index > 2
             w = wces.get(k)
             recent = w.b > i - wrecent
             if w.b < i - 5000
-                // too old to touch its line again (bar index limits); leave it drawn
-                if w.extd and not na(w.ln)
-                    w.ln.set_x2(w.b + wdx())
+                // too old to touch its line again (bar index limits): deleted, it would only use line budget
+                w.hide()
                 wces.remove(k)
             else if not w.swing and not w.fvg and not recent
                 w.hide()
@@ -337,6 +336,22 @@ if dowick and compute and barstate.isconfirmed and bar_index > 2
     while wces.size() > 400
         w = wces.shift()
         w.hide()
+    // line budget (max_lines_count 500, the oldest lines are deleted beyond it): the thick wicks (250), the fibs
+    // and the volume divergences come first; the oldest CEs (never those of the last candles) are dropped
+    int ceMax = 500 - 250 - 10 - (dovdiv ? dvkeep + 2 : 0) - 10
+    int nd = 0
+    for wc in wces
+        if not na(wc.ln)
+            nd += 1
+    int kk = 0
+    while nd > ceMax and kk < wces.size()
+        wd = wces.get(kk)
+        if not na(wd.ln) and wd.b <= i - wrecent
+            wd.hide()
+            wces.remove(kk)
+            nd -= 1
+        else
+            kk += 1
 
 if compute 
     body_top = math.max(dO, dC)
