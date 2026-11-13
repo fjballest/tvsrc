@@ -16,6 +16,8 @@ var visible = input.bool(false, "compute for historic data use", group=GS,
 var dowick = input.bool(true, "draw wick CE", group=GS, inline="en")
 var dofib = input.bool(true, "mark fib retracements for OTE", group=GS, inline="en")
 var dohtf = input.bool(false, "HTF OTEs", group=GS, inline="en")
+var dovhi = input.bool(true, "high volume dots", group=GS, inline="en2")
+var dovdiv = input.bool(true, "volume divergences", group=GS, inline="en2")
 var badatr = input.float(6, "ignore wicks longer than (daily ATRs)", minval = 0, step = 0.5, group = GS,
     tooltip = "Bad data: for the fib retracements and the HTF OTEs, a wick longer than this many daily ATRs is taken "+
         "as a bad print and the candle's high or low is taken at its body. 0: off.")
@@ -75,6 +77,24 @@ var hotetf2 = input.timeframe("240", "for", group=GH, inline = "h2")
 var hotecolu = input.color(color.new(#ffb300, 80), "rect color bull", group=GH, inline="ocol")
 var hotecold = input.color(color.new(#ff00aa, 81), "bear", group=GH, inline="ocol")
 
+GV = "Volume (experimental)"
+var vlen = input.int(20, "high volume: above the average of the last", group=GV, minval=1, inline="vh")
+var vk = input.float(2.0, "candles x", group=GV, minval=1, step=0.1, inline="vh",
+     tooltip="a dot below (up candle) or above (down candle) a candle whose volume is at least this many times " +
+         "the average volume of the candles before it. In real time it shows once the forming candle gets there")
+var vcol = input.color(color.new(color.orange, 20), "dot color", group=GV)
+var dvleft = input.int(5, "divergences: swing bars left", group=GV, minval=1, inline="dvs")
+var dvright = input.int(2, "right", group=GV, minval=1, inline="dvs")
+var dvmeas = input.string("3 candles", "volume of a swing", options=["swing candle", "3 candles", "push"],
+     group=GV, tooltip="swing candle: the volume of the candle of the high (low); 3 candles: the average of it and " +
+         "the candles before and after; push: the total volume from the previous opposite swing to it")
+var dvmax = input.int(100, "at most bars between the two swings", group=GV, minval=2)
+var dvkeep = input.int(6, "keep the last", group=GV, minval=1, inline="dvk")
+var dvbear = input.color(color.new(color.red, 30), "bear", group=GV, inline="dvk")
+var dvbull = input.color(color.new(color.green, 30), "bull", group=GV, inline="dvk",
+     tooltip="a higher swing high with less volume than the previous swing high (bear), or a lower swing low with " +
+         "less volume than the previous swing low (bull): a line joins the two swings")
+
 GD = "Data symbol"
 dAlt = input.bool(false, "Data from another symbol", group = GD, inline = "dsym",
     tooltip = "Compute wicks, fibs and OTEs from the candles of this symbol, at the chart timeframe, and draw "+
@@ -86,10 +106,12 @@ float dO = request.security(dataSym, timeframe.period, open, gaps = barmerge.gap
 float dH = request.security(dataSym, timeframe.period, high, gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_off)
 float dL = request.security(dataSym, timeframe.period, low, gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_off)
 float dC = request.security(dataSym, timeframe.period, close, gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_off)
+float dV = request.security(dataSym, timeframe.period, volume, gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_off)
 max_bars_back(dO, 5000)
 max_bars_back(dH, 5000)
 max_bars_back(dL, 5000)
 max_bars_back(dC, 5000)
+max_bars_back(dV, 5000)
 
 // bad data: daily ATR(14) as an RMA of the true range of daily candles cleaned with it (so a bad print does not
 // inflate it), for the last completed day; a wick longer than badatr of it is a bad print, the body is used instead
@@ -506,3 +528,67 @@ if compute and dohtf and dohote2 and theote2.isok() and theote2.starts()
 if compute and dohtf and dohote2 and theote2.isok()
     theote2.updateote()
  
+
+// ============================================================ volume (experimental)
+// high volume: at least vk times the average volume of the vlen candles before
+float vavg = ta.sma(dV, vlen)[1]
+bool vhi = dovhi and not na(dV) and not na(vavg) and vavg > 0 and dV >= vk * vavg
+plotshape(vhi and dC >= dO, "high volume (up candle)", shape.circle, location.belowbar, vcol, size = size.tiny,
+     display = display.pane)
+plotshape(vhi and dC < dO, "high volume (down candle)", shape.circle, location.abovebar, vcol, size = size.tiny,
+     display = display.pane)
+
+// divergences: a higher swing high with less volume than the previous swing high, or a lower swing low with less
+// volume than the previous swing low (bad prints cleaned, see badatr). Swings are known dvright bars later.
+float vph = ta.pivothigh(fH, dvleft, dvright)
+float vpl = ta.pivotlow(fL, dvleft, dvright)
+var int vhB = na      // last swing high: bar, price, volume
+var float vhP = na
+var float vhV = na
+var int vlB = na      // last swing low
+var float vlP = na
+var float vlV = na
+var array<line> vdLns = array.new<line>()
+var array<label> vdLbls = array.new<label>()
+
+// volume of the swing dvright bars ago; the push starts after the previous opposite swing (at most dvmax bars)
+swVol(int prevOpp) =>
+    float v = na
+    if dvmeas == "swing candle"
+        v := dV[dvright]
+    else if dvmeas == "3 candles"
+        v := (dV[dvright - 1] + dV[dvright] + dV[dvright + 1]) / 3
+    else
+        int n = na(prevOpp) ? dvmax : math.min(dvmax, bar_index - dvright - prevOpp)
+        v := 0.0
+        for i = dvright to dvright + math.max(n, 1) - 1
+            v += nz(dV[i])
+    v
+
+vdDraw(int b0, float p0, int b1, float p1, float v0, float v1, bool hi) =>
+    color c = hi ? dvbear : dvbull
+    vdLns.push(line.new(b0, p0, b1, p1, color = c, width = 2))
+    vdLbls.push(label.new(b1, p1, "v", style = hi ? label.style_label_down : label.style_label_up,
+         color = color.new(c, 100), textcolor = c, size = size.small,
+         tooltip = "volume divergence: " + str.tostring(v0, format.volume) + " then " + str.tostring(v1,
+         format.volume)))
+    while vdLns.size() > dvkeep
+        vdLns.shift().delete()
+        vdLbls.shift().delete()
+
+if compute and dovdiv
+    int b = bar_index - dvright
+    if not na(vph)
+        float v = swVol(vlB)
+        if not na(vhP) and not na(v) and not na(vhV) and b - vhB <= dvmax and vph > vhP and v < vhV
+            vdDraw(vhB, vhP, b, vph, vhV, v, true)
+        vhB := b
+        vhP := vph
+        vhV := v
+    if not na(vpl)
+        float v = swVol(vhB)
+        if not na(vlP) and not na(v) and not na(vlV) and b - vlB <= dvmax and vpl < vlP and v < vlV
+            vdDraw(vlB, vlP, b, vpl, vlV, v, false)
+        vlB := b
+        vlP := vpl
+        vlV := v
