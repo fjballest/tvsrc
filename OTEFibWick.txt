@@ -79,19 +79,21 @@ var hotecold = input.color(color.new(#ff00aa, 81), "bear", group=GH, inline="oco
 
 GV = "Volume (experimental)"
 var vlen = input.int(30, "high volume: above the average of the last", group=GV, minval=1, inline="vh")
-var vk = input.float(3.0, "candles x", group=GV, minval=1, step=0.1, inline="vh",
+var vk = input.float(2.0, "candles x", group=GV, minval=1, step=0.1, inline="vh",
      tooltip="a dot below (up candle) or above (down candle) a candle whose volume is at least this many times " +
          "the average volume of the candles before it. In real time it shows once the forming candle gets there")
 var vmaxn = input.int(10, "and the highest of the last N candles", group=GV, minval=0,
      tooltip="the volume must also be above that of each of these N candles before it (0: no such check)")
 var vcol = input.color(color.new(color.orange, 20), "dot color", group=GV, inline="vc")
-var vsize = input.string("small dot", "size", options=["tiny dot", "small dot", "circle", "big circle"],
+var vsize = input.string("small circle", "size", options=["small circle", "circle", "big circle"],
      group=GV, inline="vc")
 var dvleft = input.int(5, "divergences: swing bars left", group=GV, minval=1, inline="dvs")
 var dvright = input.int(2, "right", group=GV, minval=1, inline="dvs")
 var dvmeas = input.string("3 candles", "volume of a swing", options=["swing candle", "3 candles", "push"],
      group=GV, tooltip="swing candle: the volume of the candle of the high (low); 3 candles: the average of it and " +
          "the candles before and after; push: the total volume from the previous opposite swing to it")
+var dvshow = input.string("segment", "show", options=["segment", "v", "both"], group=GV,
+     tooltip="segment: a line joining the two swings; v: a v mark at the second swing (hover it for the volumes)")
 var dvmax = input.int(100, "at most bars between the two swings", group=GV, minval=2)
 var dvkeep = input.int(20, "keep the last", group=GV, minval=1, inline="dvk")
 var dvbear = input.color(color.new(color.red, 30), "bear", group=GV, inline="dvk")
@@ -542,22 +544,18 @@ bool vhi = dovhi and not na(dV) and not na(vavg) and vavg > 0 and dV >= vk * vav
 bool vup = vhi and dC >= dO
 bool vdn = vhi and dC < dO
 // plot sizes must be constant: one pair of plots per size option
-plotchar(vup and vsize == "tiny dot", "high volume (up)", "·", location.belowbar, vcol, size = size.tiny,
+plotshape(vup and vsize == "small circle", "high volume (up)", shape.circle, location.belowbar, vcol,
+     size = size.tiny, display = display.pane)
+plotshape(vdn and vsize == "small circle", "high volume (down)", shape.circle, location.abovebar, vcol,
+     size = size.tiny, display = display.pane)
+plotshape(vup and vsize == "circle", "high volume (up)", shape.circle, location.belowbar, vcol, size = size.small,
      display = display.pane)
-plotchar(vdn and vsize == "tiny dot", "high volume (down)", "·", location.abovebar, vcol, size = size.tiny,
-     display = display.pane)
-plotchar(vup and vsize == "small dot", "high volume (up)", "•", location.belowbar, vcol, size = size.tiny,
-     display = display.pane)
-plotchar(vdn and vsize == "small dot", "high volume (down)", "•", location.abovebar, vcol, size = size.tiny,
-     display = display.pane)
-plotshape(vup and vsize == "circle", "high volume (up)", shape.circle, location.belowbar, vcol, size = size.tiny,
-     display = display.pane)
-plotshape(vdn and vsize == "circle", "high volume (down)", shape.circle, location.abovebar, vcol, size = size.tiny,
+plotshape(vdn and vsize == "circle", "high volume (down)", shape.circle, location.abovebar, vcol, size = size.small,
      display = display.pane)
 plotshape(vup and vsize == "big circle", "high volume (up)", shape.circle, location.belowbar, vcol,
-     size = size.small, display = display.pane)
+     size = size.normal, display = display.pane)
 plotshape(vdn and vsize == "big circle", "high volume (down)", shape.circle, location.abovebar, vcol,
-     size = size.small, display = display.pane)
+     size = size.normal, display = display.pane)
 
 // divergences: a higher swing high with less volume than the previous swing high, or a lower swing low with less
 // volume than the previous swing low (bad prints cleaned, see badatr). Swings are known dvright bars later; with
@@ -601,8 +599,10 @@ swVol(int prevOpp, int r) =>
 
 vdNew(int b0, float p0, int b1, float p1, float v0, float v1, bool hi, bool early) =>
     color c = hi ? dvbear : dvbull
-    line ln = line.new(b0, p0, b1, p1, color = c, width = 2, style = early ? line.style_dotted : line.style_solid)
-    label lb = label.new(b1, p1, early ? "v?" : "v", style = hi ? label.style_label_down : label.style_label_up,
+    line ln = line.new(b0, p0, b1, p1, color = dvshow == "v" ? color.new(c, 100) : c, width = 2,
+         style = early ? line.style_dotted : line.style_solid)
+    label lb = label.new(b1, p1, dvshow == "segment" ? "" : early ? "v?" : "v",
+         style = hi ? label.style_label_down : label.style_label_up,
          color = color.new(c, 100), textcolor = c, size = size.small,
          tooltip = "volume divergence: " + str.tostring(v0, format.volume) + " then " + str.tostring(v1,
          format.volume) + (early ? " (not confirmed yet)" : ""))
@@ -610,7 +610,7 @@ vdNew(int b0, float p0, int b1, float p1, float v0, float v1, bool hi, bool earl
 
 vdKeep(line ln, label lb) =>
     ln.set_style(line.style_solid)
-    lb.set_text("v")
+    lb.set_text(dvshow == "segment" ? "" : "v")
     vdLns.push(ln)
     vdLbls.push(lb)
     while vdLns.size() > dvkeep
