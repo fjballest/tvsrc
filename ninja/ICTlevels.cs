@@ -4,7 +4,7 @@
 // quadrants and standard deviations, premarket range, EQH/EQL, PO3 lines, TGIF levels, macros,
 // silver bullet and a session/macro status text. Draws levels only: no plots, no signals, no alerts.
 //
-// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 d83834d3fbab817754763faa623ba49d),
+// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 97fa2044c9e6c12b1a437b1599f975a2),
 // © franjballest, Mozilla Public License 2.0 (https://mozilla.org/MPL/2.0/).
 //
 // Install:
@@ -1879,7 +1879,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 			return r;
 		}
 
-		// step of the stddevs: octants, quadrants, half, whole range or none
+		// step of the stddevs: octants, quadrants, half, whole range, twice the range or none
 		private static double StdUnit(double r, double min)
 		{
 			if (r / 8.0 > min)
@@ -1890,6 +1890,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 				return r / 2.0;
 			if (r > min)
 				return r;
+			if (2.0 * r > min)
+				return 2.0 * r;
 			return 0.0;
 		}
 

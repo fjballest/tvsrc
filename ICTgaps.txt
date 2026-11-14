@@ -163,7 +163,7 @@ bool dorthogoct = input.bool(true, "RTHOG octants", group = GRP_DOG, inline = "r
 bool dorthogpo3 = input.bool(true, "RTHOG stddevs", group = GRP_DOG, inline = "rp")
 float rthogpo3min = input.float(50.0, "min size", group = GRP_DOG, inline = "rp",
      tooltip = "min size of the steps to draw them (selects octants, "
-     + "quadrants, half gap, whole gap or none)")
+     + "quadrants, half gap, whole gap, twice the gap or none)")
 int rthogpo3num = input.int(4, "number of stddevs to draw above/below", group = GRP_DOG, inline = "rn")
 bool rthogauto = input.bool(true, "auto", group = GRP_DOG, inline = "rn",
      tooltip = "Latest RTHOG only, from the open until the market close: more stddevs are drawn when price "
@@ -220,7 +220,7 @@ float pmqmin = input.float(50.0, "min size", group = G_PM, inline = "pm2",
 bool dopmpo3 = input.bool(true, "PMKT stddevs", group = G_PM, inline = "pm3")
 float pmpo3min = input.float(50.0, "min size", group = G_PM, inline = "pm3",
      tooltip = "min size of the steps to draw them (selects octants, quadrants, half range, "
-     + "whole range or none)")
+     + "whole range, twice the range or none)")
 int pmpo3num = input.int(4, "number of stddevs to draw above/below", minval = 1,
      group = G_PM, inline = "pn")
 bool pmauto = input.bool(false, "auto", group = G_PM, inline = "pn",
@@ -822,6 +822,8 @@ method pmdraw(Zone z, bool auto = false) =>
                 u := r / 2
             else if r > pmpo3min
                 u := r
+            else if 2 * r > pmpo3min
+                u := 2 * r
             if u > 0
                 if na(z.sdlines)
                     z.sdlines := array.new<line>()
@@ -1555,6 +1557,8 @@ method rpo3(RTHOG g) =>
         u := gap / 2
     else if gap > rthogpo3min
         u := gap
+    else if 2 * gap > rthogpo3min
+        u := 2 * gap
     if u > 0
         if na(g.po3lines)
             g.po3lines := array.new<line>()

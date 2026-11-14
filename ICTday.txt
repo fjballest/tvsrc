@@ -834,6 +834,8 @@ method pmdraw(Zone z, bool auto = false) =>
                 u := r / 2
             else if r > pmpo3min
                 u := r
+            else if 2 * r > pmpo3min
+                u := 2 * r
             if u > 0
                 if na(z.sdlines)
                     z.sdlines := array.new<line>()
@@ -1567,6 +1569,8 @@ method rpo3(RTHOG g) =>
         u := gap / 2
     else if gap > rthogpo3min
         u := gap
+    else if 2 * gap > rthogpo3min
+        u := 2 * gap
     if u > 0
         if na(g.po3lines)
             g.po3lines := array.new<line>()

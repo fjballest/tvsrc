@@ -11,7 +11,7 @@
  *   It draws levels only: no signals, no alerts, no plots.
  *
  *   It is a port of the TradingView Pine Script v6 indicator ICTlevels.txt
- *   (md5 d83834d3fbab817754763faa623ba49d). Parameter names are the Pine variable names and the
+ *   (md5 97fa2044c9e6c12b1a437b1599f975a2). Parameter names are the Pine variable names and the
  *   defaults are the Pine defaults; see "doc/ICTlevels-user-manual.md" for what every level means.
  *
  * How to install
@@ -318,6 +318,7 @@ function sdStep(r, mn) {
     if (r / 4 > mn) return r / 4;
     if (r / 2 > mn) return r / 2;
     if (r > mn) return r;
+    if (2 * r > mn) return 2 * r;
     return 0;
 }
 
