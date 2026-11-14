@@ -437,7 +437,7 @@ Attenuation dims the drawings without changing their settings. Drawings have thr
 | Label in dialog | Default | What it does |
 | --- | --- | --- |
 | Gaps to keep | 10 (min 1) | Number of NDOGs, of NWOGs and of RTHOGs to keep (each). Values above 15 are reduced to 15. |
-| NDOGs: Monday and Friday only | off | Only the first and the last NDOG of the week: the gap after Monday's session and the gap that opens Friday's session (after Thursday's). The Sunday open is the NWOG. |
+| NDOGs: Monday and Friday only | off | Only the first and the last NDOG of the week: the gap after Monday's session and the gap that opens Friday's session (after Thursday's). The Sunday open is the NWOG. The latest NDOG is always shown. |
 | RTHOG quadrants | on | Draws the 25% and 75% lines of the current RTHOG. |
 | min size | 50.0 | Minimum distance in points between quadrant lines; quadrants are drawn only when a quarter of the gap is larger. |
 | RTHOG octants | on | Draws the 1/8, 3/8, 5/8 and 7/8 lines of the latest RTHOG until noon, when an eighth of the gap is larger than the quadrant min size. |

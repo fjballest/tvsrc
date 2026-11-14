@@ -460,6 +460,7 @@ type Gap
     int nd = 0         // NDOGs merged into this NWOG (combine gaps)
     bool show = true
     bool imp = false   // [ATT] last NDOG (or the gap that shows it when combined)
+    bool mf = true     // NDOG after a Monday or Thursday session (ndogmf keeps only these, and the last one)
     float uhi = na
     float ulo = na
     int ut = na
@@ -1434,15 +1435,18 @@ bool isWeekGap = dow == dayofweek.friday or dow == dayofweek.sunday
 if inWin and dogaps and tfok and bar_index > 0
     if gapOpenBar or gapCloseBar
         int si = gapOpenBar ? 1 : 0
-        bool ndogDay = not ndogmf or dow == dayofweek.monday or dow == dayofweek.thursday
-        if (isWeekGap and donwog) or (not isWeekGap and dondog and ndogDay)
+        if (isWeekGap and donwog) or (not isWeekGap and dondog)
             ndog := Gap.new((isWeekGap ? "NWOG " : "NDOG ") + timestr(), time[si], close[si], na,
                  isWeekGap)
+            ndog.mf := dow == dayofweek.monday or dow == dayofweek.thursday
     else if dow == dayofweek.sunday and dowPrev == dayofweek.friday and donwog
         ndog := Gap.new("NWOG " + timestr(), time[1], close[1], na, true)
     if not na(ndog) and gapEndBar
         ndog.gend(open)
         array<Gap> lst = ndog.isw ? wgaps : dgaps
+        // Monday / Friday only: the previous NDOG goes when it is not one of those (the last one always stays)
+        if ndogmf and not ndog.isw and lst.size() > 0 and not lst.last().mf
+            lst.pop().kill()
         lst.push(ndog)
         if lst.size() > ngapsEff
             lst.shift().kill()

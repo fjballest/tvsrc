@@ -11,7 +11,7 @@
  *   It draws levels only: no signals, no alerts, no plots.
  *
  *   It is a port of the TradingView Pine Script v6 indicator ICTlevels.txt
- *   (md5 82a3a617cc1bd4b5cd458f95eb9c5f8f). Parameter names are the Pine variable names and the
+ *   (md5 4d3b31d70bdc76616e24552b11ee4454). Parameter names are the Pine variable names and the
  *   defaults are the Pine defaults; see "doc/ICTlevels-user-manual.md" for what every level means.
  *
  * How to install
@@ -975,12 +975,12 @@ class ICTlevels {
             const gapEndBar = tsec === C.gapEndSec;
             const isWeekGap = dow === FRI || dow === SUN;
             if (gapOpenBar || gapCloseBar) {
-                // Monday / Friday only: the gaps after Monday's and Thursday's sessions
-                const ndogDay = !P.ndogmf || dow === MON || dow === 4;
-                if ((isWeekGap && P.donwog) || (!isWeekGap && P.dondog && ndogDay)) {
+                if ((isWeekGap && P.donwog) || (!isWeekGap && P.dondog)) {
                     S.ndog = gapOpenBar
                         ? this.mkGap((isWeekGap ? "NWOG " : "NDOG ") + dmy(t, C.tz), i - 1, pv.c, isWeekGap)
                         : this.mkGap((isWeekGap ? "NWOG " : "NDOG ") + dmy(t, C.tz), i, close, isWeekGap);
+                    // NDOG after a Monday or Thursday session (ndogmf keeps only these, and the last one)
+                    S.ndog.mf = dow === MON || dow === 4;
                 }
             } else if (dow === SUN && dowPrev === FRI && P.donwog) {
                 S.ndog = this.mkGap("NWOG " + dmy(t, C.tz), i - 1, pv.c, true);
@@ -992,6 +992,8 @@ class ICTlevels {
                 g.lo = Math.min(s0, open);
                 g.name = (g.isw ? "NWOG " : "NDOG ") + dmy(t, C.tz);
                 const lst = g.isw ? S.wgaps : S.dgaps;
+                // Monday / Friday only: the previous NDOG goes when it is not one of those (the last one stays)
+                if (P.ndogmf && !g.isw && lst.length > 0 && !lst[lst.length - 1].mf) lst.pop();
                 lst.push(g);
                 if (lst.length > C.ngapsEff) {
                     lst.shift();
