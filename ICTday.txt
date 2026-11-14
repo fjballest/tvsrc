@@ -196,6 +196,7 @@ color uscolor = input.color(color.blue, "NY", group = G_ZONES, inline = "sescol"
 
 const string GRP_DOG = "Gaps and Ranges"
 int ngaps = 10
+bool ndogmf = false
 bool dorthogq = true
 float rthogqmin = float(50.0)
 bool dorthogoct = true
@@ -1433,7 +1434,8 @@ bool isWeekGap = dow == dayofweek.friday or dow == dayofweek.sunday
 if inWin and dogaps and tfok and bar_index > 0
     if gapOpenBar or gapCloseBar
         int si = gapOpenBar ? 1 : 0
-        if (isWeekGap and donwog) or (not isWeekGap and dondog)
+        bool ndogDay = not ndogmf or dow == dayofweek.monday or dow == dayofweek.thursday
+        if (isWeekGap and donwog) or (not isWeekGap and dondog and ndogDay)
             ndog := Gap.new((isWeekGap ? "NWOG " : "NDOG ") + timestr(), time[si], close[si], na,
                  isWeekGap)
     else if dow == dayofweek.sunday and dowPrev == dayofweek.friday and donwog

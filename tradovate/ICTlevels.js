@@ -11,7 +11,7 @@
  *   It draws levels only: no signals, no alerts, no plots.
  *
  *   It is a port of the TradingView Pine Script v6 indicator ICTlevels.txt
- *   (md5 97fa2044c9e6c12b1a437b1599f975a2). Parameter names are the Pine variable names and the
+ *   (md5 82a3a617cc1bd4b5cd458f95eb9c5f8f). Parameter names are the Pine variable names and the
  *   defaults are the Pine defaults; see "doc/ICTlevels-user-manual.md" for what every level means.
  *
  * How to install
@@ -146,6 +146,7 @@ const PARAMS = {
     uscolor: ps.color(C_BLUE),
     // Gaps and Ranges
     ngaps: ps.number(10, 1, 1),
+    ndogmf: ps.bool(false),
     dorthogq: ps.bool(true),
     rthogqmin: ps.number(50.0, 0.25, 0),
     dorthogoct: ps.bool(true),
@@ -974,7 +975,9 @@ class ICTlevels {
             const gapEndBar = tsec === C.gapEndSec;
             const isWeekGap = dow === FRI || dow === SUN;
             if (gapOpenBar || gapCloseBar) {
-                if ((isWeekGap && P.donwog) || (!isWeekGap && P.dondog)) {
+                // Monday / Friday only: the gaps after Monday's and Thursday's sessions
+                const ndogDay = !P.ndogmf || dow === MON || dow === 4;
+                if ((isWeekGap && P.donwog) || (!isWeekGap && P.dondog && ndogDay)) {
                     S.ndog = gapOpenBar
                         ? this.mkGap((isWeekGap ? "NWOG " : "NDOG ") + dmy(t, C.tz), i - 1, pv.c, isWeekGap)
                         : this.mkGap((isWeekGap ? "NWOG " : "NDOG ") + dmy(t, C.tz), i, close, isWeekGap);

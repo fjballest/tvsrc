@@ -216,6 +216,9 @@ color uscolor = input.color(color.blue, "NY", group = G_ZONES, inline = "sescol"
 
 const string GRP_DOG = "Gaps and Ranges"
 int ngaps = input.int(10, "Gaps to keep", group = GRP_DOG, inline = "gap", minval = 1)
+bool ndogmf = input.bool(false, "NDOGs: Monday and Friday only", group = GRP_DOG,
+     tooltip = "Only the first and the last NDOG of the week: the gap after Monday's session and the gap that opens "
+     + "Friday's session (after Thursday's). The Sunday open is the NWOG.")
 bool dorthogq = input.bool(true, "RTHOG quadrants", group = GRP_DOG, inline = "rq")
 float rthogqmin = input.float(50.0, "min size", group = GRP_DOG, inline = "rq",
      tooltip = "min size between quadrants to draw them")
@@ -1497,7 +1500,8 @@ bool isWeekGap = dow == dayofweek.friday or dow == dayofweek.sunday
 if inWin and dogaps and tfok and bar_index > 0
     if gapOpenBar or gapCloseBar
         int si = gapOpenBar ? 1 : 0
-        if (isWeekGap and donwog) or (not isWeekGap and dondog)
+        bool ndogDay = not ndogmf or dow == dayofweek.monday or dow == dayofweek.thursday
+        if (isWeekGap and donwog) or (not isWeekGap and dondog and ndogDay)
             ndog := Gap.new((isWeekGap ? "NWOG " : "NDOG ") + timestr(), time[si], close[si], na,
                  isWeekGap)
     else if dow == dayofweek.sunday and dowPrev == dayofweek.friday and donwog

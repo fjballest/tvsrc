@@ -4,7 +4,7 @@
 // quadrants and standard deviations, premarket range, EQH/EQL, PO3 lines, TGIF levels, macros,
 // silver bullet and a session/macro status text. Draws levels only: no plots, no signals, no alerts.
 //
-// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 97fa2044c9e6c12b1a437b1599f975a2),
+// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 82a3a617cc1bd4b5cd458f95eb9c5f8f),
 // © franjballest, Mozilla Public License 2.0 (https://mozilla.org/MPL/2.0/).
 //
 // Install:
@@ -387,6 +387,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 				LondonColor = PineGreen;
 				NYColor = PineBlue;
 				NGaps = 10;
+				NdogMonFri = false;
 				DoNdog = true;
 				DoNwog = true;
 				DoRthog = true;
@@ -851,7 +852,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 				if (gapOpenBar || gapCloseBar)
 				{
 					int si = gapOpenBar ? 1 : 0;
-					if ((isWeekGap && DoNwog) || (!isWeekGap && DoNdog))
+					bool ndogDay = !NdogMonFri || dow == DayOfWeek.Monday || dow == DayOfWeek.Thursday;
+					if ((isWeekGap && DoNwog) || (!isWeekGap && DoNdog && ndogDay))
 						ndog = MkGap(isWeekGap, Time[si], Close[si]);
 				}
 				else if (dow == DayOfWeek.Sunday && dowPrev == DayOfWeek.Friday && DoNwog)
@@ -3322,6 +3324,10 @@ namespace NinjaTrader.NinjaScript.Indicators
 		[Range(1, 1000)]
 		[Display(Name = "gaps to keep", GroupName = "Gaps and Ranges", Order = 602)]
 		public int NGaps { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "NDOGs: Monday and Friday only", GroupName = "Gaps and Ranges", Order = 603, Description = "Only the first and the last NDOG of the week: the gap after Monday's session and the gap that opens Friday's session (after Thursday's). The Sunday open is the NWOG.")]
+		public bool NdogMonFri { get; set; }
 
 		[NinjaScriptProperty]
 		[Display(Name = "NDOGs", GroupName = "Enable / Filter", Order = 5)]
