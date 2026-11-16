@@ -13,7 +13,7 @@
  *   BM↑/BM↓, inheritance of the tags by IFVGs) and LONG / SHORT / OTE signal markers.
  *
  *   Port of the TradingView Pine Script v6 indicator "FVGS+IFVG+OTE.txt"
- *   (md5 23ede8de508073001accda430bf7761a, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
+ *   (md5 99fb37d9ada7092e62572f0cfae67436, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
  *   input variable names (camelCase). See the design document (d.md) and user manual (m.md) for the logic.
  *
  * How to install
@@ -2083,7 +2083,7 @@ class FVGSIFVGOTE {
         if ((mb ? P.mbBox : P.brkBox) || shd) {
             b.bx = this.g.box({ left: b.t, top: b.hi, right: j, bottom: b.lo, border: shd ? col(TV.gray, 100) : this.cB(colr, 0),
                 bstyle: sty, bw: shd ? 0 : w, bg: col(shd ? TV.gray : colr, shd ? 80 : 100), fixed: true });
-            if (mb ? P.mbCe : P.brkCe) b.ml = this.g.line({ x1: b.t, y1: mid, x2: j, y2: mid, color: this.cB(colr, 0), style: sty, width: w, fixed: true });
+            if (mb ? P.mbCe : P.brkCe) b.ml = this.g.line({ x1: b.t, y1: mid, x2: j, y2: mid, color: shd ? col(TV.gray, 50) : this.cB(colr, 0), style: sty, width: w, fixed: true });
         }
     }
     // FVG shown as the box of a confirmed IFVG (close mode or swing mode), with its IFVG label

@@ -1906,7 +1906,7 @@ brkWait(Breaker b) =>
             border_width = brkShd ? 0 : brkW, bgcolor = color.new(brkShd ? color.gray : brkC(b.dir), brkShd ? 88 : (brkNoFill ? 100 : 93)),
             text = b.dir == 1 ? "B↑" : "B↓", text_color = brkC(b.dir), text_size = size.small,
             text_halign = brkLblH, text_valign = brkLblV)
-        b.ml := brkCe ? line.new(b.t, (b.hi + b.lo) / 2, time, (b.hi + b.lo) / 2, xloc = xloc.bar_time, color = brkC(b.dir),
+        b.ml := brkCe ? line.new(b.t, (b.hi + b.lo) / 2, time, (b.hi + b.lo) / 2, xloc = xloc.bar_time, color = brkShd ? color.new(color.gray, 50) : brkC(b.dir),
             style = brkSty, width = brkW) : na
     true
 brkDrop(Breaker b) =>
@@ -1981,7 +1981,7 @@ brkTag(FVG f, Breaker b, box ib) =>
                     border_width = brkShd ? 0 : brkW, bgcolor = color.new(brkShd ? color.gray : brkC(b.dir), brkShd ? 80 : (brkNoFill ? 100 : 85)),
                     text = b.dir == 1 ? "B↑" : "B↓", text_color = brkC(b.dir), text_size = size.small,
                     text_halign = brkLblH, text_valign = brkLblV)
-                b.ml := brkCe ? line.new(b.t, mid, time, mid, xloc = xloc.bar_time, color = brkC(b.dir), style = brkSty,
+                b.ml := brkCe ? line.new(b.t, mid, time, mid, xloc = xloc.bar_time, color = brkShd ? color.new(color.gray, 50) : brkC(b.dir), style = brkSty,
                     width = brkW) : na
     true
 
@@ -2128,7 +2128,7 @@ mbWait(MBlock b) =>
             border_width = mbShd ? 0 : mbW, bgcolor = color.new(mbShd ? color.gray : mbC(b.dir), mbShd ? 88 : (mbNoFill ? 100 : 93)),
             text = b.dir == 1 ? "M↑" : "M↓", text_color = mbC(b.dir), text_size = size.small,
             text_halign = mbLblH, text_valign = mbLblV)
-        b.ml := mbCe ? line.new(b.t, (b.hi + b.lo) / 2, time, (b.hi + b.lo) / 2, xloc = xloc.bar_time, color = mbC(b.dir),
+        b.ml := mbCe ? line.new(b.t, (b.hi + b.lo) / 2, time, (b.hi + b.lo) / 2, xloc = xloc.bar_time, color = mbShd ? color.new(color.gray, 50) : mbC(b.dir),
             style = mbSty, width = mbW) : na
     true
 mbDrop(MBlock b) =>
@@ -2202,7 +2202,7 @@ mbTag(FVG f, MBlock b, box ib, int which) =>
                     border_width = mbShd ? 0 : mbW, bgcolor = color.new(mbShd ? color.gray : mbC(b.dir), mbShd ? 80 : (mbNoFill ? 100 : 85)),
                     text = b.dir == 1 ? "M↑" : "M↓", text_color = mbC(b.dir), text_size = size.small,
                     text_halign = mbLblH, text_valign = mbLblV)
-                b.ml := mbCe ? line.new(b.t, mid, time, mid, xloc = xloc.bar_time, color = mbC(b.dir), style = mbSty,
+                b.ml := mbCe ? line.new(b.t, mid, time, mid, xloc = xloc.bar_time, color = mbShd ? color.new(color.gray, 50) : mbC(b.dir), style = mbSty,
                     width = mbW) : na
     true
 

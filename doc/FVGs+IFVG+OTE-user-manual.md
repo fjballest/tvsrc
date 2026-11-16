@@ -505,7 +505,7 @@ Inputs on one line in the settings dialog are listed together; a field without i
 | Rectangle, ↑ (color), ↓ (color), (style), width | off / orange / fuchsia / dashed / 1 | Draw the breaker rectangle and its mid line, with this color, line style and width. Off: nothing is drawn, but the bold IFVG labels and the B↑ / B↓ labels are still set |
 | Flag candles | off | Color the breaker candle(s) with the rectangle color when it is tagged at the pullback, with or without the rectangle; removed together with the rectangle |
 | Shadow rectangle (same line as Flag candles) | off (ICTblocks: on) | Draw the breaker as a grey transparent rectangle without border instead of the dashed one, also when Rectangle is off; the mid line stays |
-| Mid line (C.E.) (same line as Flag candles) | on | Draw the C.E. (mid line) of the rectangle, dashed or shadow. Off: the rectangle only |
+| Mid line (C.E.) (same line as Flag candles) | on | Draw the C.E. (mid line) of the rectangle, in the block color, or a slightly darker grey than the fill with the shadow rectangle. Off: the rectangle only |
 
 ### Mitigation blocks
 
@@ -519,7 +519,7 @@ Inputs on one line in the settings dialog are listed together; a field without i
 | Rectangle, ↑ (color), ↓ (color), (style), width | off / orange / fuchsia / dashed / 1 | Draw the rectangle and its mid line. Off: nothing is drawn, but the bold IFVG labels with arrows and the M↑ / M↓ labels are still set |
 | Flag candles | off | Color the mitigation block candle(s) with the rectangle color when it is tagged at the pullback, with or without the rectangle; removed together with the rectangle |
 | Shadow rectangle (same line as Flag candles) | off (ICTblocks: on) | Draw the mitigation block as a grey transparent rectangle without border instead of the dashed one, also when Rectangle is off; the mid line stays |
-| Mid line (C.E.) (same line as Flag candles) | on | Draw the C.E. (mid line) of the rectangle, dashed or shadow. Off: the rectangle only |
+| Mid line (C.E.) (same line as Flag candles) | on | Draw the C.E. (mid line) of the rectangle, in the block color, or a slightly darker grey than the fill with the shadow rectangle. Off: the rectangle only |
 
 ### Delivery Engine (Nuno)
 
