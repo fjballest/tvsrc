@@ -313,6 +313,7 @@ oteTextCol = attB(input.color(color.black, "text", group = G_OTE, inline = "oc")
 G_BRK = "Breakers"
 brkOn = false
 brkMode = "Last candle"
+brkPart = "Full candle"
 brkLen = 2
 brkKeep = 3
 brkAge = 60
@@ -324,11 +325,13 @@ brkSty = getstyle("dashed")
 brkW = attW(1)
 brkFlag = false
 brkShd = false
+brkCe = true
 
 // Mitigation blocks =========
 G_MB = "Mitigation blocks"
 mbOn = false
 mbMode = "Last candle"
+mbPart = "Body"
 mbLen = 2
 mbKeep = 3
 mbAge = 60
@@ -340,6 +343,7 @@ mbSty = getstyle("dashed")
 mbW = attW(1)
 mbFlag = false
 mbShd = false
+mbCe = true
 
 // Delivery Engine (from Nuno's Delivery Engine V20) =========
 G_DE = "Delivery Engine (Nuno)"

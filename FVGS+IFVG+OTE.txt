@@ -349,7 +349,8 @@ brkOn = input.bool(true, "Breakers at FVG / IFVG pullbacks", group = G_BRK,
 brkMode = input.string("Last candle", "Zone", options = ["Last candle", "Whole sequence"], group = G_BRK,
     inline = "bm", tooltip = "Last candle: the last up-close candle making the high (bullish) / down-close "
     + "candle making the low (bearish). Whole sequence: that candle and the consecutive up-close / down-close "
-    + "candles before it.")
+    + "candles before it. Full candle / Body: the zone spans the high to the low of its candle(s), or their bodies.")
+brkPart = input.string("Full candle", "", options = ["Full candle", "Body"], group = G_BRK, inline = "bm")
 brkLen = input.int(2, "Swing length / keep", minval = 1, maxval = 20, group = G_BRK, inline = "bl",
     tooltip = "Pivot length (left and right) of the lows and highs, and breakers kept per direction.")
 brkKeep = input.int(3, "", minval = 1, maxval = 10, group = G_BRK, inline = "bl")
@@ -372,12 +373,14 @@ brkShd = input.bool(false, "Shadow rectangle", group = G_BRK, inline = "bf",
     + "tagged at the pullback (with or without the rectangle); removed together with the rectangle. Shadow "
     + "rectangle: draw the breaker as a grey transparent rectangle (no border) instead of the dashed one, also "
     + "when Rectangle is off; the mid line is kept.")
+brkCe = input.bool(true, "Mid line (C.E.)", group = G_BRK, inline = "bf",
+    tooltip = "Draw the C.E. (mid line) of the breaker rectangle.")
 
 // Mitigation blocks =========
 G_MB = "Mitigation blocks"
 mbOn = input.bool(true, "Mitigation blocks at FVG / IFVG pullbacks", group = G_MB,
     tooltip = "Bullish mitigation block: a low, a high and a higher low; after a close above that high, price "
-    + "pulls back to the zone (the body of its candle; long). Bearish: a high, a low and a lower high; after a "
+    + "pulls back to the zone (long). Bearish: a high, a low and a lower high; after a "
     + "close below that low, price pulls back to the zone (short). As for breakers, price has to make a swing beyond the "
     + "zone before the pullback. When, on the pullback, a live bullish FVG or confirmed IFVG+ (long) or bearish "
     + "FVG or IFVG- (short) overlaps the zone, the block is drawn as a rectangle with its mid line, the label of "
@@ -387,7 +390,8 @@ mbOn = input.bool(true, "Mitigation blocks at FVG / IFVG pullbacks", group = G_M
 mbMode = input.string("Last candle", "Zone", options = ["Last candle", "Whole sequence"], group = G_MB,
     inline = "mm", tooltip = "Last candle: the last up-close candle making the high (bullish) / down-close "
     + "candle making the low (bearish). Whole sequence: that candle and the consecutive up-close / down-close "
-    + "candles before it.")
+    + "candles before it. Full candle / Body: the zone spans the high to the low of its candle(s), or their bodies.")
+mbPart = input.string("Body", "", options = ["Full candle", "Body"], group = G_MB, inline = "mm")
 mbLen = input.int(2, "Swing length / keep", minval = 1, maxval = 20, group = G_MB, inline = "ml",
     tooltip = "Pivot length (left and right) of the lows and highs, and mitigation blocks kept per direction.")
 mbKeep = input.int(3, "", minval = 1, maxval = 10, group = G_MB, inline = "ml")
@@ -410,6 +414,8 @@ mbShd = input.bool(false, "Shadow rectangle", group = G_MB, inline = "mf",
     + "tagged at the pullback (with or without the rectangle); removed together with the rectangle. Shadow "
     + "rectangle: draw the mitigation block as a grey transparent rectangle (no border) instead of the dashed one, also "
     + "when Rectangle is off; the mid line is kept.")
+mbCe = input.bool(true, "Mid line (C.E.)", group = G_MB, inline = "mf",
+    tooltip = "Draw the C.E. (mid line) of the mitigation block rectangle.")
 
 // Delivery Engine (from Nuno's Delivery Engine V20) =========
 G_DE = "Delivery Engine (Nuno)"
@@ -2366,7 +2372,7 @@ blkPivot(array<float> pr, array<int> br, array<int> ty, float price, int bar, in
     changed
 
 // block zone at the swing k0 bars back: the up-close (dir 1) / down-close (dir -1) candle there or among
-// the 3 before it, wick to wick (breaker) or its body (mitigation block), plus the consecutive ones before it in
+// the 3 before it, high to low or its body (brkPart / mbPart: breakers full candle, mitigation blocks body by default), plus the consecutive ones before it in
 // "Whole sequence" mode
 blkZone(int dir, int k0, bool body, bool whole) =>
     float zh = na
@@ -2431,8 +2437,8 @@ var int bDnDone = na
 //#blk             border_width = brkShd ? 0 : brkW, bgcolor = color.new(brkShd ? color.gray : brkC(b.dir), brkShd ? 88 : 93),
 //#blk             text = b.dir == 1 ? "B↑" : "B↓", text_color = brkC(b.dir), text_size = size.small,
 //#blk             text_halign = brkLblH, text_valign = brkLblV)
-//#blk         b.ml := line.new(b.t, (b.hi + b.lo) / 2, time, (b.hi + b.lo) / 2, xloc = xloc.bar_time, color = brkC(b.dir),
-//#blk             style = brkSty, width = brkW)
+//#blk         b.ml := brkCe ? line.new(b.t, (b.hi + b.lo) / 2, time, (b.hi + b.lo) / 2, xloc = xloc.bar_time, color = brkC(b.dir),
+//#blk             style = brkSty, width = brkW) : na
 //#blk     true
 brkDrop(Breaker b) =>
     if not b.tagged and not na(b.bx)
@@ -2505,8 +2511,8 @@ brkTag(FVG f, Breaker b, box ib) =>
                 b.bx := box.new(b.t, b.hi, time, b.lo, xloc = xloc.bar_time,
                     border_color = brkShd ? color.new(color.gray, 100) : brkC(b.dir), border_style = brkSty,
                     border_width = brkShd ? 0 : brkW, bgcolor = color.new(brkShd ? color.gray : brkC(b.dir), brkShd ? 80 : 100))
-                b.ml := line.new(b.t, mid, time, mid, xloc = xloc.bar_time, color = brkC(b.dir), style = brkSty,
-                    width = brkW)
+                b.ml := brkCe ? line.new(b.t, mid, time, mid, xloc = xloc.bar_time, color = brkC(b.dir), style = brkSty,
+                    width = brkW) : na
     true
 
 if brkOn and barstate.isconfirmed
@@ -2526,7 +2532,7 @@ if brkOn and barstate.isconfirmed
         bUpLvl := na
     // the block forms on the close through that swing; it is drawn from then on
     if not na(bDnLvl) and close < bDnLvl
-        [zh, zl, zt, zt1] = blkZone(-1, bar_index - bDnBar, false, brkMode == "Whole sequence")
+        [zh, zl, zt, zt1] = blkZone(-1, bar_index - bDnBar, brkPart == "Body", brkMode == "Whole sequence")
         if not na(zt)
             brkAdd(-1, zh, zl, zt, zt1)
             Breaker nb = brks.last()
@@ -2536,7 +2542,7 @@ if brkOn and barstate.isconfirmed
         bDnDone := bDnBar
         bDnLvl := na
     if not na(bUpLvl) and close > bUpLvl
-        [zh, zl, zt, zt1] = blkZone(1, bar_index - bUpBar, false, brkMode == "Whole sequence")
+        [zh, zl, zt, zt1] = blkZone(1, bar_index - bUpBar, brkPart == "Body", brkMode == "Whole sequence")
         if not na(zt)
             brkAdd(1, zh, zl, zt, zt1)
             Breaker nb = brks.last()
@@ -2660,8 +2666,8 @@ var int mDnDone = na
 //#blk             border_width = mbShd ? 0 : mbW, bgcolor = color.new(mbShd ? color.gray : mbC(b.dir), mbShd ? 88 : 93),
 //#blk             text = b.dir == 1 ? "M↑" : "M↓", text_color = mbC(b.dir), text_size = size.small,
 //#blk             text_halign = mbLblH, text_valign = mbLblV)
-//#blk         b.ml := line.new(b.t, (b.hi + b.lo) / 2, time, (b.hi + b.lo) / 2, xloc = xloc.bar_time, color = mbC(b.dir),
-//#blk             style = mbSty, width = mbW)
+//#blk         b.ml := mbCe ? line.new(b.t, (b.hi + b.lo) / 2, time, (b.hi + b.lo) / 2, xloc = xloc.bar_time, color = mbC(b.dir),
+//#blk             style = mbSty, width = mbW) : na
 //#blk     true
 mbDrop(MBlock b) =>
     if not b.tagged and not na(b.bx)
@@ -2734,8 +2740,8 @@ mbTag(FVG f, MBlock b, box ib, int which) =>
                 b.bx := box.new(b.t, b.hi, time, b.lo, xloc = xloc.bar_time,
                     border_color = mbShd ? color.new(color.gray, 100) : mbC(b.dir), border_style = mbSty,
                     border_width = mbShd ? 0 : mbW, bgcolor = color.new(mbShd ? color.gray : mbC(b.dir), mbShd ? 80 : 100))
-                b.ml := line.new(b.t, mid, time, mid, xloc = xloc.bar_time, color = mbC(b.dir), style = mbSty,
-                    width = mbW)
+                b.ml := mbCe ? line.new(b.t, mid, time, mid, xloc = xloc.bar_time, color = mbC(b.dir), style = mbSty,
+                    width = mbW) : na
     true
 
 if mbOn and barstate.isconfirmed
@@ -2755,7 +2761,7 @@ if mbOn and barstate.isconfirmed
         mUpLvl := na
     // the block forms on the close through that swing; it is drawn from then on
     if not na(mDnLvl) and close < mDnLvl
-        [zh, zl, zt, zt1] = blkZone(-1, bar_index - mDnBar, true, mbMode == "Whole sequence")
+        [zh, zl, zt, zt1] = blkZone(-1, bar_index - mDnBar, mbPart == "Body", mbMode == "Whole sequence")
         if not na(zt)
             mbAdd(-1, zh, zl, zt, zt1)
             MBlock nb = mbs.last()
@@ -2765,7 +2771,7 @@ if mbOn and barstate.isconfirmed
         mDnDone := mDnBar
         mDnLvl := na
     if not na(mUpLvl) and close > mUpLvl
-        [zh, zl, zt, zt1] = blkZone(1, bar_index - mUpBar, true, mbMode == "Whole sequence")
+        [zh, zl, zt, zt1] = blkZone(1, bar_index - mUpBar, mbPart == "Body", mbMode == "Whole sequence")
         if not na(zt)
             mbAdd(1, zh, zl, zt, zt1)
             MBlock nb = mbs.last()

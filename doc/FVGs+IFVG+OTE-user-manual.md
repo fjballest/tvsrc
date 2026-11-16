@@ -22,7 +22,7 @@ The indicator works on the chart timeframe. It finds fair value gaps (FVGs) on y
 Two indicators are generated from this one and always stay in sync with it:
 
 - **FVGs+IFVG+OTE4** (`FVGS+IFVG+OTE4.txt`): this indicator without breakers, mitigation blocks, the Delivery Engine (sections 9 to 11, and the A+ label part) and without swing mode. The IFVG confirmation (close or full body) and the inversion rules of the IFVG Settings stay (IFVGs are always created on a close through the FVG). Everything else, and its defaults, is the same.
-- **ICTblocks** (`ICTblocks.txt`): only the breakers, mitigation blocks and the Delivery Engine. It finds the FVGs and close-mode IFVGs exactly as this indicator does (all FVGs, no filter, no 1PFVGs) because the blocks are drawn at their pullbacks, but it draws none of them, so the block **Rectangle** is on by default, filled semi-transparent in the block color and labeled B↑ / B↓ or M↑ / M↓, by default centered on the right side (its **Label** input moves it to the left, the middle or a top corner) (the **Shadow rectangle** keeps its grey fill, with the same label). **Border only (no fill)**, in each group, drops that fill and keeps the border and the label. The rectangle is drawn from the close beyond the zone on, lighter, and grows while the block waits for its pullback; a block dropped before it (failed, too old, or beyond the number kept) is erased. Once tagged, its rectangle gets the full fill and ends at the pullback candle: the block did its job when price leaves it in its direction, and failed (removed) when price trades through it. Of the Delivery Engine it keeps what still shows without FVG boxes: the displacement filter of those FVGs, the colored displacement candles, and the IFVG confirmation and inversion rules; A+ and the displacement border are only marks on FVG / IFVG boxes and are left out. Use it next to FVGs+IFVG+OTE4 to get the full indicator split in two.
+- **ICTblocks** (`ICTblocks.txt`): only the breakers, mitigation blocks and the Delivery Engine. It finds the FVGs and close-mode IFVGs exactly as this indicator does (all FVGs, no filter, no 1PFVGs) because the blocks are drawn at their pullbacks, but it draws none of them, so the block **Rectangle** is on by default, filled semi-transparent in the block color and labeled B↑ / B↓ or M↑ / M↓, by default centered on the right side. Its defaults differ in three inputs: **Shadow rectangle** is on for both kinds of block, and mitigation blocks also use the full candle as their zone, like breakers (its **Label** input moves it to the left, the middle or a top corner) (the **Shadow rectangle** keeps its grey fill, with the same label). **Border only (no fill)**, in each group, drops that fill and keeps the border and the label. The rectangle is drawn from the close beyond the zone on, lighter, and grows while the block waits for its pullback; a block dropped before it (failed, too old, or beyond the number kept) is erased. Once tagged, its rectangle gets the full fill and ends at the pullback candle: the block did its job when price leaves it in its direction, and failed (removed) when price trades through it. Of the Delivery Engine it keeps what still shows without FVG boxes: the displacement filter of those FVGs, the colored displacement candles, and the IFVG confirmation and inversion rules; A+ and the displacement border are only marks on FVG / IFVG boxes and are left out. Use it next to FVGs+IFVG+OTE4 to get the full indicator split in two.
 
 The indicator raises alerts for IFVG signals, OTE IFVG signals and, optionally, bounces on FVG levels and wick C.E. levels. It does not place orders and does not compute stops or targets.
 
@@ -343,7 +343,7 @@ This feature is on by default. It may be removed in a future version.
 ### What it is
 
 - **Swings:** pivots with **Swing length** (2) candles on each side, kept as an alternating high / low sequence: two highs (or lows) in a row are merged into the more extreme one, so the swing between them is the real one.
-- **Bullish breaker:** a swing low, a swing high, then a lower swing low (the second low raids the first). It forms on the first candle closing above that swing high. The zone is the last up-close candle at the swing high or among the 3 candles before it, wick to wick. With **Zone** set to *Whole sequence*, it also includes the consecutive up-close candles before that one.
+- **Bullish breaker:** a swing low, a swing high, then a lower swing low (the second low raids the first). It forms on the first candle closing above that swing high. The zone is the last up-close candle at the swing high or among the 3 candles before it, wick to wick (or its body, with the zone part set to *Body*). With **Zone** set to *Whole sequence*, it also includes the consecutive up-close candles before that one.
 - **Bearish breaker:** a swing high, a swing low, then a higher swing high; it forms on the first close below that swing low, with the last down-close candle(s) there as the zone.
 - A swing is used once, and it is dropped if no close goes through it within **Max bars to the pullback**.
 
@@ -369,7 +369,7 @@ Mitigation blocks work like breakers (section 10), with the opposite third swing
 
 ### What it is
 
-- **Bullish mitigation block:** a swing low, a swing high, then a **higher** swing low (the second low fails to reach the first); it forms on the first close above that high. The zone is the **body** of the last up-close candle at the high or among the 3 before it, or with **Zone** *Whole sequence* also the consecutive up-close candles before it.
+- **Bullish mitigation block:** a swing low, a swing high, then a **higher** swing low (the second low fails to reach the first); it forms on the first close above that high. The zone is the **body** of the last up-close candle at the high or among the 3 before it (its full candle, wick to wick, with the zone part set to *Full candle*), or with **Zone** *Whole sequence* also the consecutive up-close candles before it.
 - **Bearish mitigation block:** a swing high, a swing low, then a **lower** swing high; it forms on the first close below that low. The zone is the body of the last down-close candle(s) there.
 - Swings as for breakers: **Swing length** (2) candles on each side, alternating sequence.
 
@@ -499,11 +499,13 @@ Inputs on one line in the settings dialog are listed together; a field without i
 | --- | --- | --- |
 | Breakers at FVG / IFVG pullbacks | on | Finds breakers and draws those that an FVG / IFVG overlaps on the pullback (section 10) |
 | Zone | Last candle | *Last candle*: the last up-close (bullish) / down-close (bearish) candle making the high / low. *Whole sequence*: that candle and the consecutive ones of the same color before it |
+| Zone part (same line as Zone) | Full candle (ICTblocks: Full candle) | *Full candle*: the zone spans the high to the low of its candle(s). *Body*: from the top to the bottom of their bodies |
 | Swing length / keep | 2 / 3 | Pivot length (left and right) of the swings, and breakers followed per direction |
 | Max bars to the pullback | 60 | Bars from the zone within which the pullback has to come; once drawn, it ends when no pullback comes for that many bars |
 | Rectangle, ↑ (color), ↓ (color), (style), width | off / orange / fuchsia / dashed / 1 | Draw the breaker rectangle and its mid line, with this color, line style and width. Off: nothing is drawn, but the bold IFVG labels and the B↑ / B↓ labels are still set |
 | Flag candles | off | Color the breaker candle(s) with the rectangle color when it is tagged at the pullback, with or without the rectangle; removed together with the rectangle |
-| Shadow rectangle (same line as Flag candles) | off | Draw the breaker as a grey transparent rectangle without border instead of the dashed one, also when Rectangle is off; the mid line stays |
+| Shadow rectangle (same line as Flag candles) | off (ICTblocks: on) | Draw the breaker as a grey transparent rectangle without border instead of the dashed one, also when Rectangle is off; the mid line stays |
+| Mid line (C.E.) (same line as Flag candles) | on | Draw the C.E. (mid line) of the rectangle, dashed or shadow. Off: the rectangle only |
 
 ### Mitigation blocks
 
@@ -511,11 +513,13 @@ Inputs on one line in the settings dialog are listed together; a field without i
 | --- | --- | --- |
 | Mitigation blocks at FVG / IFVG pullbacks | on | Finds mitigation blocks and draws those that an FVG / IFVG overlaps on the pullback (section 11) |
 | Zone | Last candle | *Last candle*: the last up-close (bullish) / down-close (bearish) candle making the high / low. *Whole sequence*: that candle and the consecutive ones of the same color before it |
+| Zone part (same line as Zone) | Body (ICTblocks: Full candle) | *Full candle*: the zone spans the high to the low of its candle(s). *Body*: from the top to the bottom of their bodies |
 | Swing length / keep | 2 / 3 | Pivot length (left and right) of the swings, and blocks followed per direction |
 | Max bars to the pullback | 60 | As for breakers |
 | Rectangle, ↑ (color), ↓ (color), (style), width | off / orange / fuchsia / dashed / 1 | Draw the rectangle and its mid line. Off: nothing is drawn, but the bold IFVG labels with arrows and the M↑ / M↓ labels are still set |
 | Flag candles | off | Color the mitigation block candle(s) with the rectangle color when it is tagged at the pullback, with or without the rectangle; removed together with the rectangle |
-| Shadow rectangle (same line as Flag candles) | off | Draw the mitigation block as a grey transparent rectangle without border instead of the dashed one, also when Rectangle is off; the mid line stays |
+| Shadow rectangle (same line as Flag candles) | off (ICTblocks: on) | Draw the mitigation block as a grey transparent rectangle without border instead of the dashed one, also when Rectangle is off; the mid line stays |
+| Mid line (C.E.) (same line as Flag candles) | on | Draw the C.E. (mid line) of the rectangle, dashed or shadow. Off: the rectangle only |
 
 ### Delivery Engine (Nuno)
 

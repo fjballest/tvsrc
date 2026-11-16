@@ -29,6 +29,9 @@ BLK_SET = {"dofp": "false", "dowick": "false", "useOTE": "false", "oteFvg": "fal
            "attLvl": "0"}  # no attenuation of the block drawings
 BLK_SUBST = [  # (old, new): defaults of the inputs it keeps
     ('brkBox = input.bool(false, "Rectangle"', 'brkBox = input.bool(true, "Rectangle"'),
+    ('brkShd = input.bool(false, "Shadow rectangle"', 'brkShd = input.bool(true, "Shadow rectangle"'),
+    ('mbShd = input.bool(false, "Shadow rectangle"', 'mbShd = input.bool(true, "Shadow rectangle"'),
+    ('mbPart = input.string("Body"', 'mbPart = input.string("Full candle"'),
     ('mbBox = input.bool(false, "Rectangle"', 'mbBox = input.bool(true, "Rectangle"'),
     ('"Breakers at FVG / IFVG pullbacks"', '"Breakers"'),
     ('"Mitigation blocks at FVG / IFVG pullbacks"', '"Mitigation blocks"'),

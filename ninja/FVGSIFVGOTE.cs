@@ -2,7 +2,7 @@
 // FVGSIFVGOTE - Fair value gaps, 1st presented FVGs, inverse FVGs (IFVG) and ICT OTE, for NinjaTrader 8
 // ---------------------------------------------------------------------------------------------------------------------
 // Port of the TradingView Pine Script v6 indicator "FVGs+IFVG+OTE5" by franjballest
-// (source file FVGS+IFVG+OTE.txt, md5 c8d58887ec325656fd19071b9518268f). Mozilla Public License 2.0, as the original.
+// (source file FVGS+IFVG+OTE.txt, md5 23ede8de508073001accda430bf7761a). Mozilla Public License 2.0, as the original.
 //
 // What it draws: FVG boxes (or no-fill boxes, or hi / lo / C.E. segments) with C.E. lines, the 1st presented FVG of the
 // session open (New York 09:30, or Madrid 09:00 for DAX) and its optional inverse, wick C.E. segments, IFVG candidates
@@ -66,6 +66,7 @@ public enum FioHAlign { Left, Center, Right }
 public enum FioVAlign { Top, Center, Bottom }
 public enum FioOteMode { Overlap, FullyInside, CEInside }
 public enum FioZoneMode { LastCandle, WholeSequence }
+public enum FioBlkPart { FullCandle, Body }
 public enum FioPoorLiq { Auto, Yes, No }
 public enum FioRangeType { OpenToClose, HighToLow }
 public enum FioHtf { Min5, Min15, Hour1, Hour4, Daily }
@@ -438,6 +439,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                 OteTextColor = MkBrush(0x363A45, 0);
                 BreakersOn = true;
                 BreakerZone = FioZoneMode.LastCandle;
+                BreakerPart = FioBlkPart.FullCandle;
                 BreakerSwingLength = 2;
                 BreakersKept = 3;
                 BreakerMaxAge = 60;
@@ -448,8 +450,10 @@ namespace NinjaTrader.NinjaScript.Indicators
                 BreakerLineWidth = 1;
                 BreakerFlagCandles = false;
                 BreakerShadow = false;
+                BreakerCe = true;
                 MitigationOn = true;
                 MitigationZone = FioZoneMode.LastCandle;
+                MitigationPart = FioBlkPart.Body;
                 MitigationSwingLength = 2;
                 MitigationKept = 3;
                 MitigationMaxAge = 60;
@@ -460,6 +464,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                 MitigationLineWidth = 1;
                 MitigationFlagCandles = false;
                 MitigationShadow = false;
+                MitigationCe = true;
                 DisplacementOnly = false;
                 DisplacementRange = FioRangeType.OpenToClose;
                 DispStdLength = 100;
@@ -2504,7 +2509,7 @@ namespace NinjaTrader.NinjaScript.Indicators
         }
 
         // zone at the swing k0 bars back: the up-close (dir 1) / down-close (dir -1) candle there or among the 3
-        // before it, wick to wick (breaker) or its body (mitigation block), plus the consecutive ones before it in
+        // before it, high to low or its body (BreakerPart / MitigationPart), plus the consecutive ones before it in
         // "Whole sequence" mode
         private bool BlkZone(int dir, int k0, bool body, bool whole, out double zh, out double zl, out DateTime zt, out DateTime zt1, out int zk)
         {
@@ -2546,7 +2551,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 
         // detection on a closed bar: the pattern on the swing sequence arms the middle swing (once); the block forms
         // on the close through it, already broken. isMb: higher low / lower high instead of lower low / higher high
-        private void BlkDetect(BlkSeq z, List<Blk> list, bool isMb, double pH, double pL, int len, int age, bool whole, int keep)
+        private void BlkDetect(BlkSeq z, List<Blk> list, bool isMb, double pH, double pL, int len, int age, bool whole, bool body, int keep)
         {
             // bearish: high, low, higher high (breaker) / lower high (mitigation block); armed on the low between
             if (!double.IsNaN(pH) && BlkPivot(z, pH, bi - len, 1))
@@ -2579,7 +2584,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                 double zh, zl;
                 DateTime zt, zt1;
                 int zk;
-                if (BlkZone(d, bi - sb, isMb, whole, out zh, out zl, out zt, out zt1, out zk))
+                if (BlkZone(d, bi - sb, body, whole, out zh, out zl, out zt, out zt1, out zk))
                 {
                     Blk b = BlkAdd(list, d, zh, zl, zt, zt1, keep);
                     b.zb = bi - zk;
@@ -2637,7 +2642,7 @@ namespace NinjaTrader.NinjaScript.Indicators
         }
 
         // first matching pullback: flag the zone candles and draw the rectangle with its mid line (once)
-        private void BlkDraw(Blk b, bool flag, bool box, bool shd, Color col, DashStyleHelper sty, int w)
+        private void BlkDraw(Blk b, bool flag, bool box, bool shd, bool ce, Color col, DashStyleHelper sty, int w)
         {
             double mid = (b.hi + b.lo) / 2.0;
             if (b.tagged) return;
@@ -2669,9 +2674,12 @@ namespace NinjaTrader.NinjaScript.Indicators
                 b.bx.Sty = sty;
                 b.bx.Bw = shd ? 0 : w;
                 b.bx.Bg = Tr(shd ? CGray : col, shd ? 80 : 100);
-                b.ml = NewLine(b.t, mid, curTime, mid, col, sty, w);
                 grp.Add(b.bx);
-                grp.Add(b.ml);
+                if (ce)
+                {
+                    b.ml = NewLine(b.t, mid, curTime, mid, col, sty, w);
+                    grp.Add(b.ml);
+                }
             }
             if (grp.Count > 0)
             {
@@ -2718,7 +2726,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                         Touch(f.rect);
                     }
                 }
-                BlkDraw(b, BreakerFlagCandles, BreakerRectangle, BreakerShadow, b.dir == 1 ? cBrk : cBrkDn, BreakerLineStyle, AttW(BreakerLineWidth));
+                BlkDraw(b, BreakerFlagCandles, BreakerRectangle, BreakerShadow, BreakerCe, b.dir == 1 ? cBrk : cBrkDn, BreakerLineStyle, AttW(BreakerLineWidth));
             }
         }
 
@@ -2757,7 +2765,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                         Touch(f.rect);
                     }
                 }
-                BlkDraw(b, MitigationFlagCandles, MitigationRectangle, MitigationShadow, b.dir == 1 ? cMb : cMbDn, MitigationLineStyle, AttW(MitigationLineWidth));
+                BlkDraw(b, MitigationFlagCandles, MitigationRectangle, MitigationShadow, MitigationCe, b.dir == 1 ? cMb : cMbDn, MitigationLineStyle, AttW(MitigationLineWidth));
             }
         }
 
@@ -2794,7 +2802,8 @@ namespace NinjaTrader.NinjaScript.Indicators
                             if (b.bx != null)
                             {
                                 b.bx.T2 = curTime;
-                                b.ml.T2 = curTime;
+                                if (b.ml != null)
+                                    b.ml.T2 = curTime;
                                 Touch(b.bx);
                                 Touch(b.ml);
                             }
@@ -3516,7 +3525,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             double bPL = PivLo(b0, bi, BreakerSwingLength, BreakerSwingLength);
             if (BreakersOn)
             {
-                BlkDetect(bz, brks, false, bPH, bPL, BreakerSwingLength, BreakerMaxAge, BreakerZone == FioZoneMode.WholeSequence, BreakersKept);
+                BlkDetect(bz, brks, false, bPH, bPL, BreakerSwingLength, BreakerMaxAge, BreakerZone == FioZoneMode.WholeSequence, BreakerPart == FioBlkPart.Body, BreakersKept);
                 BlkUpdate(brks, false, bPH, bPL, BreakerSwingLength);
             }
 
@@ -3525,7 +3534,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             double mPL = PivLo(b0, bi, MitigationSwingLength, MitigationSwingLength);
             if (MitigationOn)
             {
-                BlkDetect(mz, mbs, true, mPH, mPL, MitigationSwingLength, MitigationMaxAge, MitigationZone == FioZoneMode.WholeSequence, MitigationKept);
+                BlkDetect(mz, mbs, true, mPH, mPL, MitigationSwingLength, MitigationMaxAge, MitigationZone == FioZoneMode.WholeSequence, MitigationPart == FioBlkPart.Body, MitigationKept);
                 BlkUpdate(mbs, true, mPH, mPL, MitigationSwingLength);
             }
 
@@ -4168,6 +4177,10 @@ namespace NinjaTrader.NinjaScript.Indicators
         public FioZoneMode BreakerZone { get; set; }
 
         [NinjaScriptProperty]
+        [Display(Name = "Zone part", GroupName = "Breakers", Order = 713, Description = "FullCandle: the zone spans the high to the low of its candle(s). Body: their bodies.")]
+        public FioBlkPart BreakerPart { get; set; }
+
+        [NinjaScriptProperty]
         [Range(1, 20)]
         [Display(Name = "Swing length", GroupName = "Breakers", Order = 703)]
         public int BreakerSwingLength { get; set; }
@@ -4228,12 +4241,20 @@ namespace NinjaTrader.NinjaScript.Indicators
         public bool BreakerShadow { get; set; }
 
         [NinjaScriptProperty]
+        [Display(Name = "Mid line (C.E.)", GroupName = "Breakers", Order = 714, Description = "Draw the C.E. (mid line) of the rectangle.")]
+        public bool BreakerCe { get; set; }
+
+        [NinjaScriptProperty]
         [Display(Name = "Mitigation blocks at FVG / IFVG pullbacks", GroupName = "Mitigation blocks", Order = 801, Description = "Bullish: a low, a high and a higher low; bearish: a high, a low and a lower high. Same life cycle as breakers; IFVG labels get bold + arrow, plain FVGs M↑ / M↓ (BM↑ / BM↓).")]
         public bool MitigationOn { get; set; }
 
         [NinjaScriptProperty]
         [Display(Name = "Zone", GroupName = "Mitigation blocks", Order = 802)]
         public FioZoneMode MitigationZone { get; set; }
+
+        [NinjaScriptProperty]
+        [Display(Name = "Zone part", GroupName = "Mitigation blocks", Order = 813, Description = "FullCandle: the zone spans the high to the low of its candle(s). Body: their bodies.")]
+        public FioBlkPart MitigationPart { get; set; }
 
         [NinjaScriptProperty]
         [Range(1, 20)]
@@ -4294,6 +4315,10 @@ namespace NinjaTrader.NinjaScript.Indicators
         [NinjaScriptProperty]
         [Display(Name = "Shadow rectangle", GroupName = "Mitigation blocks", Order = 810)]
         public bool MitigationShadow { get; set; }
+
+        [NinjaScriptProperty]
+        [Display(Name = "Mid line (C.E.)", GroupName = "Mitigation blocks", Order = 814, Description = "Draw the C.E. (mid line) of the rectangle.")]
+        public bool MitigationCe { get; set; }
 
         [NinjaScriptProperty]
         [Display(Name = "Displacement FVGs only", GroupName = "Delivery Engine (Nuno)", Order = 901, Description = "Only FVGs whose middle candle range exceeds 'strength' x the std dev of the last 'length' ranges. 1PFVGs are not filtered.")]

@@ -13,7 +13,7 @@
  *   BM↑/BM↓, inheritance of the tags by IFVGs) and LONG / SHORT / OTE signal markers.
  *
  *   Port of the TradingView Pine Script v6 indicator "FVGS+IFVG+OTE.txt"
- *   (md5 c8d58887ec325656fd19071b9518268f, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
+ *   (md5 23ede8de508073001accda430bf7761a, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
  *   input variable names (camelCase). See the design document (d.md) and user manual (m.md) for the logic.
  *
  * How to install
@@ -136,14 +136,16 @@ const PARAMS = [
     ["oteBandCol", "c", TV.yellow], ["oteHighlight", "c", TV.yellow], ["oteTextCol", "c", TV.black],
     // Breakers
     ["brkOn", "b", true], ["brkMode", "e", "last", { last: "Last candle", sequence: "Whole sequence" }],
+    ["brkPart", "e", "full", { full: "Full candle", body: "Body" }],
     ["brkLen", "n", 2, [1, 1]], ["brkKeep", "n", 3, [1, 1]], ["brkAge", "n", 60, [5, 1]], ["brkBox", "b", false],
     ["brkCol", "c", TV.orange], ["brkColDn", "c", TV.fuchsia],
-    ["brkSty", "e", "dashed", STYLE_OPTS], ["brkW", "n", 1, [1, 1]], ["brkFlag", "b", false], ["brkShd", "b", false],
+    ["brkSty", "e", "dashed", STYLE_OPTS], ["brkW", "n", 1, [1, 1]], ["brkFlag", "b", false], ["brkShd", "b", false], ["brkCe", "b", true],
     // Mitigation blocks
     ["mbOn", "b", true], ["mbMode", "e", "last", { last: "Last candle", sequence: "Whole sequence" }],
+    ["mbPart", "e", "body", { full: "Full candle", body: "Body" }],
     ["mbLen", "n", 2, [1, 1]], ["mbKeep", "n", 3, [1, 1]], ["mbAge", "n", 60, [5, 1]], ["mbBox", "b", false],
     ["mbCol", "c", TV.orange], ["mbColDn", "c", TV.fuchsia],
-    ["mbSty", "e", "dashed", STYLE_OPTS], ["mbW", "n", 1, [1, 1]], ["mbFlag", "b", false], ["mbShd", "b", false],
+    ["mbSty", "e", "dashed", STYLE_OPTS], ["mbW", "n", 1, [1, 1]], ["mbFlag", "b", false], ["mbShd", "b", false], ["mbCe", "b", true],
     // Delivery Engine
     ["deDisp", "b", false], ["deDispType", "e", "oc", { oc: "Open to Close", hl: "High to Low" }],
     ["deStdLen", "n", 100, [1, 1]], ["deStdX", "n", 4.0, [0.5, 0]],
@@ -1931,6 +1933,7 @@ class FVGSIFVGOTE {
         const keep = mb ? P.mbKeep : P.brkKeep;
         const age = mb ? P.mbAge : P.brkAge;
         const seq = (mb ? P.mbMode : P.brkMode) === "sequence";
+        const body = (mb ? P.mbPart : P.brkPart) === "body";
         const { h, l, c } = this;
         // bearish: high, low, higher high (breaker: the second high raids the first) / lower high (mitigation
         // block); armed on the low between them
@@ -1951,12 +1954,12 @@ class FVGSIFVGOTE {
         if (z.upLvl !== null && j - z.upBar > age) z.upLvl = null;
         // the block forms on the close through that swing
         if (z.dnLvl !== null && c < z.dnLvl) {
-            const r = this.zoneOf(-1, j - z.dnBar, mb, seq);
+            const r = this.zoneOf(-1, j - z.dnBar, body, seq);
             if (r) { const b = this.zoneAdd(arr, keep, -1, r); b.broken = true; b.bkBar = j; }
             z.dnDone = z.dnBar; z.dnLvl = null;
         }
         if (z.upLvl !== null && c > z.upLvl) {
-            const r = this.zoneOf(1, j - z.upBar, mb, seq);
+            const r = this.zoneOf(1, j - z.upBar, body, seq);
             if (r) { const b = this.zoneAdd(arr, keep, 1, r); b.broken = true; b.bkBar = j; }
             z.upDone = z.upBar; z.upLvl = null;
         }
@@ -1973,7 +1976,7 @@ class FVGSIFVGOTE {
                 } else {
                     if ((b.dir === 1 && l <= b.hi) || (b.dir === -1 && h >= b.lo)) {
                         b.pb = j;
-                        if (b.bx) { b.bx.right = j; b.ml.x2 = j; }
+                        if (b.bx) { b.bx.right = j; if (b.ml) b.ml.x2 = j; }
                     }
                     if ((b.dir === 1 && c > b.hi) || (b.dir === -1 && c < b.lo)) b.won = true;
                 }
@@ -2018,7 +2021,7 @@ class FVGSIFVGOTE {
         return true;
     }
     // zone at the swing k0 bars back: the up-close (dir 1) / down-close (dir -1) candle there or among the 3
-    // before it, wick to wick (breaker) or its body (mitigation block), plus the consecutive ones before it in
+    // before it, high to low or its body (brkPart / mbPart), plus the consecutive ones before it in
     // "Whole sequence" mode
     zoneOf(dir, k0, body, seq) {
         const j = this.j;
@@ -2080,7 +2083,7 @@ class FVGSIFVGOTE {
         if ((mb ? P.mbBox : P.brkBox) || shd) {
             b.bx = this.g.box({ left: b.t, top: b.hi, right: j, bottom: b.lo, border: shd ? col(TV.gray, 100) : this.cB(colr, 0),
                 bstyle: sty, bw: shd ? 0 : w, bg: col(shd ? TV.gray : colr, shd ? 80 : 100), fixed: true });
-            b.ml = this.g.line({ x1: b.t, y1: mid, x2: j, y2: mid, color: this.cB(colr, 0), style: sty, width: w, fixed: true });
+            if (mb ? P.mbCe : P.brkCe) b.ml = this.g.line({ x1: b.t, y1: mid, x2: j, y2: mid, color: this.cB(colr, 0), style: sty, width: w, fixed: true });
         }
     }
     // FVG shown as the box of a confirmed IFVG (close mode or swing mode), with its IFVG label
