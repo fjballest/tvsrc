@@ -7,7 +7,7 @@
 // FVGs closed through become IFVGs. Mitigated levels are removed.
 //
 // Port of the TradingView Pine Script v6 indicator ICTcotas.txt by franjballest
-// (source md5 9310adfb1f5642f7f18b2e318084eeb2). Mozilla Public License 2.0.
+// (source md5 51f2648faf6647a7cb4aee38e232989a). Mozilla Public License 2.0.
 //
 // Install:
 //   1. Copy this file to  Documents\NinjaTrader 8\bin\Custom\Indicators\ICTcotas.cs
@@ -183,6 +183,27 @@ namespace NinjaTrader.NinjaScript.Indicators
 		private bool dirty;
 		private double dAtr = double.NaN;    // daily ATR(14): RMA of the true range of completed daily candles
 
+		// [NQS] sizes in points are given for NQ; with the NQ scale on they are multiplied by a hardwired factor for
+		// the chart instrument (its typical daily range relative to NQ's): names of up to 3 letters must match the
+		// instrument name, longer ones are prefixes (CFDs); instruments not in the table keep the sizes as given
+		private static readonly string[] NqsNames = { "NQ", "MNQ", "NNQ", "NAS100", "US100", "USTEC", "NDX", "NQ100",
+			"ES", "MES", "US500", "SPX", "SP500", "US30", "YM", "MYM", "DJI", "WS30", "DJ30",
+			"RTY", "M2K", "US2000", "RUT", "FDAX", "FDXM", "FDXS", "DAX", "GER40", "DE40", "GER30", "DE30", "DEU40" };
+		private static readonly double[] NqsK = { 1, 1, 1, 1, 1, 1, 1, 1,
+			0.2, 0.2, 0.2, 0.2, 0.2, 1.3, 1.3, 1.3, 1.3, 1.3, 1.3,
+			0.1, 0.1, 0.1, 0.1, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7 };
+		private double sizeK = 1.0;
+
+		private double NqScaleK()
+		{
+			string s = Instrument != null && Instrument.MasterInstrument != null && Instrument.MasterInstrument.Name != null
+				? Instrument.MasterInstrument.Name.ToUpperInvariant() : string.Empty;
+			for (int i = 0; i < NqsNames.Length; i++)
+				if (NqsNames[i].Length <= 3 ? s == NqsNames[i] : s.StartsWith(NqsNames[i]))
+					return NqsK[i];
+			return 1.0;
+		}
+
 		// bad data: a wick longer than BadAtr daily ATRs is a bad print, not price; high / low taken at the body
 		// (the daily ATR is built from cleaned candles too, cleaned with the ATR so far)
 		private double CH(int k, int i)
@@ -240,6 +261,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 				Mitigation = ICTcotasMitigation.FullyFilledWick;
 				Attenuation = 2;
 				BadAtr = 6;
+				NqScale = true;
 
 				// Colors (Pine v6 palette)
 				DailyBull = MakeBrush(0x4C, 0xAF, 0x50);   // green
@@ -373,6 +395,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 			}
 			else if (State == State.DataLoaded)
 			{
+				sizeK = NqScale ? NqScaleK() : 1.0;
 				lvls = new List<Lvl>();
 				wcur = new Lvl[16];
 				lastKey = new DateTime[SerCount];
@@ -518,7 +541,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 				if (MfSeries[i] != k)
 					continue;
 				if (mfOn[i])
-					AddFvgs(3, 3 + i, MfMinSize, k, off);
+					AddFvgs(3, 3 + i, MfMinSize * sizeK, k, off);
 				if (wkOn[i])
 					AddWicks(3 + i, k, off);
 			}
@@ -830,12 +853,12 @@ namespace NinjaTrader.NinjaScript.Indicators
 				double fhi = l1;
 				if (FvgExtendVI)
 				{
-					if (botP > top3 && botP - top3 >= ViMinSize)
+					if (botP > top3 && botP - top3 >= ViMinSize * sizeK)
 					{
 						flo = Math.Min(flo, top3);
 						fhi = Math.Max(fhi, botP);
 					}
-					if (botC > topP && botC - topP >= ViMinSize)
+					if (botC > topP && botC - topP >= ViMinSize * sizeK)
 					{
 						flo = Math.Min(flo, topP);
 						fhi = Math.Max(fhi, botC);
@@ -854,12 +877,12 @@ namespace NinjaTrader.NinjaScript.Indicators
 				double fhi = l3;
 				if (FvgExtendVI)
 				{
-					if (topP < bot3 && bot3 - topP >= ViMinSize)
+					if (topP < bot3 && bot3 - topP >= ViMinSize * sizeK)
 					{
 						flo = Math.Min(flo, topP);
 						fhi = Math.Max(fhi, bot3);
 					}
-					if (topC < botP && botP - topC >= ViMinSize)
+					if (topC < botP && botP - topC >= ViMinSize * sizeK)
 					{
 						flo = Math.Min(flo, topC);
 						fhi = Math.Max(fhi, botP);
@@ -909,12 +932,12 @@ namespace NinjaTrader.NinjaScript.Indicators
 
 			// no FVG / IFVG lines for D, W or M when the same timeframe is drawn as boxes (redundant)
 			if (DrawFvg && !mfOn[tfi + 3])
-				AddFvgs(0, tfi, FvgMinSize, k, off);
+				AddFvgs(0, tfi, FvgMinSize * sizeK, k, off);
 			if (DrawVi)
 			{
-				if (botC > topP && l1 <= h2 && botC - topP >= ViMinSize)
+				if (botC > topP && l1 <= h2 && botC - topP >= ViMinSize * sizeK)
 					AddLvl(1, tfi, 1, topP, botC, t1);
-				if (topC < botP && h1 >= l2 && botP - topC >= ViMinSize)
+				if (topC < botP && h1 >= l2 && botP - topC >= ViMinSize * sizeK)
 					AddLvl(1, tfi, -1, topC, botP, t1);
 			}
 			if (DrawWick)
@@ -1393,6 +1416,10 @@ namespace NinjaTrader.NinjaScript.Indicators
 		[Range(0, double.MaxValue)]
 		[Display(Name = "Ignore wicks longer than (daily ATRs)", Description = "Bad data: a wick longer than this many daily ATRs (any timeframe, chart candles included) is taken as a bad print, and the candle's high or low is taken at its body for levels, mitigation and turtle soup. 0: off.", GroupName = GGen, Order = 8)]
 		public double BadAtr { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Scale sizes using NQ sizes as reference", GroupName = GGen, Order = 9, Description = "Sizes in points (minimum sizes and the like) are set for NQ. On: they are scaled for the chart instrument by a fixed factor, its typical range relative to NQ: ES 0.2, YM 1.3, RTY 0.1, DAX 0.7 (and their micros and CFDs); other instruments keep them as given.")]
+		public bool NqScale { get; set; }
 
 		// ---------------------------------------------------------------- Colors
 		[NinjaScriptProperty]

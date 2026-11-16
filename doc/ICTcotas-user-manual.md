@@ -244,6 +244,7 @@ The tables follow the order of the settings dialog. Several controls often share
 | Turtle soup / continuation indications | on | Small up / down triangles in a chart corner, one per timeframe (see Turtle soup / continuation below) |
 | Attenuation | 2 (0 to 4) | Dims the drawings without changing their settings. 0 draws everything as configured; 4 is the most dimmed (see below) |
 | Ignore wicks longer than (daily ATRs) | 6 | Bad data filter. A wick longer than this many daily ATRs, on any candle (chart or higher timeframe), is taken as a bad print: the candle's high or low is taken at its body, so it makes no FVG, VI, wick CE or turtle soup, and does not mitigate levels. 0 turns it off |
+| Scale sizes using NQ sizes as reference | on | Sizes in points are set for NQ. When on, they are multiplied by a fixed factor for the chart instrument, roughly its typical range relative to NQ: ES 0.2, YM 1.3, RTY 0.1, DAX 0.7 (with their micros and CFDs: MES, US500, SPX; MYM, US30; M2K, US2000; FDXM, GER40, DE40...); NQ, MNQ, NAS100 and US100 are 1, and any other instrument keeps the sizes as given. Scaled: the FVG, VI and multi-timeframe FVG minimum sizes. Off: the sizes are used as typed |
 
 Mitigation rules (tested on every chart bar):
 

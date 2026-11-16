@@ -323,6 +323,7 @@ The first group: one switch per feature, so you can turn features on and off wit
 | --- | --- | --- |
 | Attenuation | 2 (0 to 4) | Dims the drawings: 0 as configured, 4 the most dimmed. See below. |
 | Ignore wicks longer than (daily ATRs) | 6 | Bad data filter. A wick longer than this many daily ATRs (chart, daily or monthly candle) is taken as a bad print: the candle's high or low is taken at its body, so day, session, week and month highs and lows, swings, EQH / EQL and ranges leave it out. 0 turns it off. Also in ICTgaps and ICTday |
+| Scale sizes using NQ sizes as reference | on | Sizes in points are set for NQ. When on, they are multiplied by a fixed factor for the chart instrument, roughly its typical range relative to NQ: ES 0.2, YM 1.3, RTY 0.1, DAX 0.7 (with their micros and CFDs: MES, US500, SPX; MYM, US30; M2K, US2000; FDXM, GER40, DE40...); NQ, MNQ, NAS100 and US100 are 1, and any other instrument keeps the sizes as given. Scaled: the RTHOG and PMKT minimum sizes for quadrants and for stddevs, and the EQH / EQL tolerance. Also in ICTgaps and ICTday. Off: the sizes are used as typed |
 | Month max/min/close (last 3 months) | on | Draws the high, low and close of the last three completed months. |
 | TGIF levels | on | Draws the TGIF levels on Friday, or on Monday, while they apply. |
 | Sessions | on | Draws the Asia, London, NY AM and NY PM sessions and their high and low. |

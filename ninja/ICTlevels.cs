@@ -4,7 +4,7 @@
 // quadrants and standard deviations, premarket range, EQH/EQL, PO3 lines, TGIF levels, macros,
 // silver bullet and a session/macro status text. Draws levels only: no plots, no signals, no alerts.
 //
-// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 4d3b31d70bdc76616e24552b11ee4454),
+// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 cec25722d26c29c29f4f2eb4e3dfcdbf),
 // © franjballest, Mozilla Public License 2.0 (https://mozilla.org/MPL/2.0/).
 //
 // Install:
@@ -269,6 +269,27 @@ namespace NinjaTrader.NinjaScript.Indicators
 		// daily series (completed bars)
 		private Series<double> cAtr;   // chart ATR(14), RMA of the cleaned true range
 
+		// [NQS] sizes in points are given for NQ; with the NQ scale on they are multiplied by a hardwired factor for
+		// the chart instrument (its typical daily range relative to NQ's): names of up to 3 letters must match the
+		// instrument name, longer ones are prefixes (CFDs); instruments not in the table keep the sizes as given
+		private static readonly string[] NqsNames = { "NQ", "MNQ", "NNQ", "NAS100", "US100", "USTEC", "NDX", "NQ100",
+			"ES", "MES", "US500", "SPX", "SP500", "US30", "YM", "MYM", "DJI", "WS30", "DJ30",
+			"RTY", "M2K", "US2000", "RUT", "FDAX", "FDXM", "FDXS", "DAX", "GER40", "DE40", "GER30", "DE30", "DEU40" };
+		private static readonly double[] NqsK = { 1, 1, 1, 1, 1, 1, 1, 1,
+			0.2, 0.2, 0.2, 0.2, 0.2, 1.3, 1.3, 1.3, 1.3, 1.3, 1.3,
+			0.1, 0.1, 0.1, 0.1, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7 };
+		private double sizeK = 1.0;
+
+		private double NqScaleK()
+		{
+			string s = Instrument != null && Instrument.MasterInstrument != null && Instrument.MasterInstrument.Name != null
+				? Instrument.MasterInstrument.Name.ToUpperInvariant() : string.Empty;
+			for (int i = 0; i < NqsNames.Length; i++)
+				if (NqsNames[i].Length <= 3 ? s == NqsNames[i] : s.StartsWith(NqsNames[i]))
+					return NqsK[i];
+			return 1.0;
+		}
+
 		// bad data: a wick longer than BadAtr daily ATRs is a bad print, not price; the high / low is taken at the
 		// body. The daily ATR (datr) is built from daily candles cleaned with the ATR so far, so a bad print does not
 		// inflate it. Hc / Lc read the series in progress.
@@ -327,6 +348,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 				ZoneMode = ICTlevelsZoneMode.Auto;
 				Attenuation = 2;
 				BadAtr = 6;
+				NqScale = true;
 				DoBody = true;
 				ComputeVisible = false;
 				Xoff = 2;
@@ -477,6 +499,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 
 		private void Setup()
 		{
+			sizeK = NqScale ? NqScaleK() : 1.0;
 			FreezeBrushes();
 
 			platformTz = Core.Globals.GeneralOptions.TimeZoneInfo ?? TimeZoneInfo.Local;
@@ -1937,7 +1960,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 			int w2 = AttW(PmWidth, 2), w1 = AttW(PmWidth, 1);
 			if (r > 0)
 			{
-				if (DoPmQ && r / 4.0 > PmQMin)
+				if (DoPmQ && r / 4.0 > PmQMin * sizeK)
 				{
 					for (int k = 1; k <= 3; k++)
 					{
@@ -1948,7 +1971,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 				}
 				if (DoPmPo3)
 				{
-					double u = StdUnit(r, PmPo3Min);
+					double u = StdUnit(r, PmPo3Min * sizeK);
 					if (u > 0)
 					{
 						int nu = SdCount(PmPo3Num, auto, z.hi, u, z.xhi, 1);
@@ -2219,7 +2242,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 			g.noon = te + (teTz.Date.AddHours(12) - teTz);
 			DateTime x0 = te.AddSeconds(-(double)tfsecs * rdx);
 			DateTime x1 = Mn(TRight(Xoff), g.noon.Value);
-			if (ody > RthogQMin && x1 > x0)
+			if (ody > RthogQMin * sizeK && x1 > x0)
 			{
 				string tg = RTag(g);
 				double p = Math.Min(g.cl, g.op);
@@ -2269,7 +2292,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 		private void RQuads(IRthog g)
 		{
 			double qdy = Math.Abs(g.op - g.cl) / 4.0;
-			if (qdy > RthogQMin && g.tend.HasValue)
+			if (qdy > RthogQMin * sizeK && g.tend.HasValue)
 			{
 				string tg = RTag(g);
 				double p = Math.Min(g.cl, g.op);
@@ -2291,7 +2314,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 			g.po3 = new List<LL>();
 			g.po3names.Clear();
 			double gap = Math.Abs(g.op - g.cl);
-			double u = StdUnit(gap, RthogPo3Min);
+			double u = StdUnit(gap, RthogPo3Min * sizeK);
 			if (u > 0 && g.tend.HasValue)
 			{
 				string tg = RTag(g);
@@ -2584,7 +2607,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 				double q = ps[i];
 				DateTime qt = ts[i];
 				double d = isHigh ? q - p : p - q;
-				if (qt < t && d >= 0 && d <= Eq3Pts)
+				if (qt < t && d >= 0 && d <= Eq3Pts * sizeK)
 				{
 					v.eq = true;
 					v.pl = q;
@@ -2961,6 +2984,10 @@ namespace NinjaTrader.NinjaScript.Indicators
 		[Range(0, double.MaxValue)]
 		[Display(Name = "Ignore wicks longer than (daily ATRs)", GroupName = "Enable / Filter", Order = 10, Description = "Bad data: a wick longer than this many daily ATRs (chart, daily and monthly candles) is taken as a bad print, and the candle's high or low is taken at its body: day, session, week and month highs / lows, swings, EQH / EQL and ranges leave it out. 0: off.")]
 		public double BadAtr { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Scale sizes using NQ sizes as reference", GroupName = "Enable / Filter", Order = 11, Description = "Sizes in points (minimum sizes and the like) are set for NQ. On: they are scaled for the chart instrument by a fixed factor, its typical range relative to NQ: ES 0.2, YM 1.3, RTY 0.1, DAX 0.7 (and their micros and CFDs); other instruments keep them as given.")]
+		public bool NqScale { get; set; }
 
 		[NinjaScriptProperty]
 		[Display(Name = "Month max/min/close (last 3 months)", GroupName = "Enable / Filter", Order = 1)]

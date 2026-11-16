@@ -9,7 +9,7 @@
  * closed through become IFVGs. Mitigated levels are removed.
  *
  * Port of the TradingView Pine Script v6 indicator ICTcotas.txt
- * (md5 9310adfb1f5642f7f18b2e318084eeb2), (c) franjballest, Mozilla Public
+ * (md5 51f2648faf6647a7cb4aee38e232989a), (c) franjballest, Mozilla Public
  * License 2.0 (https://mozilla.org/MPL/2.0/). Same logic, same inputs (as
  * camelCase parameters) and the same defaults.
  *
@@ -485,8 +485,42 @@ function str(v, def) {
     return v === undefined || v === null ? def : String(v);
 }
 
-function buildConfig(p, chart) {
+// [NQS] sizes in points are given for NQ; with the NQ scale on they are multiplied by a hardwired factor for the
+// chart instrument (its typical daily range relative to NQ's): names of up to 3 letters must match the product
+// (or the contract without its month and year), longer ones are prefixes (CFDs); others keep the sizes as given
+const NQS = [["NQ", 1], ["MNQ", 1], ["NNQ", 1], ["NAS100", 1], ["US100", 1], ["USTEC", 1], ["NDX", 1], ["NQ100", 1],
+    ["ES", 0.2], ["MES", 0.2], ["US500", 0.2], ["SPX", 0.2], ["SP500", 0.2],
+    ["US30", 1.3], ["YM", 1.3], ["MYM", 1.3], ["DJI", 1.3], ["WS30", 1.3], ["DJ30", 1.3],
+    ["RTY", 0.1], ["M2K", 0.1], ["US2000", 0.1], ["RUT", 0.1],
+    ["FDAX", 0.7], ["FDXM", 0.7], ["FDXS", 0.7], ["DAX", 0.7], ["GER40", 0.7], ["DE40", 0.7], ["GER30", 0.7],
+    ["DE30", 0.7], ["DEU40", 0.7]];
+function nqScaleOf(ci) {
+    const names = [];
+    try {
+        ci = ci || {};
+        const p = ci.product;
+        if (typeof p === "string") names.push(p);
+        else if (p && typeof p.name === "string") names.push(p.name);
+        if (ci.contractMaturity && typeof ci.contractMaturity.productName === "string") names.push(ci.contractMaturity.productName);
+        for (const c of [ci.contract, ci.name, ci.symbol]) {
+            if (typeof c === "string") names.push(c.replace(/[FGHJKMNQUVXZ]\d{1,4}$/i, ""));
+        }
+    } catch (e) {
+        // no contract information: no scaling
+    }
+    for (let s of names) {
+        s = s.toUpperCase();
+        for (const [nm, k] of NQS) {
+            if (nm.length <= 3 ? s === nm : s.startsWith(nm)) return k;
+        }
+    }
+    return 1;
+}
+
+function buildConfig(p, chart, ci) {
     p = p || {};
+    // [NQS] point sizes are given for NQ
+    const sizeK = bool(p.nqscale, true) ? nqScaleOf(ci) : 1;
     const sty = (v, d) => DASH[str(v, d)] || 1;
     const font = (v, d) => FONT[str(v, d)] || 11;
     const mit = str(p.mitig, "wick");
@@ -504,6 +538,7 @@ function buildConfig(p, chart) {
         tsUp: str(p.tsUpColor, "#00E676"), tsDn: str(p.tsDownColor, "#FF1744"), tsCt: str(p.tsContColor, "#787B86"),
         attLvl: clamp(Math.round(num(p.attLvl, 2)), 0, 4),
         badAtr: Math.max(0, num(p.badAtr, 6)),
+        sizeK,
         attbg: str(p.attbg, "#FFFFFF"),
 
         dBull: str(p.dBull, "#4CAF50"), dBear: str(p.dBear, "#F23645"),
@@ -521,7 +556,7 @@ function buildConfig(p, chart) {
 
         doFvg: bool(p.doFvg, true),
         nFvg: clamp(Math.round(num(p.nFvg, 8)), 1, 20),
-        fvgMin: Math.max(0, num(p.fvgMin, 0)),
+        fvgMin: Math.max(0, num(p.fvgMin, 0)) * sizeK,
         fvgSty: sty(p.fvgSty, "solid"),
         fvgWid: clamp(Math.round(num(p.fvgWid, 1)), 1, 3),
         fvgCeSty: sty(p.fvgCeSty, "dotted"),
@@ -536,7 +571,7 @@ function buildConfig(p, chart) {
 
         doVi: bool(p.doVi, true),
         nVi: clamp(Math.round(num(p.nVi, 8)), 1, 20),
-        viMin: Math.max(0, num(p.viMin, 0)),
+        viMin: Math.max(0, num(p.viMin, 0)) * sizeK,
         viSty: sty(p.viSty, "solid"),
         viWid: clamp(Math.round(num(p.viWid, 1)), 1, 3),
         viCeSty: sty(p.viCeSty, "dotted"),
@@ -557,7 +592,7 @@ function buildConfig(p, chart) {
         mfNext: clamp(Math.round(num(p.mfNext, 0)), 0, 6),
         mfSel: [bool(p.mf15, false), bool(p.mf1h, true), bool(p.mf4h, true), bool(p.mfD, false), bool(p.mfW, false), bool(p.mfM, false)],
         nMf: clamp(Math.round(num(p.nMf, 6)), 1, 20),
-        mfMin: Math.max(0, num(p.mfMin, 0)),
+        mfMin: Math.max(0, num(p.mfMin, 0)) * sizeK,
         mfCol: [
             [str(p.mf15Bull, "#00E676"), str(p.mf15Bear, "#880E4F")],
             [str(p.mf1hBull, "#4CAF50"), str(p.mf1hBear, "#F23645")],
@@ -958,7 +993,7 @@ class ICTcotasClass {
     }
 
     setup() {
-        if (!this.cfg) this.cfg = buildConfig(this.props, this.chartDescription);
+        if (!this.cfg) this.cfg = buildConfig(this.props, this.chartDescription, this.contractInfo);
         if (!this.S) {
             this.S = newState(this.cfg.keys);
             this.committed = -1;
@@ -1067,6 +1102,7 @@ module.exports = {
         tsShow: predef.paramSpecs.bool(true),
         attLvl: predef.paramSpecs.number(2, 1, 0),
         badAtr: predef.paramSpecs.number(6, 0.5, 0),
+        nqscale: predef.paramSpecs.bool(true),
         attbg: predef.paramSpecs.color("#FFFFFF"),
         // Colors (by timeframe)
         dBull: predef.paramSpecs.color("#4CAF50"),

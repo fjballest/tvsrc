@@ -57,6 +57,8 @@ The settings dialog has seven sections, ordered so that what to draw and which F
 
 Two values are not inputs but globals next to the filter inputs: `flN = 1` (FVGs shown after a sweep) and `flWin = 25` (the mid-arm window, as % of the arm length on each side of its middle).
 
+**NQ reference sizes.** `nqscale` (on by default; kept by ICTblocks and FVGS+IFVG+OTE4, whose `minfvg` / `maxfvg` are scaled the same way) scales the inputs in points, which are set for NQ: `nqScale()` returns a hardwired factor for the chart instrument (its typical range relative to NQ: ES family 0.2, YM 1.3, RTY 0.1, DAX 0.7, NQ 1) and `var float sizeK` keeps it (1 when off or for an instrument not in the table). Futures match `syminfo.root` exactly; other symbols (CFDs, indices) match a `syminfo.ticker` prefix. The inputs are renamed `xxxIn` and the script uses `float xxx = xxxIn * sizeK`: `minfvg`, `maxfvg`, `mince` and `minwick`. NinjaTrader: `NqScale`, `sizeK` from `Instrument.MasterInstrument.Name` (names of up to 3 letters exact, longer ones by prefix), applied where the sizes are used (`MinFvgSize`, `MaxFvgSize`, `CeMinHeight`, `WickMinSize`). Tradovate: `nqscale`, `nqScaleOf(contractInfo)` (product name, or the contract without its month code) applied to the same four entries of `P` in `init`.
+
 ## Data structures
 
 Five user-defined types carry the state. Pine cannot reassign globals inside functions, so every function mutates object fields instead.

@@ -13,7 +13,7 @@ from mkfvgderiv import derive
 SRC = "ICTlevels.txt"
 
 # inputs of the "Time & Settings" group: in both
-COMMON = {"TZ", "visible", "xoff", "showcap", "attLvl", "badatr"}
+COMMON = {"TZ", "visible", "xoff", "showcap", "attLvl", "badatr", "nqscale"}
 # ICTgaps: NDOG / NWOG / RTHOG ("Gaps and Ranges") and the premarket range
 GAPS = re.compile(r"^(dogaps|ngaps|ndogmf|dondog|donwog|dorthog\w*|rthog\w*|dogrect|grtransp|combgaps|combtol|"
                   r"gaplnsty|gapwid|gapcolor|wgap\w*|rgap\w*|lrgapcolor|extendgaps|"

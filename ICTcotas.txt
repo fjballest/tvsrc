@@ -54,6 +54,10 @@ float badatr = input.float(6, "Ignore wicks longer than (daily ATRs)", minval = 
      tooltip = "Bad data: a wick longer than this many daily ATRs (any timeframe, chart candles included) is taken "
      + "as a bad print, and the candle's high or low is taken at its body for levels, mitigation and turtle soup. "
      + "0: off.")
+bool nqscale = input.bool(true, "Scale sizes using NQ sizes as reference", group = G_GEN,
+     tooltip = "Sizes in points (minimum sizes and the like) are set for NQ. On: they are scaled for the chart "
+     + "instrument by a fixed factor, its typical range relative to NQ: ES 0.2, YM 1.3, RTY 0.1, DAX 0.7 "
+     + "(and their micros and CFDs); other instruments keep them as given.")
 // [ATT] dimming steps of a rank (0 important, 1 normal, 2 minor) at the attenuation level
 attE(int rank) =>
     attLvl == 0 ? 0 : rank == 0 ? (attLvl >= 4 ? 2 : attLvl >= 2 ? 1 : 0) : rank == 1 ? attLvl : attLvl + 1
@@ -107,7 +111,7 @@ bool dofvg = input.bool(true, "Draw FVGs", group = G_FVG, inline = "f1",
      + "third is below the low of the first (bearish).")
 int nfvg = input.int(8, "keep", minval = 1, maxval = 20, group = G_FVG, inline = "f1",
      tooltip = "Max FVGs (and IFVGs) kept per timeframe")
-float fvgmin = input.float(0.0, "min size", minval = 0.0, group = G_FVG, inline = "f1",
+float fvgminIn = input.float(0.0, "min size", minval = 0.0, group = G_FVG, inline = "f1",
      tooltip = "Min gap size in price points")
 string fvgsty = getstyle(input.string("solid", "hi/lo", options = ["solid", "dashed", "dotted"],
      group = G_FVG, inline = "f2"))
@@ -146,7 +150,7 @@ bool dovi = input.bool(true, "Draw VIs", group = G_VI, inline = "v1",
      + "their wicks still overlap (no full gap).")
 int nvi = input.int(8, "keep", minval = 1, maxval = 20, group = G_VI, inline = "v1",
      tooltip = "Max volume imbalances kept per timeframe")
-float vimin = input.float(0.0, "min size", minval = 0.0, group = G_VI, inline = "v1",
+float viminIn = input.float(0.0, "min size", minval = 0.0, group = G_VI, inline = "v1",
      tooltip = "Min gap size in price points")
 string visty = getstyle(input.string("solid", "hi/lo", options = ["solid", "dashed", "dotted"],
      group = G_VI, inline = "v2"))
@@ -198,7 +202,7 @@ bool mfd = input.bool(false, "D", group = G_MF, inline = "m1")
 bool mfw = input.bool(false, "W", group = G_MF, inline = "m1")
 bool mfm = input.bool(false, "M", group = G_MF, inline = "m1")
 int nmf = input.int(6, "keep per timeframe", minval = 1, maxval = 20, group = G_MF, inline = "m2")
-float mfmin = input.float(0.0, "min size", minval = 0.0, group = G_MF, inline = "m2",
+float mfminIn = input.float(0.0, "min size", minval = 0.0, group = G_MF, inline = "m2",
      tooltip = "Min gap size in price points")
 color mf15b = input.color(color.new(color.lime, 0), "15m: bull", group = G_MF, inline = "mc1")
 color mf15s = input.color(color.new(color.maroon, 0), "bear", group = G_MF, inline = "mc1")
@@ -285,6 +289,29 @@ string setmode = input.string("auto", "Use settlement (SET) on daily", options =
 bool setlbl = input.bool(true, "show SET label", group = G_DAY,
      tooltip = "Futures only: \"SET on\" or \"SET off\" in the upper right corner, for the version used for "
      + "the last daily candle")
+
+// [NQS] sizes in points are given for NQ; with nqscale they are scaled for the chart instrument by a hardwired
+// factor (its typical daily range relative to NQ's). Futures match by root, other symbols by ticker prefix;
+// instruments not in the table keep the sizes as given
+nqScale() =>
+    array<string> nms = array.from("NQ", "MNQ", "NNQ", "NAS100", "US100", "USTEC", "NDX", "NQ100",
+         "ES", "MES", "US500", "SPX", "SP500", "US30", "YM", "MYM", "DJI", "WS30", "DJ30",
+         "RTY", "M2K", "US2000", "RUT", "FDAX", "FDXM", "FDXS", "DAX", "GER40", "DE40", "GER30", "DE30", "DEU40")
+    array<float> ks = array.from(1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+         0.2, 0.2, 0.2, 0.2, 0.2, 1.3, 1.3, 1.3, 1.3, 1.3, 1.3,
+         0.1, 0.1, 0.1, 0.1, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7)
+    bool fut = syminfo.type == "futures"
+    string s = str.upper(fut ? syminfo.root : syminfo.ticker)
+    float r = 1.0
+    for [i, nm] in nms
+        if fut ? s == nm : str.startswith(s, nm)
+            r := ks.get(i)
+            break
+    r
+var float sizeK = nqscale ? nqScale() : 1.0
+float fvgmin = fvgminIn * sizeK
+float vimin = viminIn * sizeK
+float mfmin = mfminIn * sizeK
 
 // ============================================================ setup
 int tfsecs = timeframe.in_seconds()

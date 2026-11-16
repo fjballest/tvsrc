@@ -49,6 +49,10 @@ float badatr = input.float(6, "Ignore wicks longer than (daily ATRs)", minval = 
      tooltip = "Bad data: a wick longer than this many daily ATRs (chart, daily and monthly candles) is taken as a "
      + "bad print, and the candle's high or low is taken at its body: day, session, week and month highs / lows, "
      + "swings, EQH / EQL and ranges leave it out. 0: off.")
+bool nqscale = input.bool(true, "Scale sizes using NQ sizes as reference", group = G_EN,
+     tooltip = "Sizes in points (minimum sizes and the like) are set for NQ. On: they are scaled for the chart "
+     + "instrument by a fixed factor, its typical range relative to NQ: ES 0.2, YM 1.3, RTY 0.1, DAX 0.7 "
+     + "(and their micros and CFDs); other instruments keep them as given.")
 // [ATT] dimming steps of a rank (0 important, 1 normal, 2 minor) at the attenuation level
 attE(int rank) =>
     attLvl == 0 ? 0 : rank == 0 ? (attLvl >= 4 ? 2 : attLvl >= 2 ? 1 : 0) : rank == 1 ? attLvl : attLvl + 1
@@ -198,10 +202,10 @@ const string GRP_DOG = "Gaps and Ranges"
 int ngaps = 10
 bool ndogmf = false
 bool dorthogq = true
-float rthogqmin = float(50.0)
+float rthogqminIn = float(50.0)
 bool dorthogoct = true
 bool dorthogpo3 = true
-float rthogpo3min = float(50.0)
+float rthogpo3minIn = float(50.0)
 int rthogpo3num = 4
 bool rthogauto = true
 bool dogrect = true
@@ -228,9 +232,9 @@ int pmkeep = 1
 string pmmode = "Auto"
 string pmsession = "0700-0900"
 bool dopmq = true
-float pmqmin = float(50.0)
+float pmqminIn = float(50.0)
 bool dopmpo3 = true
-float pmpo3min = float(50.0)
+float pmpo3minIn = float(50.0)
 int pmpo3num = 4
 bool pmauto = false
 color pmcolor = color.red
@@ -257,7 +261,7 @@ bool doeq3 = input.bool(true, "also with 3-candle swings, max points beyond", gr
      inline = "eq3b", tooltip = "A new pivot also forms an EQH (EQL) with an earlier, unswept 3-candle "
      + "swing high (low) that has exactly its price or is at most this many points above it (below it, for "
      + "lows). The level is drawn at the swing price, from the swing.")
-float eq3pts = input.float(3.0, "", minval = 0.0, step = 0.25, group = G_EQ, inline = "eq3b")
+float eq3ptsIn = input.float(3.0, "", minval = 0.0, step = 0.25, group = G_EQ, inline = "eq3b")
 color eqhcol = input.color(color.green, "EQH", group = G_EQ, inline = "eq4")
 color eqlcol = input.color(color.red, "EQL", group = G_EQ, inline = "eq4")
 string eqhlsty = getstyle(input.string("solid", "line", options = ["solid", "dashed", "dotted"],
@@ -277,6 +281,31 @@ color macrobgcolor = input.color(color.new(color.black, 90), "Macro background",
 bool dosilver = input.bool(true, "Show active silver bullet", group = GRP_MAIN, inline = "sb",
      tooltip = "text with the active silver bullet on the top right")
 color silvercolor = input.color(color.red, "", group = GRP_MAIN, inline = "sb")
+
+// [NQS] sizes in points are given for NQ; with nqscale they are scaled for the chart instrument by a hardwired
+// factor (its typical daily range relative to NQ's). Futures match by root, other symbols by ticker prefix;
+// instruments not in the table keep the sizes as given
+nqScale() =>
+    array<string> nms = array.from("NQ", "MNQ", "NNQ", "NAS100", "US100", "USTEC", "NDX", "NQ100",
+         "ES", "MES", "US500", "SPX", "SP500", "US30", "YM", "MYM", "DJI", "WS30", "DJ30",
+         "RTY", "M2K", "US2000", "RUT", "FDAX", "FDXM", "FDXS", "DAX", "GER40", "DE40", "GER30", "DE30", "DEU40")
+    array<float> ks = array.from(1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+         0.2, 0.2, 0.2, 0.2, 0.2, 1.3, 1.3, 1.3, 1.3, 1.3, 1.3,
+         0.1, 0.1, 0.1, 0.1, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7)
+    bool fut = syminfo.type == "futures"
+    string s = str.upper(fut ? syminfo.root : syminfo.ticker)
+    float r = 1.0
+    for [i, nm] in nms
+        if fut ? s == nm : str.startswith(s, nm)
+            r := ks.get(i)
+            break
+    r
+var float sizeK = nqscale ? nqScale() : 1.0
+float rthogqmin = rthogqminIn * sizeK
+float rthogpo3min = rthogpo3minIn * sizeK
+float pmqmin = pmqminIn * sizeK
+float pmpo3min = pmpo3minIn * sizeK
+float eq3pts = eq3ptsIn * sizeK
 
 // ============================================================ timeframe, timezone, definitions
 int tfsecs = timeframe.in_seconds()

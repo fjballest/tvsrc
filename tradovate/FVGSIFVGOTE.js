@@ -13,7 +13,7 @@
  *   BM↑/BM↓, inheritance of the tags by IFVGs) and LONG / SHORT / OTE signal markers.
  *
  *   Port of the TradingView Pine Script v6 indicator "FVGS+IFVG+OTE.txt"
- *   (md5 6df957b968067ef69068c1e3e4bef92b, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
+ *   (md5 c8d58887ec325656fd19071b9518268f, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
  *   input variable names (camelCase). See the design document (d.md) and user manual (m.md) for the logic.
  *
  * How to install
@@ -93,7 +93,7 @@ const PARAMS = [
     ["drawMode", "e", "all", { all: "all", PFVG: "1PFVGs", IFVG: "IFVGs", PFVG_IFVG: "1PFVGs+IFVGs" }],
     ["fltMode", "e", "none", { none: "none", sweeps: "sweeps", sweepsMid: "sweeps&mid", relevant: "relevant", recentRelevant: "recent relevant" }],
     ["fpMode", "e", "all", { all: "all", week: "week", weekFridays: "week+fridays", weekFridaysLast: "week+fridays+last" }],
-    ["attLvl", "n", 2, [1, 0]],
+    ["attLvl", "n", 2, [1, 0]], ["nqscale", "b", true],
     // FVG Settings
     ["visible", "b", false], ["dofvgalert", "b", false], ["diag", "b", false],
     ["minfvg", "n", 3, [0.25, 1]], ["maxfvg", "n", 10000, [1, 100]], ["maxfvgs", "n", 200, [1, 2]],
@@ -384,6 +384,38 @@ function chartLastBar(d, i, history) {
     return !hasFn;
 }
 
+// [NQS] sizes in points are given for NQ; with the NQ scale on they are multiplied by a hardwired factor for the
+// chart instrument (its typical daily range relative to NQ's): names of up to 3 letters must match the product
+// (or the contract without its month and year), longer ones are prefixes (CFDs); others keep the sizes as given
+const NQS = [["NQ", 1], ["MNQ", 1], ["NNQ", 1], ["NAS100", 1], ["US100", 1], ["USTEC", 1], ["NDX", 1], ["NQ100", 1],
+    ["ES", 0.2], ["MES", 0.2], ["US500", 0.2], ["SPX", 0.2], ["SP500", 0.2],
+    ["US30", 1.3], ["YM", 1.3], ["MYM", 1.3], ["DJI", 1.3], ["WS30", 1.3], ["DJ30", 1.3],
+    ["RTY", 0.1], ["M2K", 0.1], ["US2000", 0.1], ["RUT", 0.1],
+    ["FDAX", 0.7], ["FDXM", 0.7], ["FDXS", 0.7], ["DAX", 0.7], ["GER40", 0.7], ["DE40", 0.7], ["GER30", 0.7],
+    ["DE30", 0.7], ["DEU40", 0.7]];
+function nqScaleOf(ci) {
+    const names = [];
+    try {
+        ci = ci || {};
+        const p = ci.product;
+        if (typeof p === "string") names.push(p);
+        else if (p && typeof p.name === "string") names.push(p.name);
+        if (ci.contractMaturity && typeof ci.contractMaturity.productName === "string") names.push(ci.contractMaturity.productName);
+        for (const c of [ci.contract, ci.name, ci.symbol]) {
+            if (typeof c === "string") names.push(c.replace(/[FGHJKMNQUVXZ]\d{1,4}$/i, ""));
+        }
+    } catch (e) {
+        // no contract information: no scaling
+    }
+    for (let s of names) {
+        s = s.toUpperCase();
+        for (const [nm, k] of NQS) {
+            if (nm.length <= 3 ? s === nm : s.startsWith(nm)) return k;
+        }
+    }
+    return 1;
+}
+
 class FVGSIFVGOTE {
     init() {
         // parameters
@@ -396,6 +428,9 @@ class FVGSIFVGOTE {
             if (kind === "b") v = !!v;
             P[name] = v;
         }
+        // [NQS] point sizes are given for NQ
+        this.sizeK = P.nqscale ? nqScaleOf(this.contractInfo) : 1;
+        for (const n of ["minfvg", "maxfvg", "mince", "minwick"]) P[n] *= this.sizeK;
         this.P = P;
         this.fponly = P.drawMode === "PFVG";
         this.ifvgOnly = P.drawMode === "IFVG";

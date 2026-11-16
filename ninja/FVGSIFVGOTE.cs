@@ -2,7 +2,7 @@
 // FVGSIFVGOTE - Fair value gaps, 1st presented FVGs, inverse FVGs (IFVG) and ICT OTE, for NinjaTrader 8
 // ---------------------------------------------------------------------------------------------------------------------
 // Port of the TradingView Pine Script v6 indicator "FVGs+IFVG+OTE5" by franjballest
-// (source file FVGS+IFVG+OTE.txt, md5 6df957b968067ef69068c1e3e4bef92b). Mozilla Public License 2.0, as the original.
+// (source file FVGS+IFVG+OTE.txt, md5 c8d58887ec325656fd19071b9518268f). Mozilla Public License 2.0, as the original.
 //
 // What it draws: FVG boxes (or no-fill boxes, or hi / lo / C.E. segments) with C.E. lines, the 1st presented FVG of the
 // session open (New York 09:30, or Madrid 09:00 for DAX) and its optional inverse, wick C.E. segments, IFVG candidates
@@ -352,6 +352,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                 FvgFilter = FioFilterMode.None;
                 FpFilter = FioFpFilter.All;
                 Attenuation = 2;
+                NqScale = true;
                 HistoricCompute = false;
                 FvgBounceAlerts = false;
                 MinFvgSize = 3;
@@ -564,8 +565,30 @@ namespace NinjaTrader.NinjaScript.Indicators
             return minutes.ToString() + "m";
         }
 
+        // [NQS] sizes in points are given for NQ; with the NQ scale on they are multiplied by a hardwired factor for
+        // the chart instrument (its typical daily range relative to NQ's): names of up to 3 letters must match the
+        // instrument name, longer ones are prefixes (CFDs); instruments not in the table keep the sizes as given
+        private static readonly string[] NqsNames = { "NQ", "MNQ", "NNQ", "NAS100", "US100", "USTEC", "NDX", "NQ100",
+            "ES", "MES", "US500", "SPX", "SP500", "US30", "YM", "MYM", "DJI", "WS30", "DJ30",
+            "RTY", "M2K", "US2000", "RUT", "FDAX", "FDXM", "FDXS", "DAX", "GER40", "DE40", "GER30", "DE30", "DEU40" };
+        private static readonly double[] NqsK = { 1, 1, 1, 1, 1, 1, 1, 1,
+            0.2, 0.2, 0.2, 0.2, 0.2, 1.3, 1.3, 1.3, 1.3, 1.3, 1.3,
+            0.1, 0.1, 0.1, 0.1, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7 };
+        private double sizeK = 1.0;
+
+        private double NqScaleK()
+        {
+            string s = Instrument != null && Instrument.MasterInstrument != null && Instrument.MasterInstrument.Name != null
+                ? Instrument.MasterInstrument.Name.ToUpperInvariant() : string.Empty;
+            for (int i = 0; i < NqsNames.Length; i++)
+                if (NqsNames[i].Length <= 3 ? s == NqsNames[i] : s.StartsWith(NqsNames[i]))
+                    return NqsK[i];
+            return 1.0;
+        }
+
         private void InitState()
         {
+            sizeK = NqScale ? NqScaleK() : 1.0;
             b0 = BarsArray[0];
             dirty = new List<Gfx>();
             extList = new List<Gfx>();
@@ -1411,7 +1434,7 @@ namespace NinjaTrader.NinjaScript.Indicators
         }
 
         // [REL] "relevant" filter: a plain FVG too small to draw its C.E.
-        private bool RelSmall(Fvg f) { return fltRel && !f.isfp && !f.isifp && f.hi - f.lo <= CeMinHeight; }
+        private bool RelSmall(Fvg f) { return fltRel && !f.isfp && !f.isifp && f.hi - f.lo <= CeMinHeight * sizeK; }
 
         // back to the plain FVG, as it was before becoming an IFVG
         private void Restore(Fvg f)
@@ -1899,7 +1922,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                         f.rect.Va = ifvgVa;
                     }
                 }
-                if (f.celine == null && f.hi - f.lo > CeMinHeight)
+                if (f.celine == null && f.hi - f.lo > CeMinHeight * sizeK)
                 {
                     f.celine = NewLine(f.start, f.ce, et, f.ce, LnColor(f, true), CeStyle, AttWc(CeWidth));
                     if (f.isfp) SetExt(f.celine, true);
@@ -2018,7 +2041,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             double bhi2 = Math.Max(o2, c2), blow2 = Math.Min(o2, c2);
             Fvg f = null;
             // long: low of [1] above the high of [3]; include suspension blocks
-            if (l1 - h3 > MinFvgSize && l1 - h3 < MaxFvgSize && !(ifpWin && fpLong))
+            if (l1 - h3 > MinFvgSize * sizeK && l1 - h3 < MaxFvgSize * sizeK && !(ifpWin && fpLong))
             {
                 double hi = l1, lo = h3;
                 if (Math.Max(o3, c3) < blow2 && !poorLiq) lo = Math.Max(o3, c3);
@@ -2026,7 +2049,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                 f = new Fvg { hi = hi, lo = lo, ce = (hi + lo) / 2.0, islong = true };
             }
             // short: high of [1] below the low of [3]
-            if (f == null && l3 - h1 > MinFvgSize && l3 - h1 < MaxFvgSize && !(ifpWin && !fpLong))
+            if (f == null && l3 - h1 > MinFvgSize * sizeK && l3 - h1 < MaxFvgSize * sizeK && !(ifpWin && !fpLong))
             {
                 double hi = l3, lo = h1;
                 if (Math.Min(o3, c3) > bhi2 && !poorLiq) hi = Math.Min(o3, c3);
@@ -2944,12 +2967,12 @@ namespace NinjaTrader.NinjaScript.Indicators
                 double wh = h1 - bodyh;
                 double wl = bodyl - l1;
                 Color wc = hideReg ? Tr(cWick, 100) : cWick;
-                if (wh > WickMinSize)
+                if (wh > WickMinSize * sizeK)
                 {
                     double ce = (h1 + bodyh) / 2.0;
                     wicks.Add(NewBarLine(bi - 1, ce, bi - 1 + Wdx(), ce, wc, WickStyle, 1));
                 }
-                if (wl > WickMinSize)
+                if (wl > WickMinSize * sizeK)
                 {
                     double ce = (l1 + bodyl) / 2.0;
                     wicks.Add(NewBarLine(bi - 1, ce, bi - 1 + Wdx(), ce, wc, WickStyle, 1));
@@ -3108,7 +3131,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                     if (blow1 > bhi2 && !poorLiq) hi = blow1;
                     // [PL] poor liquidity: two up-close candles in a row with a gap make an FVG (as if one more was between)
                     int fk = 3;
-                    if (poorLiq && !(fhi - flo > MinFvgSize) && c1 > o1 && c2 > o2 && l1 > Hp(2))
+                    if (poorLiq && !(fhi - flo > MinFvgSize * sizeK) && c1 > o1 && c2 > o2 && l1 > Hp(2))
                     {
                         hi = l1;
                         lo = Hp(2);
@@ -3116,7 +3139,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                         flo = lo;
                         fk = 2;
                     }
-                    if (fhi - flo > MinFvgSize && fhi - flo < MaxFvgSize && (!DisplacementOnly || deDispOK || fpNow || ifpNow))
+                    if (fhi - flo > MinFvgSize * sizeK && fhi - flo < MaxFvgSize * sizeK && (!DisplacementOnly || deDispOK || fpNow || ifpNow))
                     {
                         Fvg f = new Fvg();
                         f.hi = hi;
@@ -3141,7 +3164,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                     if (bhi1 < blow2 && !poorLiq) lo = bhi1;
                     // [PL] poor liquidity: two down-close candles in a row with a gap make an FVG
                     int fk = 3;
-                    if (poorLiq && !(fhi - flo > MinFvgSize) && c1 < o1 && c2 < o2 && h1 < Lp(2))
+                    if (poorLiq && !(fhi - flo > MinFvgSize * sizeK) && c1 < o1 && c2 < o2 && h1 < Lp(2))
                     {
                         hi = Lp(2);
                         lo = h1;
@@ -3149,7 +3172,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                         flo = lo;
                         fk = 2;
                     }
-                    if (fhi - flo > MinFvgSize && fhi - flo < MaxFvgSize && (!DisplacementOnly || deDispOK || fpNow || ifpNow))
+                    if (fhi - flo > MinFvgSize * sizeK && fhi - flo < MaxFvgSize * sizeK && (!DisplacementOnly || deDispOK || fpNow || ifpNow))
                     {
                         Fvg f = new Fvg();
                         f.hi = hi;
@@ -3610,6 +3633,10 @@ namespace NinjaTrader.NinjaScript.Indicators
         [Range(0, 4)]
         [Display(Name = "Attenuation", GroupName = "Enable / Draw / Filter", Order = 107, Description = "Tones down the drawings for a cleaner chart. 0: as configured. 1 and 2: fills, borders, lines and texts more transparent, and thinner. 3: as 2 and more, boxes without border (fills only) but with their C.E. line. 4: as 3, without the C.E. lines either. Applied on top of the colors and widths chosen below.")]
         public int Attenuation { get; set; }
+
+        [NinjaScriptProperty]
+        [Display(Name = "Scale sizes using NQ sizes as reference", GroupName = "Enable / Draw / Filter", Order = 108, Description = "Sizes in points (minimum sizes and the like) are set for NQ. On: they are scaled for the chart instrument by a fixed factor, its typical range relative to NQ: ES 0.2, YM 1.3, RTY 0.1, DAX 0.7 (and their micros and CFDs); other instruments keep them as given.")]
+        public bool NqScale { get; set; }
 
         [NinjaScriptProperty]
         [Display(Name = "Historic compute", GroupName = "FVG Settings", Order = 201, Description = "Kept for parity with the Pine input. NinjaTrader has no visible-range information in OnBarUpdate, so FVGs are always computed on every bar.")]

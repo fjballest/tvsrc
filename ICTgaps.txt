@@ -49,6 +49,10 @@ float badatr = input.float(6, "Ignore wicks longer than (daily ATRs)", minval = 
      tooltip = "Bad data: a wick longer than this many daily ATRs (chart, daily and monthly candles) is taken as a "
      + "bad print, and the candle's high or low is taken at its body: day, session, week and month highs / lows, "
      + "swings, EQH / EQL and ranges leave it out. 0: off.")
+bool nqscale = input.bool(true, "Scale sizes using NQ sizes as reference", group = G_EN,
+     tooltip = "Sizes in points (minimum sizes and the like) are set for NQ. On: they are scaled for the chart "
+     + "instrument by a fixed factor, its typical range relative to NQ: ES 0.2, YM 1.3, RTY 0.1, DAX 0.7 "
+     + "(and their micros and CFDs); other instruments keep them as given.")
 // [ATT] dimming steps of a rank (0 important, 1 normal, 2 minor) at the attenuation level
 attE(int rank) =>
     attLvl == 0 ? 0 : rank == 0 ? (attLvl >= 4 ? 2 : attLvl >= 2 ? 1 : 0) : rank == 1 ? attLvl : attLvl + 1
@@ -158,13 +162,13 @@ bool ndogmf = input.bool(false, "NDOGs: Monday and Friday only", group = GRP_DOG
      tooltip = "Only the first and the last NDOG of the week: the gap after Monday's session and the gap that opens "
      + "Friday's session (after Thursday's). The Sunday open is the NWOG. The latest NDOG is always shown.")
 bool dorthogq = input.bool(true, "RTHOG quadrants", group = GRP_DOG, inline = "rq")
-float rthogqmin = input.float(50.0, "min size", group = GRP_DOG, inline = "rq",
+float rthogqminIn = input.float(50.0, "min size", group = GRP_DOG, inline = "rq",
      tooltip = "min size between quadrants to draw them")
 bool dorthogoct = input.bool(true, "RTHOG octants", group = GRP_DOG, inline = "ro",
      tooltip = "Midpoints between the quadrants (1/8, 3/8, 5/8 and 7/8 of the gap) of the latest RTHOG, drawn "
      + "when an eighth of the gap is above the quadrant min size, from the open until noon.")
 bool dorthogpo3 = input.bool(true, "RTHOG stddevs", group = GRP_DOG, inline = "rp")
-float rthogpo3min = input.float(50.0, "min size", group = GRP_DOG, inline = "rp",
+float rthogpo3minIn = input.float(50.0, "min size", group = GRP_DOG, inline = "rp",
      tooltip = "min size of the steps to draw them (selects octants, "
      + "quadrants, half gap, whole gap, twice the gap or none)")
 int rthogpo3num = input.int(4, "number of stddevs to draw above/below", group = GRP_DOG, inline = "rn")
@@ -217,11 +221,11 @@ string pmmode = input.string("Auto", "range", options = ["Auto", "Manual"], grou
      + "timezone of the market open (New York for NQ, Madrid for DAX).")
 string pmsession = input.session("0700-0900", "manual range", group = G_PM, inline = "pm1")
 bool dopmq = input.bool(true, "PMKT quadrants", group = G_PM, inline = "pm2")
-float pmqmin = input.float(50.0, "min size", group = G_PM, inline = "pm2",
+float pmqminIn = input.float(50.0, "min size", group = G_PM, inline = "pm2",
      tooltip = "min size between quadrants to draw them (the lines at 25%, 50% (CE) and 75% "
      + "of the range)")
 bool dopmpo3 = input.bool(true, "PMKT stddevs", group = G_PM, inline = "pm3")
-float pmpo3min = input.float(50.0, "min size", group = G_PM, inline = "pm3",
+float pmpo3minIn = input.float(50.0, "min size", group = G_PM, inline = "pm3",
      tooltip = "min size of the steps to draw them (selects octants, quadrants, half range, "
      + "whole range, twice the range or none)")
 int pmpo3num = input.int(4, "number of stddevs to draw above/below", minval = 1,
@@ -252,7 +256,7 @@ int eqlenD = 3
 float eqtol = float(0.10)
 int eqkeep = 5
 bool doeq3 = true
-float eq3pts = float(3.0)
+float eq3ptsIn = float(3.0)
 color eqhcol = color.green
 color eqlcol = color.red
 string eqhlsty = getstyle("solid")
@@ -267,6 +271,31 @@ color macrocolor = color.orange
 color macrobgcolor = color.new(color.black, 90)
 bool dosilver = false
 color silvercolor = color.red
+
+// [NQS] sizes in points are given for NQ; with nqscale they are scaled for the chart instrument by a hardwired
+// factor (its typical daily range relative to NQ's). Futures match by root, other symbols by ticker prefix;
+// instruments not in the table keep the sizes as given
+nqScale() =>
+    array<string> nms = array.from("NQ", "MNQ", "NNQ", "NAS100", "US100", "USTEC", "NDX", "NQ100",
+         "ES", "MES", "US500", "SPX", "SP500", "US30", "YM", "MYM", "DJI", "WS30", "DJ30",
+         "RTY", "M2K", "US2000", "RUT", "FDAX", "FDXM", "FDXS", "DAX", "GER40", "DE40", "GER30", "DE30", "DEU40")
+    array<float> ks = array.from(1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+         0.2, 0.2, 0.2, 0.2, 0.2, 1.3, 1.3, 1.3, 1.3, 1.3, 1.3,
+         0.1, 0.1, 0.1, 0.1, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7)
+    bool fut = syminfo.type == "futures"
+    string s = str.upper(fut ? syminfo.root : syminfo.ticker)
+    float r = 1.0
+    for [i, nm] in nms
+        if fut ? s == nm : str.startswith(s, nm)
+            r := ks.get(i)
+            break
+    r
+var float sizeK = nqscale ? nqScale() : 1.0
+float rthogqmin = rthogqminIn * sizeK
+float rthogpo3min = rthogpo3minIn * sizeK
+float pmqmin = pmqminIn * sizeK
+float pmpo3min = pmpo3minIn * sizeK
+float eq3pts = eq3ptsIn * sizeK
 
 // ============================================================ timeframe, timezone, definitions
 int tfsecs = timeframe.in_seconds()

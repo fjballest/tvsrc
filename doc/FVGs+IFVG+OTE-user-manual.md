@@ -402,6 +402,7 @@ Inputs on one line in the settings dialog are listed together; a field without i
 | FVG filter | `none` | `none`, `sweeps`, `sweeps&mid`, `relevant`, `recent relevant` (see section 4; `relevant` is the slowest). Does not filter 1PFVGs or the close-mode IFVG logic. |
 | 1PFVG filter | `all` | `all`, `week` (Mondays only), `week+fridays` (Mondays and Fridays), `week+fridays+last` (also the latest one). Which days keep their 1PFVG (section 5). |
 | Attenuation | 2 | 0 to 4: tones the drawings down for a cleaner chart. 1 and 2: fills, borders, lines and texts more transparent and one pixel thinner. 3: stronger, and boxes have no border, only the fill and the C.E. line. 4: as 3 without the C.E. lines (segments keep their lines). C.E. lines are attenuated one level less than the rest, so they stay visible. Applied on top of the colors and widths below. Breaker / mitigation block fills and the signals are not changed. |
+| Scale sizes using NQ sizes as reference | on | Sizes in points are set for NQ. When on, they are multiplied by a fixed factor for the chart instrument, roughly its typical range relative to NQ: ES 0.2, YM 1.3, RTY 0.1, DAX 0.7 (with their micros and CFDs: MES, US500, SPX; MYM, US30; M2K, US2000; FDXM, GER40, DE40...); NQ, MNQ, NAS100 and US100 are 1, and any other instrument keeps the sizes as given. Scaled: FVG size min and max, C.E. min height and wick min size. Also in ICTblocks and FVGS+IFVG+OTE4. Off: the sizes are used as typed |
 
 ### FVG Settings
 

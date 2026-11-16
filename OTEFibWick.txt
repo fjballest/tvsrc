@@ -21,10 +21,14 @@ var dovdiv = input.bool(true, "volume divergences", group=GS, inline="en2")
 var badatr = input.float(6, "ignore wicks longer than (daily ATRs)", minval = 0, step = 0.5, group = GS,
     tooltip = "Bad data: for the fib retracements and the HTF OTEs, a wick longer than this many daily ATRs is taken "+
         "as a bad print and the candle's high or low is taken at its body. 0: off.")
+var bool nqscale = input.bool(true, "Scale sizes using NQ sizes as reference", group = GS,
+     tooltip = "Sizes in points (minimum sizes and the like) are set for NQ. On: they are scaled for the chart "
+     + "instrument by a fixed factor, its typical range relative to NQ: ES 0.2, YM 1.3, RTY 0.1, DAX 0.7 "
+     + "(and their micros and CFDs); other instruments keep them as given.")
 
 wick_width = input.int(2, "Wick Width", group = GW, minval=1, maxval=10, inline="w")
 wick_color = input.color(color.gray, "color", group = GW, inline = "w")
-var minwick = input.float(15, "wick CE sz", inline = "wick", group = GW)
+var minwickIn = input.float(15, "wick CE sz", inline = "wick", group = GW)
 var wickdx = input.int(1, "bars",  inline = "wick", group=GW, 
      tooltip="0 for auto or number of bars for segment width")
 var wswing = input.bool(true, "keep CEs of swing high/low wicks", group=GW,
@@ -106,6 +110,27 @@ dAlt = input.bool(false, "Data from another symbol", group = GD, inline = "dsym"
     tooltip = "Compute wicks, fibs and OTEs from the candles of this symbol, at the chart timeframe, and draw "+
         "them on this chart. E.g. MNQ data on an NNQ chart.")
 dSym = input.symbol("CME_MINI:MNQ1!", "", group = GD, inline = "dsym")
+// [NQS] sizes in points are given for NQ; with nqscale they are scaled for the chart instrument by a hardwired
+// factor (its typical daily range relative to NQ's). Futures match by root, other symbols by ticker prefix;
+// instruments not in the table keep the sizes as given
+nqScale() =>
+    array<string> nms = array.from("NQ", "MNQ", "NNQ", "NAS100", "US100", "USTEC", "NDX", "NQ100",
+         "ES", "MES", "US500", "SPX", "SP500", "US30", "YM", "MYM", "DJI", "WS30", "DJ30",
+         "RTY", "M2K", "US2000", "RUT", "FDAX", "FDXM", "FDXS", "DAX", "GER40", "DE40", "GER30", "DE30", "DEU40")
+    array<float> ks = array.from(1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+         0.2, 0.2, 0.2, 0.2, 0.2, 1.3, 1.3, 1.3, 1.3, 1.3, 1.3,
+         0.1, 0.1, 0.1, 0.1, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7)
+    bool fut = syminfo.type == "futures"
+    string s = str.upper(fut ? syminfo.root : syminfo.ticker)
+    float r = 1.0
+    for [i, nm] in nms
+        if fut ? s == nm : str.startswith(s, nm)
+            r := ks.get(i)
+            break
+    r
+var float sizeK = nqscale ? nqScale() : 1.0
+float minwick = minwickIn * sizeK
+
 string dataSym = dAlt ? dSym : syminfo.tickerid
 // one request per series (not a tuple) so that max_bars_back below applies to them
 float dO = request.security(dataSym, timeframe.period, open, gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_off)
