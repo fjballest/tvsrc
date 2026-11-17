@@ -249,6 +249,94 @@ def noApLbl(txt):
     return out + txt[last:]
 
 
+def blkInputs(s):
+    """ICTblocks only: the options shared by breakers and mitigation blocks go to one Block settings group (the
+    brk* / mb* names become constants set from it), the drawing is one choice (rectangle, filled rectangle, shadow
+    or segment) and the IFVG settings come after the blocks"""
+    a = s.index("// Breakers =========\n")
+    b = s.index("// Delivery Engine (from Nuno's")
+    reg = s[a:b]
+    def stmt(name, txt):
+        m = re.search(r"(?m)^%s = [^\n]*\n(?:    [^\n]*\n)*" % name, txt)
+        assert m, name
+        return m.group(0)
+    brkOn, mbOn = stmt("brkOn", reg), stmt("mbOn", reg)
+    ifvg = ""
+    for n in ("deConf", "deInv", "deMaxInv"):
+        st = stmt(n, s)
+        assert s.count(st) == 1, n
+        s = s.replace(st, "")
+        ifvg += st
+    a = s.index("// Breakers =========\n")
+    b = s.index("// Delivery Engine (from Nuno's")
+    new = ('// Block settings (breakers and mitigation blocks) =========\n'
+           'G_BLK = "Block settings"\n'
+           'blkMode = input.string("Last candle", "Zone", options = ["Last candle", "Whole sequence"], group = G_BLK,\n'
+           '    inline = "zm", tooltip = "Last candle: the last up-close candle making the high (bullish) / down-close "\n'
+           '    + "candle making the low (bearish). Whole sequence: that candle and the consecutive up-close / down-close "\n'
+           '    + "candles before it. Full candle / Body: the zone spans the high to the low of its candle(s), or their bodies.")\n'
+           'blkPart = input.string("Full candle", "", options = ["Full candle", "Body"], group = G_BLK, inline = "zm")\n'
+           'blkLen = input.int(2, "Swing length / keep", minval = 1, maxval = 20, group = G_BLK, inline = "zl",\n'
+           '    tooltip = "Pivot length (left and right) of the lows and highs, and blocks kept per kind and direction.")\n'
+           'blkKeep = input.int(3, "", minval = 1, maxval = 10, group = G_BLK, inline = "zl")\n'
+           'blkAge = input.int(60, "Max bars to the pullback", minval = 5, maxval = 1000, group = G_BLK,\n'
+           '    tooltip = "Bars from the zone (its last candle) within which the pullback has to come; later the block is dropped "\n'
+           '    + "(of no interest at this timeframe, look at a higher one). Once tagged it is extended to each later pullback "\n'
+           '    + "into it, until a candle closes through its far side (failed; erased if no pullback had worked yet) or no "\n'
+           '    + "pullback comes for that many bars.")\n'
+           'blkDraw = input.string("Shadow", "Draw", options = ["Rectangle", "Filled rectangle", "Shadow", "Segment"],\n'
+           '    group = G_BLK, inline = "zd", tooltip = "Rectangle: border and label, no fill. Filled rectangle: with a "\n'
+           '    + "semi-transparent fill in the block color. Shadow: a grey transparent rectangle without border. Segment: only "\n'
+           '    + "the top of the zone (bullish) / its bottom (bearish), with the label; where it goes depends on Full candle / "\n'
+           '    + "Body. Style and width are those of the border, the mid line and the segment. The bold IFVG labels and the "\n'
+           '    + "B / M labels of the FVGs are set either way.")\n'
+           'blkSty = getstyle(input.string("dashed", "", options = ["solid", "dashed", "dotted"], group = G_BLK, inline = "zd"))\n'
+           'blkW = attW(input.int(1, "width", minval = 1, maxval = 4, group = G_BLK, inline = "zd"))\n'
+           'blkFlag = input.bool(false, "Flag candles", group = G_BLK, inline = "zf",\n'
+           '    tooltip = "Flag candles: color the block candle(s) (the zone candles) with the block color, once it is "\n'
+           '    + "tagged at the pullback; removed together with the block. Mid line: draw the C.E. of the rectangle (grey with "\n'
+           '    + "the shadow; not drawn with the segment).")\n'
+           'blkCe = input.bool(true, "Mid line (C.E.)", group = G_BLK, inline = "zf")\n'
+           'blkLbl = input.string("right", "Label", options = ["right", "left", "center", "top left", "top right"], group = G_BLK,\n'
+           '    tooltip = "Where the B↑ / B↓ / M↑ / M↓ label goes in the rectangle: centered vertically on its right / left "\n'
+           '    + "side, in the middle, or at a top corner. With the segment it sits on the segment, on that side.")\n'
+           'blkSeg = blkDraw == "Segment"\n'
+           'blkLblH = blkLbl == "left" or blkLbl == "top left" ? text.align_left : blkLbl == "center" ? text.align_center : text.align_right\n'
+           'blkLblV = blkLbl == "top left" or blkLbl == "top right" ? text.align_top : text.align_center\n'
+           '// segment: the label goes on the segment (top of a bullish zone, bottom of a bearish one)\n'
+           'blkLblVd(int d) => blkSeg ? (d == 1 ? text.align_top : text.align_bottom) : blkLblV\n'
+           '// level of the mid line, or of the segment\n'
+           'blkY(int d, float hi, float lo) => blkSeg ? (d == 1 ? hi : lo) : (hi + lo) / 2\n\n'
+           '// Breakers =========\nG_BRK = "Breakers"\n' + brkOn +
+           'brkCol = attB(input.color(color.orange, "↑", group = G_BRK, inline = "bc"))\n'
+           'brkColDn = attB(input.color(color.fuchsia, "↓", group = G_BRK, inline = "bc"))\n'
+           'brkC(int d) => d == 1 ? brkCol : brkColDn  // color of a bullish / bearish block\n\n'
+           '// Mitigation blocks =========\nG_MB = "Mitigation blocks"\n' + mbOn +
+           'mbCol = attB(input.color(color.orange, "↑", group = G_MB, inline = "mc"))\n'
+           'mbColDn = attB(input.color(color.fuchsia, "↓", group = G_MB, inline = "mc"))\n'
+           'mbC(int d) => d == 1 ? mbCol : mbColDn  // color of a bullish / bearish block\n\n'
+           '// IFVG Settings (after the blocks) =========\n' + ifvg + '\n'
+           '// breakers and mitigation blocks share the block settings\n')
+    for k in ("brk", "mb"):
+        new += ("%sMode = blkMode\n%sPart = blkPart\n%sLen = blkLen\n%sKeep = blkKeep\n%sAge = blkAge\n"
+                "%sBox = true\n%sShd = blkDraw == \"Shadow\"\n%sNoFill = blkDraw != \"Filled rectangle\"\n"
+                "%sSty = blkSty\n%sW = blkW\n%sFlag = blkFlag\n%sCe = blkCe and not blkSeg\n%sLblH = blkLblH\n" % ((k,) * 13))
+    s = s[:a] + new + "\n" + s[b:]
+    # drawing: the segment hides the rectangle (label kept, on the segment) and puts the line at the zone edge
+    for k in ("brk", "mb"):
+        for x, y, n in (("border_color = %sShd ? color.new(color.gray, 100)" % k,
+                         "border_color = %sShd or blkSeg ? color.new(color.gray, 100)" % k, 2),
+                        ("border_width = %sShd ? 0 : %sW" % (k, k), "border_width = %sShd or blkSeg ? 0 : %sW" % (k, k), 2),
+                        ("text_valign = %sLblV)" % k, "text_valign = blkLblVd(b.dir))", 2),
+                        ("b.ml := %sCe ? line.new(b.t, (b.hi + b.lo) / 2, time, (b.hi + b.lo) / 2," % k,
+                         "b.ml := %sCe or blkSeg ? line.new(b.t, blkY(b.dir, b.hi, b.lo), time, blkY(b.dir, b.hi, b.lo)," % k, 1),
+                        ("b.ml := %sCe ? line.new(b.t, mid, time, mid," % k,
+                         "b.ml := %sCe or blkSeg ? line.new(b.t, blkY(b.dir, b.hi, b.lo), time, blkY(b.dir, b.hi, b.lo)," % k, 1)):
+            assert s.count(x) == n, (x, s.count(x))
+            s = s.replace(x, y)
+    return s
+
+
 def main():
     os.chdir(os.path.dirname(os.path.abspath(__file__)) + "/..")
     src = open(SRC, newline="").read()
@@ -282,6 +370,7 @@ def main():
     # Border only: no fill for the block rectangles (the shadow rectangle keeps its own)
     s, n = re.subn(r"\b(brk|mb)Shd \? (80|88) : (85|93)\b", r"\1Shd ? \2 : (\1NoFill ? 100 : \3)", s)
     assert n == 6, n
+    s = blkInputs(s)
     open("FVGS+IFVG+OTE4.txt", "w", newline="").write(ote4)
     open("ICTblocks.txt", "w", newline="").write(s)
     print("FVGS+IFVG+OTE4.txt", ote4.count("\n"), "lines; ICTblocks.txt", s.count("\n"), "lines")
