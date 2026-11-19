@@ -7,7 +7,7 @@
 // FVGs closed through become IFVGs. Mitigated levels are removed.
 //
 // Port of the TradingView Pine Script v6 indicator ICTcotas.txt by franjballest
-// (source md5 51f2648faf6647a7cb4aee38e232989a). Mozilla Public License 2.0.
+// (source md5 eb9e14ad38cdfb573ee6c23b56140ba4). Mozilla Public License 2.0.
 //
 // Install:
 //   1. Copy this file to  Documents\NinjaTrader 8\bin\Custom\Indicators\ICTcotas.cs
@@ -119,6 +119,12 @@ public enum ICTcotasTsPosition
 	TopLeft
 }
 
+public enum ICTcotasObPart
+{
+	Body,
+	FullCandle
+}
+
 public enum ICTcotasLabelAnchor
 {
 	High,
@@ -139,6 +145,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 		private const string GVi = "Volume Imbalances";
 		private const string GWk = "Wick CE";
 		private const string GTs = "Turtle soup / continuation";
+		private const string GOb = "OB mean threshold (15m, experimental)";
 		private const string GMf = "FVGs and wick CE by timeframe (15m / 1H / 4H / D / W / M)";
 
 		// series indexes (order of AddDataSeries in State.Configure)
@@ -374,6 +381,16 @@ namespace NinjaTrader.NinjaScript.Indicators
 				MfExtendBars = 20;
 
 				// Turtle soup / continuation
+				// OB mean threshold
+				DoOb = true;
+				ObPart = ICTcotasObPart.Body;
+				ObLookback = 300;
+				ObZone = false;
+				ObResColor = Brushes.Red;
+				ObSupColor = Brushes.Green;
+				ObStyle = DashStyleHelper.Dash;
+				ObWidth = 1;
+
 				TsShow = true;
 				TsPosition = ICTcotasTsPosition.BottomRight;
 				TsSize = ICTcotasLabelSize.Normal;
@@ -504,7 +521,11 @@ namespace NinjaTrader.NinjaScript.Indicators
 				dirty = false;
 			}
 			if (atEnd)
+			{
 				DrawTs();
+				DrawOb(-1);
+				DrawOb(1);
+			}
 		}
 
 		// A higher timeframe bar closed: process the completed triple 1 = [off], 2 = [off+1], 3 = [off+2]
@@ -536,6 +557,10 @@ namespace NinjaTrader.NinjaScript.Indicators
 			if (k == SerMonth && monOk)
 				ProcessTf(2, k, off);
 
+			// [OB] 15m order blocks, on charts up to 15m
+			if (k == Ser15 && DoOb && tfsecs <= 900)
+				ObStep(Opens[k][off], CH(k, off), CL(k, off), Closes[k][off], Times[k][off].AddMinutes(-15));
+
 			for (int i = 0; i < 6; i++)
 			{
 				if (MfSeries[i] != k)
@@ -559,6 +584,112 @@ namespace NinjaTrader.NinjaScript.Indicators
 				if (MfSeries[i] == k && (mfOn[i] || wkOn[i]))
 					CloseTf(3 + i, c);
 			dirty = true;
+		}
+
+		#endregion
+
+		#region OB mean threshold
+
+		// [OB] a run of 15m candles closing the same way is an order block zone (bodies or full candles); a candle of
+		// the other color whose body stays inside the zone does not end the run. Once it ends, the first close beyond
+		// the zone sets its side: below it, resistance (Dir -1); above it, support (Dir 1). A close through the far
+		// side discards it. Disp: how far price went away from it (its significance).
+		private class Ob
+		{
+			public double Hi, Lo, Ext = double.NaN, Disp;
+			public DateTime T;
+			public int K, Dir;
+		}
+
+		private readonly List<Ob> obs = new List<Ob>();
+		private int obSg, obN, obK;
+		private double obHi = double.NaN, obLo = double.NaN;
+		private DateTime obT;
+
+		private void ObStep(double o, double h, double l, double c, DateTime t)
+		{
+			obK++;
+			bool body = ObPart == ICTcotasObPart.Body;
+			double zh = body ? Math.Max(o, c) : h;
+			double zl = body ? Math.Min(o, c) : l;
+			int sg = c > o ? 1 : c < o ? -1 : 0;
+			bool inside = obSg != 0 && Math.Max(o, c) <= obHi && Math.Min(o, c) >= obLo && obN < 40;
+			if (obSg != 0 && (sg == obSg || sg == 0 || inside))
+			{
+				obHi = Math.Max(obHi, zh);
+				obLo = Math.Min(obLo, zl);
+				obN++;
+			}
+			else
+			{
+				if (obSg != 0)
+					obs.Add(new Ob { Hi = obHi, Lo = obLo, T = obT, K = obK - 1 });
+				obSg = sg;
+				obHi = zh;
+				obLo = zl;
+				obT = t;
+				obN = 1;
+			}
+			for (int i = obs.Count - 1; i >= 0; i--)
+			{
+				Ob b = obs[i];
+				bool drop = obK - b.K > ObLookback;
+				if (b.Dir == 0)
+				{
+					if (c < b.Lo)
+					{
+						b.Dir = -1;
+						b.Ext = l;
+					}
+					else if (c > b.Hi)
+					{
+						b.Dir = 1;
+						b.Ext = h;
+					}
+				}
+				else if (b.Dir == -1)
+				{
+					b.Ext = Math.Min(b.Ext, l);
+					drop = drop || c > b.Hi;
+				}
+				else
+				{
+					b.Ext = Math.Max(b.Ext, h);
+					drop = drop || c < b.Lo;
+				}
+				b.Disp = b.Dir == -1 ? b.Lo - b.Ext : b.Dir == 1 ? b.Ext - b.Hi : 0.0;
+				if (drop)
+					obs.RemoveAt(i);
+			}
+			if (obs.Count > 200)
+				obs.RemoveAt(0);
+		}
+
+		// the most significant resistance OB above price (dir -1) or support OB below it (dir 1): MT line, label, zone
+		private void DrawOb(int dir)
+		{
+			string tg = "ICTc_ob" + (dir == -1 ? "res" : "sup");
+			double p = Closes[0][0];
+			Ob best = null;
+			foreach (Ob b in obs)
+				if (b.Dir == dir && (dir == -1 ? b.Hi > p : b.Lo < p) && (best == null || b.Disp > best.Disp))
+					best = b;
+			if (best == null)
+			{
+				RemoveDrawObject(tg + "_ln");
+				RemoveDrawObject(tg + "_lb");
+				RemoveDrawObject(tg + "_bx");
+				return;
+			}
+			Brush c = dir == -1 ? ObResColor : ObSupColor;
+			double mt = (best.Hi + best.Lo) / 2;
+			int sba = BarsAgoOf(best.T);
+			Draw.Line(this, tg + "_ln", false, sba, mt, 0, mt, c, ObStyle, ObWidth);
+			DrawLabel(tg + "_lb", -LabelOffset, mt, dir == -1 ? "OB- MT" : "OB+ MT", c, lblFont, TextAlignment.Left);
+			if (ObZone)
+				Draw.Rectangle(this, tg + "_bx", false, sba, best.Hi, 0, best.Lo, Brushes.Transparent, c, 10);
+			else
+				RemoveDrawObject(tg + "_bx");
 		}
 
 		#endregion
@@ -2040,6 +2171,57 @@ namespace NinjaTrader.NinjaScript.Indicators
 			get { return Serialize.BrushToString(TsContColor); }
 			set { TsContColor = Serialize.StringToBrush(value); }
 		}
+
+		// ---------------------------------------------------------------- OB mean threshold
+		[NinjaScriptProperty]
+		[Display(Name = "OB MT levels", GroupName = GOb, Order = 1, Description = "Charts up to 15m only, from 15m candles. An order block is a run of candles closing the same way (up or down); a candle of the other color whose body stays inside the zone so far does not end it. When price later closes below the zone it is a resistance OB (for a retrace back up), when it closes above it a support OB (for a retrace back down); a close through its far side discards it. Of the resistance OBs still above price and the support OBs still below it, the most significant one (the deepest move away from it) of each side is shown with its mean threshold (MT, the middle of the zone).")]
+		public bool DoOb { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Zone", GroupName = GOb, Order = 2, Description = "Body: the zone spans the bodies of its candles. FullCandle: high to low.")]
+		public ICTcotasObPart ObPart { get; set; }
+
+		[NinjaScriptProperty]
+		[Range(20, 2000)]
+		[Display(Name = "Lookback (15m candles)", GroupName = GOb, Order = 3)]
+		public int ObLookback { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Draw the zone", GroupName = GOb, Order = 4)]
+		public bool ObZone { get; set; }
+
+		[NinjaScriptProperty]
+		[XmlIgnore]
+		[Display(Name = "Resistance", GroupName = GOb, Order = 5)]
+		public Brush ObResColor { get; set; }
+
+		[Browsable(false)]
+		public string ObResColorSerializable
+		{
+			get { return Serialize.BrushToString(ObResColor); }
+			set { ObResColor = Serialize.StringToBrush(value); }
+		}
+
+		[NinjaScriptProperty]
+		[XmlIgnore]
+		[Display(Name = "Support", GroupName = GOb, Order = 6)]
+		public Brush ObSupColor { get; set; }
+
+		[Browsable(false)]
+		public string ObSupColorSerializable
+		{
+			get { return Serialize.BrushToString(ObSupColor); }
+			set { ObSupColor = Serialize.StringToBrush(value); }
+		}
+
+		[NinjaScriptProperty]
+		[Display(Name = "Style", GroupName = GOb, Order = 7)]
+		public DashStyleHelper ObStyle { get; set; }
+
+		[NinjaScriptProperty]
+		[Range(1, 4)]
+		[Display(Name = "Width", GroupName = GOb, Order = 8)]
+		public int ObWidth { get; set; }
 
 		#endregion
 	}

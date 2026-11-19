@@ -279,6 +279,23 @@ color tsupcol = input.color(#00E676, "turtle soup: up", group = G_TS, inline = "
 color tsdncol = input.color(#FF1744, "down", group = G_TS, inline = "t2")
 color tsctcol = input.color(color.gray, "continuation", group = G_TS, inline = "t2")
 
+const string G_OB = "OB mean threshold (15m, experimental)"
+bool doob = input.bool(true, "OB MT levels", group = G_OB, inline = "o1",
+     tooltip = "Charts up to 15m only, from 15m candles. An order block is a run of candles closing the same way "
+     + "(up or down); a candle of the other color whose body stays inside the zone so far does not end it. When "
+     + "price later closes below the zone it is a resistance OB (for a retrace back up), when it closes above it a "
+     + "support OB (for a retrace back down); a close through its far side discards it. Of the resistance OBs "
+     + "still above price and the support OBs still below it, the most significant one (the deepest move away "
+     + "from it) of each side is shown with its mean threshold (MT, the middle of the zone).")
+string obpart = input.string("Body", "zone", options = ["Body", "Full candle"], group = G_OB, inline = "o1")
+int oblook = input.int(300, "lookback (15m candles)", minval = 20, maxval = 2000, group = G_OB, inline = "o2")
+bool obzone = input.bool(false, "draw the zone", group = G_OB, inline = "o2")
+color obrescol = input.color(color.red, "resistance", group = G_OB, inline = "o3")
+color obsupcol = input.color(color.green, "support", group = G_OB, inline = "o3")
+string obsty = getstyle(input.string("dashed", "", options = ["solid", "dashed", "dotted"], group = G_OB,
+     inline = "o3"))
+int obwid = input.int(1, "width", minval = 1, maxval = 4, group = G_OB, inline = "o3")
+
 const string G_DAY = "Daily Settings"
 string setmode = input.string("auto", "Use settlement (SET) on daily", options = ["auto", "on", "off"],
      group = G_DAY,
@@ -1025,6 +1042,92 @@ for i = 0 to 5
                 if wkOn
                     addWicks(3 + i, p1, q1c, r1c, u1, t1)
             mfLastT.set(i, t0)
+
+// ============================================================ OB mean threshold (15m, experimental)
+// [OB] a run of 15m candles closing the same way is an order block zone (bodies or full candles); a candle of the
+// other color whose body stays inside the zone does not end the run. Once it ends, the first close beyond the
+// zone sets its side: below it, resistance (dir -1); above it, support (dir 1). A close through the far side
+// discards it. disp: how far price went away from it (its significance).
+type Ob
+    float hi
+    float lo
+    int t
+    int k        // 15m candle count at its end
+    int dir = 0  // 0 not left yet, -1 resistance, 1 support
+    float ext = na
+    float disp = 0.0
+
+type ObRun
+    int sg = 0   // 1 up-close run, -1 down-close run, 0 none
+    float hi = na
+    float lo = na
+    int t = na
+    int n = 0
+    int k = 0    // 15m candles seen
+
+var array<Ob> obs = array.new<Ob>()
+var ObRun obrun = ObRun.new()
+var int obLastT = na
+var line obResLn = na
+var line obSupLn = na
+var label obResLb = na
+var label obSupLb = na
+var box obResBx = na
+var box obSupBx = na
+
+obStep(float o, float h, float l, float c, int t) =>
+    ObRun r = obrun
+    r.k += 1
+    int obk = r.k
+    float zh = obpart == "Body" ? math.max(o, c) : h
+    float zl = obpart == "Body" ? math.min(o, c) : l
+    int sg = c > o ? 1 : c < o ? -1 : 0
+    bool inside = r.sg != 0 and math.max(o, c) <= r.hi and math.min(o, c) >= r.lo and r.n < 40
+    if r.sg != 0 and (sg == r.sg or sg == 0 or inside)
+        r.hi := math.max(r.hi, zh)
+        r.lo := math.min(r.lo, zl)
+        r.n += 1
+    else
+        if r.sg != 0
+            obs.push(Ob.new(r.hi, r.lo, r.t, obk - 1))
+        r.sg := sg
+        r.hi := zh
+        r.lo := zl
+        r.t := t
+        r.n := 1
+    int i = obs.size() - 1
+    while i >= 0
+        Ob b = obs.get(i)
+        bool drop = obk - b.k > oblook
+        if b.dir == 0
+            if c < b.lo
+                b.dir := -1
+                b.ext := l
+            else if c > b.hi
+                b.dir := 1
+                b.ext := h
+        else if b.dir == -1
+            b.ext := math.min(b.ext, l)
+            drop := drop or c > b.hi
+        else
+            b.ext := math.max(b.ext, h)
+            drop := drop or c < b.lo
+        b.disp := b.dir == -1 ? b.lo - b.ext : b.dir == 1 ? b.ext - b.hi : 0.0
+        if drop
+            obs.remove(i)
+        i -= 1
+    if obs.size() > 200
+        obs.shift()
+    true
+
+bool obOk = doob and tfsecs <= 900
+[obT0, obO1, obH1, obL1, obC1, obT1, obO2, obH2, obL2, obC2, obT2, obH3, obL3, obO3, obC3] = htf(obOk ? "15"
+     : timeframe.period)
+if obOk and not na(obT0)
+    if not na(obLastT) and obT0 != obLastT and not na(obC1)
+        obStep(obO1, clH(obO1, obH1, obC1), clL(obO1, obL1, obC1), obC1, obT1)
+    obLastT := obT0
+
 runMit()
 
 // ============================================================ last bar: draw
@@ -1056,6 +1159,44 @@ if barstate.islast
                 l.lolb := rmLbl(l.lolb)
             if not l.lsce
                 l.celb := rmLbl(l.celb)
+
+// [OB] the most significant resistance OB above price and support OB below it: MT line (and zone), label
+obDraw(int dir) =>
+    Ob best = na
+    for b in obs
+        if b.dir == dir and (dir == -1 ? b.hi > close : b.lo < close)
+            if na(best) or b.disp > best.disp
+                best := b
+    line ln = dir == -1 ? obResLn : obSupLn
+    label lb = dir == -1 ? obResLb : obSupLb
+    box bx = dir == -1 ? obResBx : obSupBx
+    if na(best)
+        rmLine(ln)
+        rmLabel(lb)
+        rmBox(bx)
+        ln := na
+        lb := na
+        bx := na
+    else
+        color cc = dir == -1 ? obrescol : obsupcol
+        float mt = (best.hi + best.lo) / 2
+        int x = tright(xoff)
+        ln := mkLine(ln, best.t, mt, time, cc, obsty, obwid)
+        lb := mkLbl(lb, x, mt, dir == -1 ? "OB- MT" : "OB+ MT", cc)
+        rmBox(bx)
+        bx := obzone ? box.new(best.t, best.hi, time, best.lo, xloc = xloc.bar_time, border_color = color.new(cc, 70),
+             bgcolor = color.new(cc, 90)) : na
+    [ln, lb, bx]
+
+if barstate.islast
+    [l1, b1, x1] = obDraw(-1)
+    obResLn := l1
+    obResLb := b1
+    obResBx := x1
+    [l2, b2, x2] = obDraw(1)
+    obSupLn := l2
+    obSupLb := b2
+    obSupBx := x2
 
 // ============================================================ turtle soup / continuation
 // per timeframe (15m, 1H, 4H, D, W): the previous completed candle and the forming one, built from chart bars

@@ -228,6 +228,25 @@ With **Draw in the right margin** on (the default), the boxes are drawn in the r
 
 The 1H and 4H boxes are the intraday PD arrays for entries and targets inside the daily range: look for price to retrace into a 1H or 4H FVG in the direction of the D/W bias, and use the CE line as the reaction level. The formation marker shows how fresh a gap is. Ticking D, W or M here draws box versions of the daily, weekly and monthly FVGs. While a timeframe is drawn as boxes (ticked, or added by **plus the next higher**, and above the chart timeframe), its FVG and IFVG lines are not drawn, since they would repeat the boxes; its VI and wick CE lines stay. The boxes then follow the box settings, including **keep per timeframe** (6 by default, against 8 for the lines).
 
+## 7b. OB mean threshold (15m, experimental)
+
+### What you see
+
+On charts up to 15m, at most two dashed lines with a label at the right: **OB- MT** (red) is the mean threshold of a resistance order block above price, and **OB+ MT** (green) that of a support order block below it. **draw the zone** also shows the order block itself. Nothing is drawn on higher timeframes.
+
+### What it is
+
+The order blocks come from 15m candles. An order block is a run of candles closing the same way (up-close or down-close). A candle of the other color whose body stays inside the zone built so far does not end the run, so a small bear candle inside a bull candle stays in a bull run. The zone spans the bodies of its candles (or the full candles, with **zone** set to Full candle), and its MT is the middle of the zone.
+
+Price decides what the order block is for. When a later 15m candle closes below the zone, price left it downward and it is a resistance OB, for when price retraces back up. When a candle closes above it, it is a support OB, for a retrace back down. A 15m close through its far side (above a resistance OB, below a support OB) means price went through it, and it is discarded. Order blocks older than **lookback** 15m candles are dropped.
+
+Of the resistance OBs still above price, the most significant one is shown: the one price moved furthest away from (the deepest drop below it). The same goes for the support OBs below price (the highest rise above it).
+
+### How to use it
+
+When price retraces into the zone, watch the MT: a wick through it that closes back, or a rejection at it, keeps the order block alive, and the move is expected to resume. A close through the far side kills it and the line goes away.
+
+
 ## 8. Settings reference
 
 The tables follow the order of the settings dialog. Several controls often share one row in the dialog. A blank label means the control has no caption (it sits next to the previous one).
@@ -419,6 +438,17 @@ A continuation is cancelled for the rest of the forming candle once a chart bar 
 | continuation | grey | Color of the continuation triangles, the names and (fainter) the circles |
 
 In NinjaTrader the corner is one of the four chart corners and the row is several monospaced texts; with Calculate on bar close the forming candle is updated when each chart bar closes. In Tradovate the triangles are placed by pixel offsets from the corner.
+
+### OB mean threshold (15m, experimental)
+
+| Setting | Default | What it does |
+|---|---|---|
+| OB MT levels | on | Draws the MT of the most significant resistance OB above price and support OB below it (charts up to 15m) |
+| zone | Body | Body: the zone spans the candle bodies. Full candle: high to low |
+| lookback (15m candles) | 300 | Order blocks older than this are dropped |
+| draw the zone | off | Also draws the order block as a faint rectangle |
+| resistance / support | red / green | Colors of the OB- MT and OB+ MT lines, labels and zones |
+| style, width | dashed, 1 | Line style and width |
 
 ### Daily Settings
 
