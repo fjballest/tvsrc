@@ -285,8 +285,9 @@ bool doob = input.bool(true, "OB MT levels", group = G_OB, inline = "o1",
      + "a candle of the other color whose body stays inside the zone so far does not end it. Up-close OBs are "
      + "resistance: once price closes below one, its mean threshold (MT, the middle of the zone) is a level for "
      + "the retrace back up, until a close above the MT. Down-close OBs are support the same way (a close above, "
-     + "until a close below the MT). The OB is kept (it can be used again after the next close out of its far "
-     + "side) until older than the lookback. Of each side, the most significant one (the deepest move away from "
+     + "until a close below the MT). After a close beyond the MT the OB is kept (it can be used again after the "
+     + "next close out of its far side), but a close beyond its far end (above a resistance OB, below a support "
+     + "OB) discards it, and so does being older than the lookback. Of each side, the most significant one (the deepest move away from "
      + "it) above / covering price, or below / covering it, is shown.")
 string obpart = input.string("Body", "zone", options = ["Body", "Full candle"], group = G_OB, inline = "o1")
 int oblook = input.int(300, "lookback (15m candles)", minval = 20, maxval = 2000, group = G_OB, inline = "o2")
@@ -1049,7 +1050,8 @@ for i = 0 to 5
 // other color whose body stays inside the zone does not end the run. Up-close runs are resistance OBs, armed
 // (dir -1) by a close below the zone and disarmed by a close above its MT; down-close runs are support OBs, armed
 // (dir 1) by a close above the zone and disarmed by a close below its MT. A disarmed OB is armed again by the next
-// close out of its far side; only age (oblook) removes it. disp: how far price went away from it since it was
+// close out of its far side; once armed, a close beyond its far end (above a resistance OB, below a support OB)
+// discards it, and so does age (oblook). disp: how far price went away from it since it was
 // armed (its significance).
 type Ob
     float hi
@@ -1060,6 +1062,7 @@ type Ob
     int dir = 0  // -1 armed resistance, 1 armed support, 0 not armed (not left yet, or closed beyond its MT)
     float ext = na
     float disp = 0.0
+    bool used = false  // armed at least once
 
 type ObRun
     int sg = 0   // 1 up-close run, -1 down-close run, 0 none
@@ -1103,9 +1106,12 @@ obStep(float o, float h, float l, float c, int t) =>
     while i >= 0
         Ob b = obs.get(i)
         float mt = (b.hi + b.lo) / 2
+        // once used as a level, a close beyond its far end (back through the whole OB) discards it
+        bool gone = b.used and (b.sg == 1 ? c > b.hi : c < b.lo)
         if b.sg == 1
             if c < b.lo and b.dir != -1
                 b.dir := -1
+                b.used := true
                 b.ext := l
             else if b.dir == -1 and c > mt
                 b.dir := 0
@@ -1114,13 +1120,14 @@ obStep(float o, float h, float l, float c, int t) =>
         else
             if c > b.hi and b.dir != 1
                 b.dir := 1
+                b.used := true
                 b.ext := h
             else if b.dir == 1 and c < mt
                 b.dir := 0
             else if b.dir == 1
                 b.ext := math.max(b.ext, h)
         b.disp := b.dir == -1 ? b.lo - b.ext : b.dir == 1 ? b.ext - b.hi : 0.0
-        if obk - b.k > oblook
+        if gone or obk - b.k > oblook
             obs.remove(i)
         i -= 1
     if obs.size() > 200

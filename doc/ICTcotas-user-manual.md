@@ -240,13 +240,13 @@ The order blocks come from 15m candles. An order block is a run of candles closi
 
 The color of its candles decides what an order block is for. An OB of up-close candles is a resistance OB: once a 15m candle closes below it (price left it downward), its MT is a level for when price retraces back up. It stays a level while price wicks into or through the MT, and stops being one when a 15m candle closes above the MT. An OB of down-close candles is a support OB, the same way upside down: armed by a close above it, ended by a close below its MT.
 
-An OB that stopped being a level is not discarded: price may go on, come back and close out of its far side again, and then it is a level again for the next retrace. Only order blocks older than **lookback** 15m candles are dropped.
+An OB that stopped being a level after a close beyond its MT is not discarded: price may come back and close out of its far side again, and then it is a level again for the next retrace. But once it has been a level, a close beyond its far end (above a resistance OB, below a support OB) discards it: price went back through the whole OB. Order blocks older than **lookback** 15m candles are dropped too.
 
 Of the armed resistance OBs, the one covering price is shown (if several cover it, the most significant: the one price moved furthest away from since it was armed); when none covers price, the nearest one above it. The same goes for the armed support OBs, covering price or the nearest one below it.
 
 ### How to use it
 
-When price retraces into the zone, watch the MT: a wick through it that closes back, or a rejection at it, keeps the order block alive, and the move is expected to resume. A 15m close beyond the MT ends it as a level (the line goes away); it can come back after price closes out of its far side again.
+When price retraces into the zone, watch the MT: a wick through it that closes back, or a rejection at it, keeps the order block alive, and the move is expected to resume. A 15m close beyond the MT ends it as a level (the line goes away); a close beyond the whole OB discards it.
 
 
 ## 8. Settings reference

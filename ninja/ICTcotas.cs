@@ -7,7 +7,7 @@
 // FVGs closed through become IFVGs. Mitigated levels are removed.
 //
 // Port of the TradingView Pine Script v6 indicator ICTcotas.txt by franjballest
-// (source md5 deab4e66a5334a707292471adcb663e7). Mozilla Public License 2.0.
+// (source md5 9fb83c13ca0c0448d48ca856b14166f5). Mozilla Public License 2.0.
 //
 // Install:
 //   1. Copy this file to  Documents\NinjaTrader 8\bin\Custom\Indicators\ICTcotas.cs
@@ -594,12 +594,14 @@ namespace NinjaTrader.NinjaScript.Indicators
 		// the other color whose body stays inside the zone does not end the run. Up-close runs are resistance OBs,
 		// armed (Dir -1) by a close below the zone and disarmed by a close above its MT; down-close runs are support
 		// OBs, armed (Dir 1) by a close above the zone and disarmed by a close below its MT. A disarmed OB is armed
-		// again by the next close out of its far side; only age (ObLookback) removes it. Disp: how far price went
+		// again by the next close out of its far side; once armed, a close beyond its far end (above a resistance OB,
+		// below a support OB) discards it, and so does age (ObLookback). Disp: how far price went
 		// away from it since it was armed (its significance).
 		private class Ob
 		{
 			public double Hi, Lo, Ext = double.NaN, Disp;
 			public DateTime T;
+			public bool Used;   // armed at least once
 			public int K, Dir, Sg;   // Sg 1 up-close (resistance), -1 down-close (support); Dir -1 / 1 armed, 0 not
 		}
 
@@ -636,11 +638,14 @@ namespace NinjaTrader.NinjaScript.Indicators
 			{
 				Ob b = obs[i];
 				double mt = (b.Hi + b.Lo) / 2;
+				// once used as a level, a close beyond its far end (back through the whole OB) discards it
+				bool gone = b.Used && (b.Sg == 1 ? c > b.Hi : c < b.Lo);
 				if (b.Sg == 1)
 				{
 					if (c < b.Lo && b.Dir != -1)
 					{
 						b.Dir = -1;
+						b.Used = true;
 						b.Ext = l;
 					}
 					else if (b.Dir == -1 && c > mt)
@@ -653,6 +658,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 					if (c > b.Hi && b.Dir != 1)
 					{
 						b.Dir = 1;
+						b.Used = true;
 						b.Ext = h;
 					}
 					else if (b.Dir == 1 && c < mt)
@@ -661,7 +667,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 						b.Ext = Math.Max(b.Ext, h);
 				}
 				b.Disp = b.Dir == -1 ? b.Lo - b.Ext : b.Dir == 1 ? b.Ext - b.Hi : 0.0;
-				if (obK - b.K > ObLookback)
+				if (gone || obK - b.K > ObLookback)
 					obs.RemoveAt(i);
 			}
 			if (obs.Count > 200)
@@ -2189,7 +2195,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 
 		// ---------------------------------------------------------------- OB mean threshold
 		[NinjaScriptProperty]
-		[Display(Name = "OB MT levels", GroupName = GOb, Order = 1, Description = "Charts up to 15m only, from 15m candles. An order block is a run of candles closing the same way; a candle of the other color whose body stays inside the zone so far does not end it. Up-close OBs are resistance: once price closes below one, its mean threshold (MT, the middle of the zone) is a level for the retrace back up, until a close above the MT. Down-close OBs are support the same way (a close above, until a close below the MT). The OB is kept (it can be used again after the next close out of its far side) until older than the lookback. Of each side, the most significant one (the deepest move away from it) above / covering price, or below / covering it, is shown.")]
+		[Display(Name = "OB MT levels", GroupName = GOb, Order = 1, Description = "Charts up to 15m only, from 15m candles. An order block is a run of candles closing the same way; a candle of the other color whose body stays inside the zone so far does not end it. Up-close OBs are resistance: once price closes below one, its mean threshold (MT, the middle of the zone) is a level for the retrace back up, until a close above the MT. Down-close OBs are support the same way (a close above, until a close below the MT). After a close beyond the MT the OB is kept (it can be used again after the next close out of its far side), but a close beyond its far end (above a resistance OB, below a support OB) discards it, and so does being older than the lookback. Of each side, the most significant one (the deepest move away from it) above / covering price, or below / covering it, is shown.")]
 		public bool DoOb { get; set; }
 
 		[NinjaScriptProperty]
