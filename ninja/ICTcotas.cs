@@ -7,7 +7,7 @@
 // FVGs closed through become IFVGs. Mitigated levels are removed.
 //
 // Port of the TradingView Pine Script v6 indicator ICTcotas.txt by franjballest
-// (source md5 9fb83c13ca0c0448d48ca856b14166f5). Mozilla Public License 2.0.
+// (source md5 2b6686d225ec263be146770f6b8ffe31). Mozilla Public License 2.0.
 //
 // Install:
 //   1. Copy this file to  Documents\NinjaTrader 8\bin\Custom\Indicators\ICTcotas.cs
@@ -385,6 +385,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 				DoOb = true;
 				ObPart = ICTcotasObPart.Body;
 				ObLookback = 300;
+				ObMaxHeight = 4.0;
 				ObZone = false;
 				ObResColor = Brushes.Red;
 				ObSupColor = Brushes.Green;
@@ -608,6 +609,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 		private readonly List<Ob> obs = new List<Ob>();
 		private int obSg, obN, obK;
 		private double obHi = double.NaN, obLo = double.NaN;
+		private double obAtr = double.NaN, obPc = double.NaN;   // 15m ATR(14) (RMA of the true range), previous close
 		private DateTime obT;
 
 		private void ObStep(double o, double h, double l, double c, DateTime t)
@@ -618,7 +620,12 @@ namespace NinjaTrader.NinjaScript.Indicators
 			double zl = body ? Math.Min(o, c) : l;
 			int sg = c > o ? 1 : c < o ? -1 : 0;
 			bool inside = obSg != 0 && Math.Max(o, c) <= obHi && Math.Min(o, c) >= obLo && obN < 40;
-			if (obSg != 0 && (sg == obSg || sg == 0 || inside))
+			// height cap: a candle that would make the zone taller than ObMaxHeight 15m ATRs starts a new run
+			bool fits = double.IsNaN(obAtr) || Math.Max(obHi, zh) - Math.Min(obLo, zl) <= ObMaxHeight * obAtr;
+			double tr = double.IsNaN(obPc) ? h - l : Math.Max(h - l, Math.Max(Math.Abs(h - obPc), Math.Abs(l - obPc)));
+			obAtr = double.IsNaN(obAtr) ? tr : (obAtr * 13 + tr) / 14;
+			obPc = c;
+			if (obSg != 0 && (sg == obSg || sg == 0 || inside) && fits)
 			{
 				obHi = Math.Max(obHi, zh);
 				obLo = Math.Min(obLo, zl);
@@ -2206,6 +2213,11 @@ namespace NinjaTrader.NinjaScript.Indicators
 		[Range(20, 2000)]
 		[Display(Name = "Lookback (15m candles)", GroupName = GOb, Order = 3)]
 		public int ObLookback { get; set; }
+
+		[NinjaScriptProperty]
+		[Range(0.5, double.MaxValue)]
+		[Display(Name = "Max height (15m ATRs)", GroupName = GOb, Order = 9, Description = "Height cap: a candle that would make the zone taller than this many 15m ATRs ends the run (and starts the next one), so a rally of same-color candles is not one huge OB; the consolidation before it stays its own OB.")]
+		public double ObMaxHeight { get; set; }
 
 		[NinjaScriptProperty]
 		[Display(Name = "Draw the zone", GroupName = GOb, Order = 4)]

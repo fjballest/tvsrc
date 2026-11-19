@@ -291,6 +291,8 @@ bool doob = input.bool(true, "OB MT levels", group = G_OB, inline = "o1",
      + "it) above / covering price, or below / covering it, is shown.")
 string obpart = input.string("Body", "zone", options = ["Body", "Full candle"], group = G_OB, inline = "o1")
 int oblook = input.int(300, "lookback (15m candles)", minval = 20, maxval = 2000, group = G_OB, inline = "o2")
+float obmaxh = input.float(4.0, "max height (15m ATRs)", minval = 0.5, step = 0.25, group = G_OB, inline = "o4",
+     tooltip = "Height cap: a candle that would make the zone taller than this many 15m ATRs ends the run (and starts the next one), so a rally of same-color candles is not one huge OB; the consolidation before it stays its own OB.")
 bool obzone = input.bool(false, "draw the zone", group = G_OB, inline = "o2")
 color obrescol = input.color(color.red, "resistance", group = G_OB, inline = "o3")
 color obsupcol = input.color(color.green, "support", group = G_OB, inline = "o3")
@@ -1071,6 +1073,8 @@ type ObRun
     int t = na
     int n = 0
     int k = 0    // 15m candles seen
+    float atr = na   // 15m ATR(14) (RMA of the true range), for the height cap
+    float pc = na    // previous 15m close
 
 var array<Ob> obs = array.new<Ob>()
 var ObRun obrun = ObRun.new()
@@ -1090,7 +1094,12 @@ obStep(float o, float h, float l, float c, int t) =>
     float zl = obpart == "Body" ? math.min(o, c) : l
     int sg = c > o ? 1 : c < o ? -1 : 0
     bool inside = r.sg != 0 and math.max(o, c) <= r.hi and math.min(o, c) >= r.lo and r.n < 40
-    if r.sg != 0 and (sg == r.sg or sg == 0 or inside)
+    // height cap: a candle that would make the zone taller than obmaxh 15m ATRs starts a new run
+    bool fits = na(r.atr) or math.max(r.hi, zh) - math.min(r.lo, zl) <= obmaxh * r.atr
+    float tr = na(r.pc) ? h - l : math.max(h - l, math.abs(h - r.pc), math.abs(l - r.pc))
+    r.atr := na(r.atr) ? tr : (r.atr * 13 + tr) / 14
+    r.pc := c
+    if r.sg != 0 and (sg == r.sg or sg == 0 or inside) and fits
         r.hi := math.max(r.hi, zh)
         r.lo := math.min(r.lo, zl)
         r.n += 1

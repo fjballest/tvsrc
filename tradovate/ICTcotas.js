@@ -9,7 +9,7 @@
  * closed through become IFVGs. Mitigated levels are removed.
  *
  * Port of the TradingView Pine Script v6 indicator ICTcotas.txt
- * (md5 9fb83c13ca0c0448d48ca856b14166f5), (c) franjballest, Mozilla Public
+ * (md5 2b6686d225ec263be146770f6b8ffe31), (c) franjballest, Mozilla Public
  * License 2.0 (https://mozilla.org/MPL/2.0/). Same logic, same inputs (as
  * camelCase parameters) and the same defaults.
  *
@@ -190,7 +190,7 @@ function newState(keys) {
         datr: null,   // daily ATR(14): RMA of the true range of completed daily candles
         // [OB] 15m order blocks: candidates and the current run of same-color candles
         obs: [],
-        obRun: { sg: 0, hi: NaN, lo: NaN, t: 0, n: 0, k: 0 },
+        obRun: { sg: 0, hi: NaN, lo: NaN, t: 0, n: 0, k: 0, atr: NaN, pc: NaN },
         aggs: {
             d: new HtfAgg(keys.d), w: new HtfAgg(keys.w), m: new HtfAgg(keys.m),
             m15: new HtfAgg(keys.m15), h1: new HtfAgg(keys.h1), h4: new HtfAgg(keys.h4)
@@ -446,7 +446,12 @@ class Engine {
         const zh = body ? Math.max(o, cl) : h, zl = body ? Math.min(o, cl) : l;
         const sg = cl > o ? 1 : cl < o ? -1 : 0;
         const inside = r.sg !== 0 && Math.max(o, cl) <= r.hi && Math.min(o, cl) >= r.lo && r.n < 40;
-        if (r.sg !== 0 && (sg === r.sg || sg === 0 || inside)) {
+        // height cap: a candle that would make the zone taller than obMaxH 15m ATRs starts a new run
+        const fits = !Number.isFinite(r.atr) || Math.max(r.hi, zh) - Math.min(r.lo, zl) <= c.obMaxH * r.atr;
+        const tr = Number.isFinite(r.pc) ? Math.max(h - l, Math.abs(h - r.pc), Math.abs(l - r.pc)) : h - l;
+        r.atr = Number.isFinite(r.atr) ? (r.atr * 13 + tr) / 14 : tr;
+        r.pc = cl;
+        if (r.sg !== 0 && (sg === r.sg || sg === 0 || inside) && fits) {
             r.hi = Math.max(r.hi, zh);
             r.lo = Math.min(r.lo, zl);
             r.n += 1;
@@ -585,6 +590,7 @@ function buildConfig(p, chart, ci) {
         doOb: bool(p.doOb, true),
         obPart: str(p.obPart, "body") === "full" ? "full" : "body",
         obLook: clamp(Math.round(num(p.obLook, 300)), 20, 2000),
+        obMaxH: Math.max(0.5, num(p.obMaxH, 4)),
         obZone: bool(p.obZone, false),
         obResCol: str(p.obResCol, "#F23645"), obSupCol: str(p.obSupCol, "#4CAF50"),
         obSty: sty(p.obSty, "dashed"),
@@ -1189,6 +1195,7 @@ module.exports = {
         doOb: predef.paramSpecs.bool(true),
         obPart: predef.paramSpecs.enum({ body: "Body", full: "Full candle" }, "body"),
         obLook: int(300, 20),
+        obMaxH: predef.paramSpecs.number(4, 0.25, 0.5),
         obZone: predef.paramSpecs.bool(false),
         obResCol: predef.paramSpecs.color("#F23645"),
         obSupCol: predef.paramSpecs.color("#4CAF50"),

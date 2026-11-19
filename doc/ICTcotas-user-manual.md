@@ -236,7 +236,7 @@ On charts up to 15m, at most two dashed lines with a label at the right: **OB- M
 
 ### What it is
 
-The order blocks come from 15m candles. An order block is a run of candles closing the same way (up-close or down-close). A candle of the other color whose body stays inside the zone built so far does not end the run, so a small bear candle inside a bull candle stays in a bull run. The zone spans the bodies of its candles (or the full candles, with **zone** set to Full candle), and its MT is the middle of the zone.
+The order blocks come from 15m candles. An order block is a run of candles closing the same way (up-close or down-close). A candle of the other color whose body stays inside the zone built so far does not end the run, so a small bear candle inside a bull candle stays in a bull run. A run is also ended when the next candle would make the zone taller than **max height** (4 by default) 15m ATRs: a rally of up-close candles is then not swallowed into the OB of the consolidation before it. The zone spans the bodies of its candles (or the full candles, with **zone** set to Full candle), and its MT is the middle of the zone.
 
 The color of its candles decides what an order block is for. An OB of up-close candles is a resistance OB: once a 15m candle closes below it (price left it downward), its MT is a level for when price retraces back up. It stays a level while price wicks into or through the MT, and stops being one when a 15m candle closes above the MT. An OB of down-close candles is a support OB, the same way upside down: armed by a close above it, ended by a close below its MT.
 
@@ -448,6 +448,7 @@ In NinjaTrader the corner is one of the four chart corners and the row is severa
 | OB MT levels | on | Draws the MT of the most significant resistance OB above price and support OB below it (charts up to 15m) |
 | zone | Body | Body: the zone spans the candle bodies. Full candle: high to low |
 | lookback (15m candles) | 300 | Order blocks older than this are dropped |
+| max height (15m ATRs) | 4 | A candle that would make the zone taller than this many 15m ATRs ends the run and starts the next one, so a rally of same-color candles is not one huge OB and the consolidation before it stays its own OB |
 | draw the zone | off | Also draws the order block as a faint rectangle |
 | resistance / support | red / green | Colors of the OB- MT and OB+ MT lines, labels and zones |
 | style, width | dashed, 1 | Line style and width |
