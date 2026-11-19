@@ -7,7 +7,7 @@
 // FVGs closed through become IFVGs. Mitigated levels are removed.
 //
 // Port of the TradingView Pine Script v6 indicator ICTcotas.txt by franjballest
-// (source md5 a401cdc727d753e1a981d1e4cd61ecba). Mozilla Public License 2.0.
+// (source md5 51f2648faf6647a7cb4aee38e232989a). Mozilla Public License 2.0.
 //
 // Install:
 //   1. Copy this file to  Documents\NinjaTrader 8\bin\Custom\Indicators\ICTcotas.cs
@@ -119,12 +119,6 @@ public enum ICTcotasTsPosition
 	TopLeft
 }
 
-public enum ICTcotasObPart
-{
-	Body,
-	FullCandle
-}
-
 public enum ICTcotasLabelAnchor
 {
 	High,
@@ -145,7 +139,6 @@ namespace NinjaTrader.NinjaScript.Indicators
 		private const string GVi = "Volume Imbalances";
 		private const string GWk = "Wick CE";
 		private const string GTs = "Turtle soup / continuation";
-		private const string GOb = "OB mean threshold (15m, experimental)";
 		private const string GMf = "FVGs and wick CE by timeframe (15m / 1H / 4H / D / W / M)";
 
 		// series indexes (order of AddDataSeries in State.Configure)
@@ -381,17 +374,6 @@ namespace NinjaTrader.NinjaScript.Indicators
 				MfExtendBars = 20;
 
 				// Turtle soup / continuation
-				// OB mean threshold
-				DoOb = true;
-				ObPart = ICTcotasObPart.Body;
-				ObLookback = 300;
-				ObMaxHeight = 4.0;
-				ObZone = false;
-				ObResColor = Brushes.Red;
-				ObSupColor = Brushes.Green;
-				ObStyle = DashStyleHelper.Dash;
-				ObWidth = 1;
-
 				TsShow = true;
 				TsPosition = ICTcotasTsPosition.BottomRight;
 				TsSize = ICTcotasLabelSize.Normal;
@@ -522,11 +504,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 				dirty = false;
 			}
 			if (atEnd)
-			{
 				DrawTs();
-				DrawOb(-1);
-				DrawOb(1);
-			}
 		}
 
 		// A higher timeframe bar closed: process the completed triple 1 = [off], 2 = [off+1], 3 = [off+2]
@@ -558,10 +536,6 @@ namespace NinjaTrader.NinjaScript.Indicators
 			if (k == SerMonth && monOk)
 				ProcessTf(2, k, off);
 
-			// [OB] 15m order blocks, on charts up to 15m
-			if (k == Ser15 && DoOb && tfsecs <= 900)
-				ObStep(Opens[k][off], CH(k, off), CL(k, off), Closes[k][off], Times[k][off].AddMinutes(-15));
-
 			for (int i = 0; i < 6; i++)
 			{
 				if (MfSeries[i] != k)
@@ -585,159 +559,6 @@ namespace NinjaTrader.NinjaScript.Indicators
 				if (MfSeries[i] == k && (mfOn[i] || wkOn[i]))
 					CloseTf(3 + i, c);
 			dirty = true;
-		}
-
-		#endregion
-
-		#region OB mean threshold
-
-		// [OB] a run of 15m candles closing the same way is an order block zone (bodies or full candles); a candle of
-		// the other color whose body stays inside the zone does not end the run, but a second one in a row does (the
-		// move away starts there, and the next run starts with both). Up-close runs are resistance OBs,
-		// armed (Dir -1) by a close below the zone and disarmed by a close above its MT; down-close runs are support
-		// OBs, armed (Dir 1) by a close above the zone and disarmed by a close below its MT. A disarmed OB is armed
-		// again by the next close out of its far side; once armed, a close beyond its far end (above a resistance OB,
-		// below a support OB) discards it, and so does age (ObLookback). Disp: how far price went
-		// away from it since it was armed (its significance).
-		private class Ob
-		{
-			public double Hi, Lo, Ext = double.NaN, Disp;
-			public DateTime T;
-			public bool Used;   // armed at least once
-			public int K, Dir, Sg;   // Sg 1 up-close (resistance), -1 down-close (support); Dir -1 / 1 armed, 0 not
-		}
-
-		private readonly List<Ob> obs = new List<Ob>();
-		private int obSg, obN, obK;
-		private double obHi = double.NaN, obLo = double.NaN;
-		private double obAtr = double.NaN, obPc = double.NaN;
-		// 1: the last candle was an inside candle of the other color; its zone and time
-		private int obOp;
-		private double obOh = double.NaN, obOl = double.NaN;
-		private DateTime obOt;   // 15m ATR(14) (RMA of the true range), previous close
-		private DateTime obT;
-
-		private void ObStep(double o, double h, double l, double c, DateTime t)
-		{
-			obK++;
-			bool body = ObPart == ICTcotasObPart.Body;
-			double zh = body ? Math.Max(o, c) : h;
-			double zl = body ? Math.Min(o, c) : l;
-			int sg = c > o ? 1 : c < o ? -1 : 0;
-			// one candle of the other color inside the zone stays in the run; a second one in a row is the move away
-			bool inside = obSg != 0 && obOp == 0 && Math.Max(o, c) <= obHi && Math.Min(o, c) >= obLo && obN < 40;
-			// height cap: a candle that would make the zone taller than ObMaxHeight 15m ATRs starts a new run
-			bool fits = double.IsNaN(obAtr) || Math.Max(obHi, zh) - Math.Min(obLo, zl) <= ObMaxHeight * obAtr;
-			double tr = double.IsNaN(obPc) ? h - l : Math.Max(h - l, Math.Max(Math.Abs(h - obPc), Math.Abs(l - obPc)));
-			obAtr = double.IsNaN(obAtr) ? tr : (obAtr * 13 + tr) / 14;
-			obPc = c;
-			if (obSg != 0 && (sg == obSg || sg == 0 || inside) && fits)
-			{
-				if (sg == -obSg)
-				{
-					obOp = 1;
-					obOh = zh;
-					obOl = zl;
-					obOt = t;
-				}
-				else
-				{
-					obHi = Math.Max(obHi, zh);
-					obLo = Math.Min(obLo, zl);
-					if (sg == obSg)
-						obOp = 0;
-				}
-				obN++;
-			}
-			else
-			{
-				if (obSg != 0)
-					obs.Add(new Ob { Hi = obHi, Lo = obLo, T = obT, K = obK - 1, Sg = obSg });
-				bool two = obOp == 1 && sg != 0 && sg == -obSg;
-				obHi = two ? Math.Max(obOh, zh) : zh;
-				obLo = two ? Math.Min(obOl, zl) : zl;
-				obT = two ? obOt : t;
-				obN = two ? 2 : 1;
-				obSg = sg;
-				obOp = 0;
-			}
-			for (int i = obs.Count - 1; i >= 0; i--)
-			{
-				Ob b = obs[i];
-				double mt = (b.Hi + b.Lo) / 2;
-				// once used as a level, a close beyond its far end (back through the whole OB) discards it
-				bool gone = b.Used && (b.Sg == 1 ? c > b.Hi : c < b.Lo);
-				if (b.Sg == 1)
-				{
-					if (c < b.Lo && b.Dir != -1)
-					{
-						b.Dir = -1;
-						b.Used = true;
-						b.Ext = l;
-					}
-					else if (b.Dir == -1 && c > mt)
-						b.Dir = 0;
-					else if (b.Dir == -1)
-						b.Ext = Math.Min(b.Ext, l);
-				}
-				else
-				{
-					if (c > b.Hi && b.Dir != 1)
-					{
-						b.Dir = 1;
-						b.Used = true;
-						b.Ext = h;
-					}
-					else if (b.Dir == 1 && c < mt)
-						b.Dir = 0;
-					else if (b.Dir == 1)
-						b.Ext = Math.Max(b.Ext, h);
-				}
-				b.Disp = b.Dir == -1 ? b.Lo - b.Ext : b.Dir == 1 ? b.Ext - b.Hi : 0.0;
-				if (gone || obK - b.K > ObLookback)
-					obs.RemoveAt(i);
-			}
-			if (obs.Count > 200)
-				obs.RemoveAt(0);
-		}
-
-		// [OB] the armed OB covering price (the most significant one, if several), else the nearest one
-		private static bool ObBetter(Ob b, Ob best, int dir, double p)
-		{
-			bool cb = b.Lo <= p && p <= b.Hi, cbest = best.Lo <= p && p <= best.Hi;
-			if (cb != cbest)
-				return cb;
-			if (cb)
-				return b.Disp > best.Disp;
-			double db = dir == -1 ? b.Lo - p : p - b.Hi, dbest = dir == -1 ? best.Lo - p : p - best.Hi;
-			return db < dbest || (db == dbest && b.Disp > best.Disp);
-		}
-
-		// the resistance OB above / covering price (dir -1) or support OB below / covering it (dir 1): MT line, label, zone
-		private void DrawOb(int dir)
-		{
-			string tg = "ICTc_ob" + (dir == -1 ? "res" : "sup");
-			double p = Closes[0][0];
-			Ob best = null;
-			foreach (Ob b in obs)
-				if (b.Dir == dir && (dir == -1 ? b.Hi > p : b.Lo < p) && (best == null || ObBetter(b, best, dir, p)))
-					best = b;
-			if (best == null)
-			{
-				RemoveDrawObject(tg + "_ln");
-				RemoveDrawObject(tg + "_lb");
-				RemoveDrawObject(tg + "_bx");
-				return;
-			}
-			Brush c = dir == -1 ? ObResColor : ObSupColor;
-			double mt = (best.Hi + best.Lo) / 2;
-			int sba = BarsAgoOf(best.T);
-			Draw.Line(this, tg + "_ln", false, sba, mt, 0, mt, c, ObStyle, ObWidth);
-			DrawLabel(tg + "_lb", -LabelOffset, mt, dir == -1 ? "OB- MT" : "OB+ MT", c, lblFont, TextAlignment.Left);
-			if (ObZone)
-				Draw.Rectangle(this, tg + "_bx", false, sba, best.Hi, 0, best.Lo, Brushes.Transparent, c, 10);
-			else
-				RemoveDrawObject(tg + "_bx");
 		}
 
 		#endregion
@@ -2219,62 +2040,6 @@ namespace NinjaTrader.NinjaScript.Indicators
 			get { return Serialize.BrushToString(TsContColor); }
 			set { TsContColor = Serialize.StringToBrush(value); }
 		}
-
-		// ---------------------------------------------------------------- OB mean threshold
-		[NinjaScriptProperty]
-		[Display(Name = "OB MT levels", GroupName = GOb, Order = 1, Description = "Charts up to 15m only, from 15m candles. An order block is a run of candles closing the same way; a candle of the other color whose body stays inside the zone so far does not end it. Up-close OBs are resistance: once price closes below one, its mean threshold (MT, the middle of the zone) is a level for the retrace back up, until a close above the MT. Down-close OBs are support the same way (a close above, until a close below the MT). After a close beyond the MT the OB is kept (it can be used again after the next close out of its far side), but a close beyond its far end (above a resistance OB, below a support OB) discards it, and so does being older than the lookback. Of each side, the most significant one (the deepest move away from it) above / covering price, or below / covering it, is shown.")]
-		public bool DoOb { get; set; }
-
-		[NinjaScriptProperty]
-		[Display(Name = "Zone", GroupName = GOb, Order = 2, Description = "Body: the zone spans the bodies of its candles. FullCandle: high to low.")]
-		public ICTcotasObPart ObPart { get; set; }
-
-		[NinjaScriptProperty]
-		[Range(20, 2000)]
-		[Display(Name = "Lookback (15m candles)", GroupName = GOb, Order = 3)]
-		public int ObLookback { get; set; }
-
-		[NinjaScriptProperty]
-		[Range(0.5, double.MaxValue)]
-		[Display(Name = "Max height (15m ATRs)", GroupName = GOb, Order = 9, Description = "Height cap: a candle that would make the zone taller than this many 15m ATRs ends the run (and starts the next one), so a rally of same-color candles is not one huge OB; the consolidation before it stays its own OB.")]
-		public double ObMaxHeight { get; set; }
-
-		[NinjaScriptProperty]
-		[Display(Name = "Draw the zone", GroupName = GOb, Order = 4)]
-		public bool ObZone { get; set; }
-
-		[NinjaScriptProperty]
-		[XmlIgnore]
-		[Display(Name = "Resistance", GroupName = GOb, Order = 5)]
-		public Brush ObResColor { get; set; }
-
-		[Browsable(false)]
-		public string ObResColorSerializable
-		{
-			get { return Serialize.BrushToString(ObResColor); }
-			set { ObResColor = Serialize.StringToBrush(value); }
-		}
-
-		[NinjaScriptProperty]
-		[XmlIgnore]
-		[Display(Name = "Support", GroupName = GOb, Order = 6)]
-		public Brush ObSupColor { get; set; }
-
-		[Browsable(false)]
-		public string ObSupColorSerializable
-		{
-			get { return Serialize.BrushToString(ObSupColor); }
-			set { ObSupColor = Serialize.StringToBrush(value); }
-		}
-
-		[NinjaScriptProperty]
-		[Display(Name = "Style", GroupName = GOb, Order = 7)]
-		public DashStyleHelper ObStyle { get; set; }
-
-		[NinjaScriptProperty]
-		[Range(1, 4)]
-		[Display(Name = "Width", GroupName = GOb, Order = 8)]
-		public int ObWidth { get; set; }
 
 		#endregion
 	}

@@ -19,7 +19,8 @@ OTE4_KEEP = {"deConf", "deInv", "deMaxInv", "deDead", "deDeadCol"}  # IFVG confi
 OTE4_DROP = re.compile(r"^(brk\w*|mb\w*|de\w*|ifvgswings|useSwingFilter|showSwing|lblAp)$")
 OTE4_SET = {"brkOn": "false", "mbOn": "false", "lblAp": "false"}
 
-# ICTblocks: breakers, mitigation blocks and the Delivery Engine (FVGs / IFVGs computed, not drawn)
+# ICTblocks: breakers, mitigation blocks and the Delivery Engine (FVGs / IFVGs computed, not drawn), plus the
+# OB mean threshold section of tools/ictblocks-ob.txt (appended as is)
 BLK_KEEP = re.compile(r"^(brk\w*|mb\w*|deDisp|deDispType|deStdLen|deStdX|deDispBar|deDispCol|deConf|deInv|"
                       r"deMaxInv|plMode|minfvgIn|maxfvgIn|nqscale)$")
 BLK_SET = {"dofp": "false", "dowick": "false", "useOTE": "false", "oteFvg": "false", "showOTEband": "false",
@@ -372,6 +373,8 @@ def main():
     s, n = re.subn(r"\b(brk|mb)Shd \? (80|88) : (85|93)\b", r"\1Shd ? \2 : (\1NoFill ? 100 : \3)", s)
     assert n == 6, n
     s = blkInputs(s)
+    # OB mean threshold (15m, experimental): only in ICTblocks, its own section at the end
+    s = s.rstrip("\n") + "\n" + open("tools/ictblocks-ob.txt").read()
     open("FVGS+IFVG+OTE4.txt", "w", newline="").write(ote4)
     open("ICTblocks.txt", "w", newline="").write(s)
     print("FVGS+IFVG+OTE4.txt", ote4.count("\n"), "lines; ICTblocks.txt", s.count("\n"), "lines")

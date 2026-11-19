@@ -22,7 +22,7 @@ The indicator works on the chart timeframe. It finds fair value gaps (FVGs) on y
 Two indicators are generated from this one and always stay in sync with it:
 
 - **FVGs+IFVG+OTE4** (`FVGS+IFVG+OTE4.txt`): this indicator without breakers, mitigation blocks, the Delivery Engine (sections 9 to 11, and the A+ label part) and without swing mode. The IFVG confirmation (close or full body) and the inversion rules of the IFVG Settings stay (IFVGs are always created on a close through the FVG). Everything else, and its defaults, is the same.
-- **ICTblocks** (`ICTblocks.txt`): only the breakers, mitigation blocks and the Delivery Engine. It finds the FVGs and close-mode IFVGs exactly as this indicator does (all FVGs, no filter, no 1PFVGs) because the blocks are drawn at their pullbacks, but it draws none of them, so every block is always drawn, labeled B↑ / B↓ or M↑ / M↓, by default centered on the right side (the **Label** input moves it to the left, the middle or a top corner). Its settings are grouped differently: one **Block settings** group holds what breakers and mitigation blocks share (zone *Last candle* / *Whole sequence* and *Full candle* / *Body*, swing length / keep, max bars to the pullback, drawing, style and width, flag candles, mid line and label), and the **Breakers** and **Mitigation blocks** groups keep only their switch and colors; the IFVG settings come after them. **Draw** is *Rectangle* (border and label), *Filled rectangle* (with the semi-transparent fill), *Shadow* (grey, no border; the default), *Segment* or *CE segment*. *Segment*: only the top of a bullish block or the bottom of a bearish one, a line in the block color with the label on it; with *Full candle* it is at the high / low of the zone candle(s), with *Body* at their body. *CE segment* is the same line and label at the C.E. (middle) of the zone. Both kinds use the full candle by default. The rectangle is drawn from the close beyond the zone on, lighter, and grows while the block waits for its pullback; a block dropped before it (failed, too old, or beyond the number kept) is erased. Once tagged, its rectangle gets the full fill and ends at the pullback candle: the block did its job when price leaves it in its direction, and failed (removed) when price trades through it. Of the Delivery Engine it keeps what still shows without FVG boxes: the displacement filter of those FVGs, the colored displacement candles, and the IFVG confirmation and inversion rules; A+ and the displacement border are only marks on FVG / IFVG boxes and are left out. Use it next to FVGs+IFVG+OTE4 to get the full indicator split in two.
+- **ICTblocks** (`ICTblocks.txt`): only the breakers, mitigation blocks and the Delivery Engine. It finds the FVGs and close-mode IFVGs exactly as this indicator does (all FVGs, no filter, no 1PFVGs) because the blocks are drawn at their pullbacks, but it draws none of them, so every block is always drawn, labeled B↑ / B↓ or M↑ / M↓, by default centered on the right side (the **Label** input moves it to the left, the middle or a top corner). Its settings are grouped differently: one **Block settings** group holds what breakers and mitigation blocks share (zone *Last candle* / *Whole sequence* and *Full candle* / *Body*, swing length / keep, max bars to the pullback, drawing, style and width, flag candles, mid line and label), and the **Breakers** and **Mitigation blocks** groups keep only their switch and colors; the IFVG settings come after them. **Draw** is *Rectangle* (border and label), *Filled rectangle* (with the semi-transparent fill), *Shadow* (grey, no border; the default), *Segment* or *CE segment*. *Segment*: only the top of a bullish block or the bottom of a bearish one, a line in the block color with the label on it; with *Full candle* it is at the high / low of the zone candle(s), with *Body* at their body. *CE segment* is the same line and label at the C.E. (middle) of the zone. Both kinds use the full candle by default. The rectangle is drawn from the close beyond the zone on, lighter, and grows while the block waits for its pullback; a block dropped before it (failed, too old, or beyond the number kept) is erased. Once tagged, its rectangle gets the full fill and ends at the pullback candle: the block did its job when price leaves it in its direction, and failed (removed) when price trades through it. Of the Delivery Engine it keeps what still shows without FVG boxes: the displacement filter of those FVGs, the colored displacement candles, and the IFVG confirmation and inversion rules; A+ and the displacement border are only marks on FVG / IFVG boxes and are left out. Use it next to FVGs+IFVG+OTE4 to get the full indicator split in two. ICTblocks also has its own **OB mean threshold** section (section 11b), which this indicator does not have.
 
 The indicator raises alerts for IFVG signals, OTE IFVG signals and, optionally, bounces on FVG levels and wick C.E. levels. It does not place orders and does not compute stops or targets.
 
@@ -387,6 +387,26 @@ Mitigation blocks work like breakers (section 10), with the opposite third swing
 
 An IFVG with an arrow sits on a mitigation block that price has broken and come back to. Prefer IFVG entries in the direction of the arrow.
 
+## 11b. OB mean threshold (ICTblocks only, 15m, experimental)
+
+### What you see
+
+On charts up to 15m, at most two dashed lines with a label at the right: **OB- MT** (red) is the mean threshold of a resistance order block above price, and **OB+ MT** (green) that of a support order block below it. **draw the zone** also shows the order block itself. Nothing is drawn on higher timeframes.
+
+### What it is
+
+The order blocks come from 15m candles. An order block is a run of candles closing the same way (up-close or down-close). A candle of the other color whose body stays inside the zone built so far does not end the run, so a small bear candle inside a bull candle stays in a bull run. Only one such candle at a time: two candles of the other color in a row are the move away from the OB, so they end it (and start the next run). A run is also ended when the next candle would make the zone taller than **max height** (4 by default) 15m ATRs: a rally of up-close candles is then not swallowed into the OB of the consolidation before it. The zone spans the bodies of its candles (or the full candles, with **zone** set to Full candle), and its MT is the middle of the zone.
+
+The color of its candles decides what an order block is for. An OB of up-close candles is a resistance OB: once a 15m candle closes below it (price left it downward), its MT is a level for when price retraces back up. It stays a level while price wicks into or through the MT, and stops being one when a 15m candle closes above the MT. An OB of down-close candles is a support OB, the same way upside down: armed by a close above it, ended by a close below its MT.
+
+An OB that stopped being a level after a close beyond its MT is not discarded: price may come back and close out of its far side again, and then it is a level again for the next retrace. But once it has been a level, a close beyond its far end (above a resistance OB, below a support OB) discards it: price went back through the whole OB. Order blocks older than **lookback** 15m candles are dropped too.
+
+Of the armed resistance OBs, the one covering price is shown (if several cover it, the most significant: the one price moved furthest away from since it was armed); when none covers price, the nearest one above it. The same goes for the armed support OBs, covering price or the nearest one below it.
+
+### How to use it
+
+When price retraces into the zone, watch the MT: a wick through it that closes back, or a rejection at it, keeps the order block alive, and the move is expected to resume. A 15m close beyond the MT ends it as a level (the line goes away); a close beyond the whole OB discards it.
+
 ## 12. Settings reference
 
 Inputs on one line in the settings dialog are listed together; a field without its own label is shown as "(2nd field)" and so on. Sizes are in price points.
@@ -520,6 +540,19 @@ Inputs on one line in the settings dialog are listed together; a field without i
 | Flag candles | off | Color the mitigation block candle(s) with the rectangle color when it is tagged at the pullback, with or without the rectangle; removed together with the rectangle |
 | Shadow rectangle (same line as Flag candles) | off (ICTblocks: on) | Draw the mitigation block as a grey transparent rectangle without border instead of the dashed one, also when Rectangle is off; the mid line stays |
 | Mid line (C.E.) (same line as Flag candles) | on | Draw the C.E. (mid line) of the rectangle, in the block color, or a slightly darker grey than the fill with the shadow rectangle. Off: the rectangle only |
+
+### OB mean threshold (ICTblocks only)
+
+| Setting | Default | What it does |
+|---|---|---|
+| OB MT levels | on | Draws the MT of the most significant resistance OB above price and support OB below it (charts up to 15m) |
+| zone | Body | Body: the zone spans the candle bodies. Full candle: high to low |
+| lookback (15m candles) | 300 | Order blocks older than this are dropped |
+| draw the zone | off | Also draws the order block as a faint rectangle |
+| max height (15m ATRs) | 4 | A candle that would make the zone taller than this many 15m ATRs ends the run and starts the next one, so a rally of same-color candles is not one huge OB and the consolidation before it stays its own OB |
+| label offset (bars) | 2 | Bars from the last bar to the OB- MT / OB+ MT labels |
+| resistance / support | red / green | Colors of the OB- MT and OB+ MT lines, labels and zones |
+| style, width | dashed, 1 | Line style and width |
 
 ### Delivery Engine (Nuno)
 

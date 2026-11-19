@@ -9,7 +9,7 @@
  * closed through become IFVGs. Mitigated levels are removed.
  *
  * Port of the TradingView Pine Script v6 indicator ICTcotas.txt
- * (md5 a401cdc727d753e1a981d1e4cd61ecba), (c) franjballest, Mozilla Public
+ * (md5 51f2648faf6647a7cb4aee38e232989a), (c) franjballest, Mozilla Public
  * License 2.0 (https://mozilla.org/MPL/2.0/). Same logic, same inputs (as
  * camelCase parameters) and the same defaults.
  *
@@ -188,9 +188,6 @@ function newState(keys) {
         uid: 0,
         tfsecs: 0,
         datr: null,   // daily ATR(14): RMA of the true range of completed daily candles
-        // [OB] 15m order blocks: candidates and the current run of same-color candles
-        obs: [],
-        obRun: { sg: 0, hi: NaN, lo: NaN, t: 0, n: 0, k: 0, atr: NaN, pc: NaN, op: 0, oh: NaN, ol: NaN, ot: 0 },
         aggs: {
             d: new HtfAgg(keys.d), w: new HtfAgg(keys.w), m: new HtfAgg(keys.m),
             m15: new HtfAgg(keys.m15), h1: new HtfAgg(keys.h1), h4: new HtfAgg(keys.h4)
@@ -208,10 +205,7 @@ function cloneState(S) {
     const wcur = S.wcur.map(l => (l ? map.get(l) || Object.assign({}, l) : null));
     const aggs = {};
     for (const k in S.aggs) aggs[k] = S.aggs[k].clone();
-    return {
-        lvls, wcur, uid: S.uid, tfsecs: S.tfsecs, datr: S.datr, aggs,
-        obs: S.obs.map(b => Object.assign({}, b)), obRun: Object.assign({}, S.obRun)
-    };
+    return { lvls, wcur, uid: S.uid, tfsecs: S.tfsecs, datr: S.datr, aggs };
 }
 
 // ============================================================ engine
@@ -430,67 +424,6 @@ class Engine {
     }
 
     // full pipeline of one chart bar (index j, values b)
-    // [OB] a run of 15m candles closing the same way is an order block zone (bodies or full candles); a candle of
-    // the other color whose body stays inside the zone does not end the run, but a second one in a row does (the
-    // move away starts there, and the next run starts with both). Up-close runs (sg 1) are resistance
-    // OBs, armed (dir -1) by a close below the zone and disarmed by a close above its MT; down-close runs are
-    // support OBs, armed (dir 1) by a close above the zone and disarmed by a close below its MT. A disarmed OB is
-    // armed again by the next close out of its far side; once armed, a close beyond its far end (above a
-    // resistance OB, below a support OB) discards it, and so does age (obLook). disp: how far price went
-    // away from it since it was armed (its significance).
-    obStep(g) {
-        const c = this.cfg, S = this.S, r = S.obRun;
-        const { o, h, l } = g, cl = g.c;
-        if (![o, h, l, cl].every(Number.isFinite)) return;
-        r.k += 1;
-        const body = c.obPart === "body";
-        const zh = body ? Math.max(o, cl) : h, zl = body ? Math.min(o, cl) : l;
-        const sg = cl > o ? 1 : cl < o ? -1 : 0;
-        // one candle of the other color inside the zone stays in the run; a second one in a row is the move away
-        const inside = r.sg !== 0 && r.op === 0 && Math.max(o, cl) <= r.hi && Math.min(o, cl) >= r.lo && r.n < 40;
-        // height cap: a candle that would make the zone taller than obMaxH 15m ATRs starts a new run
-        const fits = !Number.isFinite(r.atr) || Math.max(r.hi, zh) - Math.min(r.lo, zl) <= c.obMaxH * r.atr;
-        const tr = Number.isFinite(r.pc) ? Math.max(h - l, Math.abs(h - r.pc), Math.abs(l - r.pc)) : h - l;
-        r.atr = Number.isFinite(r.atr) ? (r.atr * 13 + tr) / 14 : tr;
-        r.pc = cl;
-        if (r.sg !== 0 && (sg === r.sg || sg === 0 || inside) && fits) {
-            if (sg === -r.sg) {
-                r.op = 1; r.oh = zh; r.ol = zl; r.ot = g.t;
-            } else {
-                r.hi = Math.max(r.hi, zh);
-                r.lo = Math.min(r.lo, zl);
-                if (sg === r.sg) r.op = 0;
-            }
-            r.n += 1;
-        } else {
-            if (r.sg !== 0) S.obs.push({ hi: r.hi, lo: r.lo, t: r.t, k: r.k - 1, sg: r.sg, dir: 0, used: false, ext: NaN, disp: 0 });
-            const two = r.op === 1 && sg !== 0 && sg === -r.sg;
-            r.hi = two ? Math.max(r.oh, zh) : zh;
-            r.lo = two ? Math.min(r.ol, zl) : zl;
-            r.t = two ? r.ot : g.t;
-            r.n = two ? 2 : 1;
-            r.sg = sg;
-            r.op = 0;
-        }
-        for (let i = S.obs.length - 1; i >= 0; i--) {
-            const ob = S.obs[i];
-            const mt = (ob.hi + ob.lo) / 2;
-            // once used as a level, a close beyond its far end (back through the whole OB) discards it
-            const gone = ob.used && (ob.sg === 1 ? cl > ob.hi : cl < ob.lo);
-            if (ob.sg === 1) {
-                if (cl < ob.lo && ob.dir !== -1) { ob.dir = -1; ob.used = true; ob.ext = l; }
-                else if (ob.dir === -1 && cl > mt) ob.dir = 0;
-                else if (ob.dir === -1) ob.ext = Math.min(ob.ext, l);
-            } else {
-                if (cl > ob.hi && ob.dir !== 1) { ob.dir = 1; ob.used = true; ob.ext = h; }
-                else if (ob.dir === 1 && cl < mt) ob.dir = 0;
-                else if (ob.dir === 1) ob.ext = Math.max(ob.ext, h);
-            }
-            ob.disp = ob.dir === -1 ? ob.lo - ob.ext : ob.dir === 1 ? ob.ext - ob.hi : 0;
-            if (gone || r.k - ob.k > c.obLook) S.obs.splice(i, 1);
-        }
-        if (S.obs.length > 200) S.obs.shift();
-    }
     applyBar(j, b) {
         const c = this.cfg;
         // bad data: a wick longer than badAtr daily ATRs is a bad print, not price; the high / low is taken at the
@@ -533,8 +466,6 @@ class Engine {
                 tfc[3 + i] = g.get(1).c;
             }
         }
-        // [OB] 15m order blocks, on charts up to 15m
-        if (c.doOb && tfs <= 900 && ev.m15) this.obStep(A.m15.get(1));
         this.runMit(b, tfc);
     }
 }
@@ -600,14 +531,6 @@ function buildConfig(p, chart, ci) {
         wExtra: clamp(Math.round(num(p.wExtra, 1)), 0, 2),
         mmode: mit === "ce" ? 1 : mit === "wick" ? 2 : mit === "close" ? 3 : 0,
         sessHour: clamp(num(p.sessionStartHour, 18), 0, 23),
-        doOb: bool(p.doOb, true),
-        obPart: str(p.obPart, "body") === "full" ? "full" : "body",
-        obLook: clamp(Math.round(num(p.obLook, 300)), 20, 2000),
-        obMaxH: Math.max(0.5, num(p.obMaxH, 4)),
-        obZone: bool(p.obZone, false),
-        obResCol: str(p.obResCol, "#F23645"), obSupCol: str(p.obSupCol, "#4CAF50"),
-        obSty: sty(p.obSty, "dashed"),
-        obWid: clamp(Math.round(num(p.obWid, 1)), 1, 4),
         tsShow: bool(p.tsShow, true),
         tsPos: str(p.tsPos, "bottomRight"),
         tsFont: font(p.tsSize, "normal"),
@@ -978,29 +901,6 @@ function drawTs(c, eng, items, tk, idx) {
     }
 }
 
-// [OB] the armed OB covering price (the most significant one, if several), else the nearest one
-function obBetter(b, best, dir, p) {
-    const cb = b.lo <= p && p <= b.hi, cbest = best.lo <= p && p <= best.hi;
-    if (cb !== cbest) return cb;
-    if (cb) return b.disp > best.disp;
-    const db = dir === -1 ? b.lo - p : p - b.hi, dbest = dir === -1 ? best.lo - p : p - best.hi;
-    return db < dbest || (db === dbest && b.disp > best.disp);
-}
-// the resistance OB above / covering price (dir -1) or support OB below / covering it (dir 1): MT line, label, zone
-function drawOb(c, obs, dir, p, lastIdx, x, items) {
-    let best = null;
-    for (const b of obs) {
-        if (b.dir === dir && (dir === -1 ? b.hi > p : b.lo < p) && (best === null || obBetter(b, best, dir, p))) best = b;
-    }
-    if (best === null) return;
-    const col = dir === -1 ? c.obResCol : c.obSupCol;
-    const mt = (best.hi + best.lo) / 2;
-    const k = "ictcob" + (dir === -1 ? "res" : "sup");
-    if (c.obZone) items.push(rectItem(k + "bx", best.t, best.hi, lastIdx, best.lo, col, 90));
-    items.push(linesItem(k + "ln", [seg(best.t, mt, lastIdx, mt)], col, c.obWid, c.obSty));
-    items.push(textItem(k + "lb", x, mt, dir === -1 ? "OB- MT" : "OB+ MT", col, c.lblFont, c.lblBold, "left"));
-}
-
 function drawAll(c, eng, lastIdx, lastBar, tk) {
     const x = lastIdx + c.xOff;
     const items = [];
@@ -1017,10 +917,6 @@ function drawAll(c, eng, lastIdx, lastBar, tk) {
         else drawLvl(c, l, x, items, eng.S.datr, lbls);
     }
     drawLbls(c, x, items, eng.S.datr, lbls);
-    if (c.doOb && eng.tfsecs() <= 900) {
-        drawOb(c, eng.S.obs, -1, lastBar.c, lastIdx, x, items);
-        drawOb(c, eng.S.obs, 1, lastBar.c, lastIdx, x, items);
-    }
     drawTs(c, eng, items, tk, lastIdx);
     const tfs = eng.tfsecs();
     const any = (c.doDaily && tfs < 86400) || (c.doWeekly && tfs < 604800) || (c.doMonthly && tfs < 2592000);
@@ -1204,16 +1100,6 @@ module.exports = {
         }, "wick"),
         sessionStartHour: int(18, 0),
         tsShow: predef.paramSpecs.bool(true),
-        // OB mean threshold (15m, experimental)
-        doOb: predef.paramSpecs.bool(true),
-        obPart: predef.paramSpecs.enum({ body: "Body", full: "Full candle" }, "body"),
-        obLook: int(300, 20),
-        obMaxH: predef.paramSpecs.number(4, 0.25, 0.5),
-        obZone: predef.paramSpecs.bool(false),
-        obResCol: predef.paramSpecs.color("#F23645"),
-        obSupCol: predef.paramSpecs.color("#4CAF50"),
-        obSty: styleEnum("dashed"),
-        obWid: int(1, 1),
         attLvl: predef.paramSpecs.number(2, 1, 0),
         badAtr: predef.paramSpecs.number(6, 0.5, 0),
         nqscale: predef.paramSpecs.bool(true),
