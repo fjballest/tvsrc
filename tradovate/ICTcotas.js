@@ -9,7 +9,7 @@
  * closed through become IFVGs. Mitigated levels are removed.
  *
  * Port of the TradingView Pine Script v6 indicator ICTcotas.txt
- * (md5 2b6686d225ec263be146770f6b8ffe31), (c) franjballest, Mozilla Public
+ * (md5 a401cdc727d753e1a981d1e4cd61ecba), (c) franjballest, Mozilla Public
  * License 2.0 (https://mozilla.org/MPL/2.0/). Same logic, same inputs (as
  * camelCase parameters) and the same defaults.
  *
@@ -190,7 +190,7 @@ function newState(keys) {
         datr: null,   // daily ATR(14): RMA of the true range of completed daily candles
         // [OB] 15m order blocks: candidates and the current run of same-color candles
         obs: [],
-        obRun: { sg: 0, hi: NaN, lo: NaN, t: 0, n: 0, k: 0, atr: NaN, pc: NaN },
+        obRun: { sg: 0, hi: NaN, lo: NaN, t: 0, n: 0, k: 0, atr: NaN, pc: NaN, op: 0, oh: NaN, ol: NaN, ot: 0 },
         aggs: {
             d: new HtfAgg(keys.d), w: new HtfAgg(keys.w), m: new HtfAgg(keys.m),
             m15: new HtfAgg(keys.m15), h1: new HtfAgg(keys.h1), h4: new HtfAgg(keys.h4)
@@ -431,7 +431,8 @@ class Engine {
 
     // full pipeline of one chart bar (index j, values b)
     // [OB] a run of 15m candles closing the same way is an order block zone (bodies or full candles); a candle of
-    // the other color whose body stays inside the zone does not end the run. Up-close runs (sg 1) are resistance
+    // the other color whose body stays inside the zone does not end the run, but a second one in a row does (the
+    // move away starts there, and the next run starts with both). Up-close runs (sg 1) are resistance
     // OBs, armed (dir -1) by a close below the zone and disarmed by a close above its MT; down-close runs are
     // support OBs, armed (dir 1) by a close above the zone and disarmed by a close below its MT. A disarmed OB is
     // armed again by the next close out of its far side; once armed, a close beyond its far end (above a
@@ -445,19 +446,31 @@ class Engine {
         const body = c.obPart === "body";
         const zh = body ? Math.max(o, cl) : h, zl = body ? Math.min(o, cl) : l;
         const sg = cl > o ? 1 : cl < o ? -1 : 0;
-        const inside = r.sg !== 0 && Math.max(o, cl) <= r.hi && Math.min(o, cl) >= r.lo && r.n < 40;
+        // one candle of the other color inside the zone stays in the run; a second one in a row is the move away
+        const inside = r.sg !== 0 && r.op === 0 && Math.max(o, cl) <= r.hi && Math.min(o, cl) >= r.lo && r.n < 40;
         // height cap: a candle that would make the zone taller than obMaxH 15m ATRs starts a new run
         const fits = !Number.isFinite(r.atr) || Math.max(r.hi, zh) - Math.min(r.lo, zl) <= c.obMaxH * r.atr;
         const tr = Number.isFinite(r.pc) ? Math.max(h - l, Math.abs(h - r.pc), Math.abs(l - r.pc)) : h - l;
         r.atr = Number.isFinite(r.atr) ? (r.atr * 13 + tr) / 14 : tr;
         r.pc = cl;
         if (r.sg !== 0 && (sg === r.sg || sg === 0 || inside) && fits) {
-            r.hi = Math.max(r.hi, zh);
-            r.lo = Math.min(r.lo, zl);
+            if (sg === -r.sg) {
+                r.op = 1; r.oh = zh; r.ol = zl; r.ot = g.t;
+            } else {
+                r.hi = Math.max(r.hi, zh);
+                r.lo = Math.min(r.lo, zl);
+                if (sg === r.sg) r.op = 0;
+            }
             r.n += 1;
         } else {
             if (r.sg !== 0) S.obs.push({ hi: r.hi, lo: r.lo, t: r.t, k: r.k - 1, sg: r.sg, dir: 0, used: false, ext: NaN, disp: 0 });
-            r.sg = sg; r.hi = zh; r.lo = zl; r.t = g.t; r.n = 1;
+            const two = r.op === 1 && sg !== 0 && sg === -r.sg;
+            r.hi = two ? Math.max(r.oh, zh) : zh;
+            r.lo = two ? Math.min(r.ol, zl) : zl;
+            r.t = two ? r.ot : g.t;
+            r.n = two ? 2 : 1;
+            r.sg = sg;
+            r.op = 0;
         }
         for (let i = S.obs.length - 1; i >= 0; i--) {
             const ob = S.obs[i];

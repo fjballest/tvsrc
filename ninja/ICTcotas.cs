@@ -7,7 +7,7 @@
 // FVGs closed through become IFVGs. Mitigated levels are removed.
 //
 // Port of the TradingView Pine Script v6 indicator ICTcotas.txt by franjballest
-// (source md5 2b6686d225ec263be146770f6b8ffe31). Mozilla Public License 2.0.
+// (source md5 a401cdc727d753e1a981d1e4cd61ecba). Mozilla Public License 2.0.
 //
 // Install:
 //   1. Copy this file to  Documents\NinjaTrader 8\bin\Custom\Indicators\ICTcotas.cs
@@ -592,7 +592,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 		#region OB mean threshold
 
 		// [OB] a run of 15m candles closing the same way is an order block zone (bodies or full candles); a candle of
-		// the other color whose body stays inside the zone does not end the run. Up-close runs are resistance OBs,
+		// the other color whose body stays inside the zone does not end the run, but a second one in a row does (the
+		// move away starts there, and the next run starts with both). Up-close runs are resistance OBs,
 		// armed (Dir -1) by a close below the zone and disarmed by a close above its MT; down-close runs are support
 		// OBs, armed (Dir 1) by a close above the zone and disarmed by a close below its MT. A disarmed OB is armed
 		// again by the next close out of its far side; once armed, a close beyond its far end (above a resistance OB,
@@ -609,7 +610,11 @@ namespace NinjaTrader.NinjaScript.Indicators
 		private readonly List<Ob> obs = new List<Ob>();
 		private int obSg, obN, obK;
 		private double obHi = double.NaN, obLo = double.NaN;
-		private double obAtr = double.NaN, obPc = double.NaN;   // 15m ATR(14) (RMA of the true range), previous close
+		private double obAtr = double.NaN, obPc = double.NaN;
+		// 1: the last candle was an inside candle of the other color; its zone and time
+		private int obOp;
+		private double obOh = double.NaN, obOl = double.NaN;
+		private DateTime obOt;   // 15m ATR(14) (RMA of the true range), previous close
 		private DateTime obT;
 
 		private void ObStep(double o, double h, double l, double c, DateTime t)
@@ -619,7 +624,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 			double zh = body ? Math.Max(o, c) : h;
 			double zl = body ? Math.Min(o, c) : l;
 			int sg = c > o ? 1 : c < o ? -1 : 0;
-			bool inside = obSg != 0 && Math.Max(o, c) <= obHi && Math.Min(o, c) >= obLo && obN < 40;
+			// one candle of the other color inside the zone stays in the run; a second one in a row is the move away
+			bool inside = obSg != 0 && obOp == 0 && Math.Max(o, c) <= obHi && Math.Min(o, c) >= obLo && obN < 40;
 			// height cap: a candle that would make the zone taller than ObMaxHeight 15m ATRs starts a new run
 			bool fits = double.IsNaN(obAtr) || Math.Max(obHi, zh) - Math.Min(obLo, zl) <= ObMaxHeight * obAtr;
 			double tr = double.IsNaN(obPc) ? h - l : Math.Max(h - l, Math.Max(Math.Abs(h - obPc), Math.Abs(l - obPc)));
@@ -627,19 +633,33 @@ namespace NinjaTrader.NinjaScript.Indicators
 			obPc = c;
 			if (obSg != 0 && (sg == obSg || sg == 0 || inside) && fits)
 			{
-				obHi = Math.Max(obHi, zh);
-				obLo = Math.Min(obLo, zl);
+				if (sg == -obSg)
+				{
+					obOp = 1;
+					obOh = zh;
+					obOl = zl;
+					obOt = t;
+				}
+				else
+				{
+					obHi = Math.Max(obHi, zh);
+					obLo = Math.Min(obLo, zl);
+					if (sg == obSg)
+						obOp = 0;
+				}
 				obN++;
 			}
 			else
 			{
 				if (obSg != 0)
 					obs.Add(new Ob { Hi = obHi, Lo = obLo, T = obT, K = obK - 1, Sg = obSg });
+				bool two = obOp == 1 && sg != 0 && sg == -obSg;
+				obHi = two ? Math.Max(obOh, zh) : zh;
+				obLo = two ? Math.Min(obOl, zl) : zl;
+				obT = two ? obOt : t;
+				obN = two ? 2 : 1;
 				obSg = sg;
-				obHi = zh;
-				obLo = zl;
-				obT = t;
-				obN = 1;
+				obOp = 0;
 			}
 			for (int i = obs.Count - 1; i >= 0; i--)
 			{
