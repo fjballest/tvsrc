@@ -281,13 +281,13 @@ color tsctcol = input.color(color.gray, "continuation", group = G_TS, inline = "
 
 const string G_OB = "OB mean threshold (15m, experimental)"
 bool doob = input.bool(true, "OB MT levels", group = G_OB, inline = "o1",
-     tooltip = "Charts up to 15m only, from 15m candles. An order block is a run of candles closing the same way "
-     + "(up or down); a candle of the other color whose body stays inside the zone so far does not end it. When "
-     + "price closes below the zone it is a resistance OB (for a retrace back up), when it closes above it a "
-     + "support OB (for a retrace back down); it changes role when price closes out of its other side, and is "
-     + "dropped only when older than the lookback. Of the resistance OBs "
-     + "still above price and the support OBs still below it, the most significant one (the deepest move away "
-     + "from it since it took that role) of each side is shown with its mean threshold (MT, the middle of the zone).")
+     tooltip = "Charts up to 15m only, from 15m candles. An order block is a run of candles closing the same way; "
+     + "a candle of the other color whose body stays inside the zone so far does not end it. Up-close OBs are "
+     + "resistance: once price closes below one, its mean threshold (MT, the middle of the zone) is a level for "
+     + "the retrace back up, until a close above the MT. Down-close OBs are support the same way (a close above, "
+     + "until a close below the MT). The OB is kept (it can be used again after the next close out of its far "
+     + "side) until older than the lookback. Of each side, the most significant one (the deepest move away from "
+     + "it) above / covering price, or below / covering it, is shown.")
 string obpart = input.string("Body", "zone", options = ["Body", "Full candle"], group = G_OB, inline = "o1")
 int oblook = input.int(300, "lookback (15m candles)", minval = 20, maxval = 2000, group = G_OB, inline = "o2")
 bool obzone = input.bool(false, "draw the zone", group = G_OB, inline = "o2")
@@ -1046,16 +1046,18 @@ for i = 0 to 5
 
 // ============================================================ OB mean threshold (15m, experimental)
 // [OB] a run of 15m candles closing the same way is an order block zone (bodies or full candles); a candle of the
-// other color whose body stays inside the zone does not end the run. The side of the last close out of the zone
-// sets its role: below it, resistance (dir -1); above it, support (dir 1). It flips when price closes out of the
-// other side, and only age (oblook) removes it. disp: how far price went away from it since it took that role
-// (its significance).
+// other color whose body stays inside the zone does not end the run. Up-close runs are resistance OBs, armed
+// (dir -1) by a close below the zone and disarmed by a close above its MT; down-close runs are support OBs, armed
+// (dir 1) by a close above the zone and disarmed by a close below its MT. A disarmed OB is armed again by the next
+// close out of its far side; only age (oblook) removes it. disp: how far price went away from it since it was
+// armed (its significance).
 type Ob
     float hi
     float lo
     int t
     int k        // 15m candle count at its end
-    int dir = 0  // side of the last close out of the zone: 0 none yet, -1 below (resistance), 1 above (support)
+    int sg = 0   // 1 up-close candles (resistance OB), -1 down-close candles (support OB)
+    int dir = 0  // -1 armed resistance, 1 armed support, 0 not armed (not left yet, or closed beyond its MT)
     float ext = na
     float disp = 0.0
 
@@ -1091,7 +1093,7 @@ obStep(float o, float h, float l, float c, int t) =>
         r.n += 1
     else
         if r.sg != 0
-            obs.push(Ob.new(r.hi, r.lo, r.t, obk - 1))
+            obs.push(Ob.new(r.hi, r.lo, r.t, obk - 1, r.sg))
         r.sg := sg
         r.hi := zh
         r.lo := zl
@@ -1100,16 +1102,23 @@ obStep(float o, float h, float l, float c, int t) =>
     int i = obs.size() - 1
     while i >= 0
         Ob b = obs.get(i)
-        if c < b.lo and b.dir != -1
-            b.dir := -1
-            b.ext := l
-        else if c > b.hi and b.dir != 1
-            b.dir := 1
-            b.ext := h
-        else if b.dir == -1
-            b.ext := math.min(b.ext, l)
-        else if b.dir == 1
-            b.ext := math.max(b.ext, h)
+        float mt = (b.hi + b.lo) / 2
+        if b.sg == 1
+            if c < b.lo and b.dir != -1
+                b.dir := -1
+                b.ext := l
+            else if b.dir == -1 and c > mt
+                b.dir := 0
+            else if b.dir == -1
+                b.ext := math.min(b.ext, l)
+        else
+            if c > b.hi and b.dir != 1
+                b.dir := 1
+                b.ext := h
+            else if b.dir == 1 and c < mt
+                b.dir := 0
+            else if b.dir == 1
+                b.ext := math.max(b.ext, h)
         b.disp := b.dir == -1 ? b.lo - b.ext : b.dir == 1 ? b.ext - b.hi : 0.0
         if obk - b.k > oblook
             obs.remove(i)
@@ -1158,13 +1167,21 @@ if barstate.islast
             if not l.lsce
                 l.celb := rmLbl(l.celb)
 
-// [OB] the most significant resistance OB above price and support OB below it: MT line (and zone), label
+// [OB] the armed resistance OB covering price (the most significant one, if several), else the nearest one above
+// it; mirrored for support below price: MT line (and zone), label
 obDraw(int dir) =>
     Ob best = na
     for b in obs
         if b.dir == dir and (dir == -1 ? b.hi > close : b.lo < close)
-            if na(best) or b.disp > best.disp
+            if na(best)
                 best := b
+            else
+                bool cb = b.lo <= close and close <= b.hi
+                bool cbest = best.lo <= close and close <= best.hi
+                float db = dir == -1 ? b.lo - close : close - b.hi
+                float dbest = dir == -1 ? best.lo - close : close - best.hi
+                if cb != cbest ? cb : cb ? b.disp > best.disp : db < dbest or (db == dbest and b.disp > best.disp)
+                    best := b
     line ln = dir == -1 ? obResLn : obSupLn
     label lb = dir == -1 ? obResLb : obSupLb
     box bx = dir == -1 ? obResBx : obSupBx

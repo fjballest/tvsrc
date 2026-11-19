@@ -7,7 +7,7 @@
 // FVGs closed through become IFVGs. Mitigated levels are removed.
 //
 // Port of the TradingView Pine Script v6 indicator ICTcotas.txt by franjballest
-// (source md5 cc269d4b8b7b6faef4d5bb366bde02df). Mozilla Public License 2.0.
+// (source md5 deab4e66a5334a707292471adcb663e7). Mozilla Public License 2.0.
 //
 // Install:
 //   1. Copy this file to  Documents\NinjaTrader 8\bin\Custom\Indicators\ICTcotas.cs
@@ -591,15 +591,16 @@ namespace NinjaTrader.NinjaScript.Indicators
 		#region OB mean threshold
 
 		// [OB] a run of 15m candles closing the same way is an order block zone (bodies or full candles); a candle of
-		// the other color whose body stays inside the zone does not end the run. The side of the last close out of
-		// the zone sets its role: below it, resistance (Dir -1); above it, support (Dir 1). It flips when price
-		// closes out of the other side; only age (ObLookback) removes it. Disp: how far price went away from it
-		// since it took that role (its significance).
+		// the other color whose body stays inside the zone does not end the run. Up-close runs are resistance OBs,
+		// armed (Dir -1) by a close below the zone and disarmed by a close above its MT; down-close runs are support
+		// OBs, armed (Dir 1) by a close above the zone and disarmed by a close below its MT. A disarmed OB is armed
+		// again by the next close out of its far side; only age (ObLookback) removes it. Disp: how far price went
+		// away from it since it was armed (its significance).
 		private class Ob
 		{
 			public double Hi, Lo, Ext = double.NaN, Disp;
 			public DateTime T;
-			public int K, Dir;
+			public int K, Dir, Sg;   // Sg 1 up-close (resistance), -1 down-close (support); Dir -1 / 1 armed, 0 not
 		}
 
 		private readonly List<Ob> obs = new List<Ob>();
@@ -624,7 +625,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 			else
 			{
 				if (obSg != 0)
-					obs.Add(new Ob { Hi = obHi, Lo = obLo, T = obT, K = obK - 1 });
+					obs.Add(new Ob { Hi = obHi, Lo = obLo, T = obT, K = obK - 1, Sg = obSg });
 				obSg = sg;
 				obHi = zh;
 				obLo = zl;
@@ -634,20 +635,31 @@ namespace NinjaTrader.NinjaScript.Indicators
 			for (int i = obs.Count - 1; i >= 0; i--)
 			{
 				Ob b = obs[i];
-				if (c < b.Lo && b.Dir != -1)
+				double mt = (b.Hi + b.Lo) / 2;
+				if (b.Sg == 1)
 				{
-					b.Dir = -1;
-					b.Ext = l;
+					if (c < b.Lo && b.Dir != -1)
+					{
+						b.Dir = -1;
+						b.Ext = l;
+					}
+					else if (b.Dir == -1 && c > mt)
+						b.Dir = 0;
+					else if (b.Dir == -1)
+						b.Ext = Math.Min(b.Ext, l);
 				}
-				else if (c > b.Hi && b.Dir != 1)
+				else
 				{
-					b.Dir = 1;
-					b.Ext = h;
+					if (c > b.Hi && b.Dir != 1)
+					{
+						b.Dir = 1;
+						b.Ext = h;
+					}
+					else if (b.Dir == 1 && c < mt)
+						b.Dir = 0;
+					else if (b.Dir == 1)
+						b.Ext = Math.Max(b.Ext, h);
 				}
-				else if (b.Dir == -1)
-					b.Ext = Math.Min(b.Ext, l);
-				else if (b.Dir == 1)
-					b.Ext = Math.Max(b.Ext, h);
 				b.Disp = b.Dir == -1 ? b.Lo - b.Ext : b.Dir == 1 ? b.Ext - b.Hi : 0.0;
 				if (obK - b.K > ObLookback)
 					obs.RemoveAt(i);
@@ -656,14 +668,26 @@ namespace NinjaTrader.NinjaScript.Indicators
 				obs.RemoveAt(0);
 		}
 
-		// the most significant resistance OB above price (dir -1) or support OB below it (dir 1): MT line, label, zone
+		// [OB] the armed OB covering price (the most significant one, if several), else the nearest one
+		private static bool ObBetter(Ob b, Ob best, int dir, double p)
+		{
+			bool cb = b.Lo <= p && p <= b.Hi, cbest = best.Lo <= p && p <= best.Hi;
+			if (cb != cbest)
+				return cb;
+			if (cb)
+				return b.Disp > best.Disp;
+			double db = dir == -1 ? b.Lo - p : p - b.Hi, dbest = dir == -1 ? best.Lo - p : p - best.Hi;
+			return db < dbest || (db == dbest && b.Disp > best.Disp);
+		}
+
+		// the resistance OB above / covering price (dir -1) or support OB below / covering it (dir 1): MT line, label, zone
 		private void DrawOb(int dir)
 		{
 			string tg = "ICTc_ob" + (dir == -1 ? "res" : "sup");
 			double p = Closes[0][0];
 			Ob best = null;
 			foreach (Ob b in obs)
-				if (b.Dir == dir && (dir == -1 ? b.Hi > p : b.Lo < p) && (best == null || b.Disp > best.Disp))
+				if (b.Dir == dir && (dir == -1 ? b.Hi > p : b.Lo < p) && (best == null || ObBetter(b, best, dir, p)))
 					best = b;
 			if (best == null)
 			{
@@ -2165,7 +2189,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 
 		// ---------------------------------------------------------------- OB mean threshold
 		[NinjaScriptProperty]
-		[Display(Name = "OB MT levels", GroupName = GOb, Order = 1, Description = "Charts up to 15m only, from 15m candles. An order block is a run of candles closing the same way (up or down); a candle of the other color whose body stays inside the zone so far does not end it. When price closes below the zone it is a resistance OB (for a retrace back up), when it closes above it a support OB (for a retrace back down); it changes role when price closes out of its other side, and is dropped only when older than the lookback. Of the resistance OBs still above price and the support OBs still below it, the most significant one (the deepest move away from it since it took that role) of each side is shown with its mean threshold (MT, the middle of the zone).")]
+		[Display(Name = "OB MT levels", GroupName = GOb, Order = 1, Description = "Charts up to 15m only, from 15m candles. An order block is a run of candles closing the same way; a candle of the other color whose body stays inside the zone so far does not end it. Up-close OBs are resistance: once price closes below one, its mean threshold (MT, the middle of the zone) is a level for the retrace back up, until a close above the MT. Down-close OBs are support the same way (a close above, until a close below the MT). The OB is kept (it can be used again after the next close out of its far side) until older than the lookback. Of each side, the most significant one (the deepest move away from it) above / covering price, or below / covering it, is shown.")]
 		public bool DoOb { get; set; }
 
 		[NinjaScriptProperty]

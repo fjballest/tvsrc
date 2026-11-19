@@ -238,13 +238,15 @@ On charts up to 15m, at most two dashed lines with a label at the right: **OB- M
 
 The order blocks come from 15m candles. An order block is a run of candles closing the same way (up-close or down-close). A candle of the other color whose body stays inside the zone built so far does not end the run, so a small bear candle inside a bull candle stays in a bull run. The zone spans the bodies of its candles (or the full candles, with **zone** set to Full candle), and its MT is the middle of the zone.
 
-Price decides what the order block is for, and it can change. When a 15m candle closes below the zone, price left it downward and it is a resistance OB, for when price retraces back up. When a candle closes above it, it is a support OB, for a retrace back down. Going through it does not discard it: price may move up from it, later come back down through it, and then use its MT on the way back up, so its role simply follows the side of the last close out of the zone. Only order blocks older than **lookback** 15m candles are dropped.
+The color of its candles decides what an order block is for. An OB of up-close candles is a resistance OB: once a 15m candle closes below it (price left it downward), its MT is a level for when price retraces back up. It stays a level while price wicks into or through the MT, and stops being one when a 15m candle closes above the MT. An OB of down-close candles is a support OB, the same way upside down: armed by a close above it, ended by a close below its MT.
 
-Of the resistance OBs above price, the most significant one is shown: the one price moved furthest away from since it became resistance (the deepest drop below it). The same goes for the support OBs below price (the highest rise above it since it became support).
+An OB that stopped being a level is not discarded: price may go on, come back and close out of its far side again, and then it is a level again for the next retrace. Only order blocks older than **lookback** 15m candles are dropped.
+
+Of the armed resistance OBs, the one covering price is shown (if several cover it, the most significant: the one price moved furthest away from since it was armed); when none covers price, the nearest one above it. The same goes for the armed support OBs, covering price or the nearest one below it.
 
 ### How to use it
 
-When price retraces into the zone, watch the MT: a wick through it that closes back, or a rejection at it, keeps the order block alive, and the move is expected to resume. A close through it does not remove it: it changes role, and it can be shown again on the other side of price.
+When price retraces into the zone, watch the MT: a wick through it that closes back, or a rejection at it, keeps the order block alive, and the move is expected to resume. A 15m close beyond the MT ends it as a level (the line goes away); it can come back after price closes out of its far side again.
 
 
 ## 8. Settings reference
