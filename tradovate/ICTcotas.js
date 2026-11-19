@@ -9,7 +9,7 @@
  * closed through become IFVGs. Mitigated levels are removed.
  *
  * Port of the TradingView Pine Script v6 indicator ICTcotas.txt
- * (md5 eb9e14ad38cdfb573ee6c23b56140ba4), (c) franjballest, Mozilla Public
+ * (md5 cc269d4b8b7b6faef4d5bb366bde02df), (c) franjballest, Mozilla Public
  * License 2.0 (https://mozilla.org/MPL/2.0/). Same logic, same inputs (as
  * camelCase parameters) and the same defaults.
  *
@@ -431,9 +431,10 @@ class Engine {
 
     // full pipeline of one chart bar (index j, values b)
     // [OB] a run of 15m candles closing the same way is an order block zone (bodies or full candles); a candle of
-    // the other color whose body stays inside the zone does not end the run. Once it ends, the first close beyond
-    // the zone sets its side: below it, resistance (dir -1); above it, support (dir 1). A close through the far
-    // side discards it. disp: how far price went away from it (its significance).
+    // the other color whose body stays inside the zone does not end the run. The side of the last close out of the
+    // zone sets its role: below it, resistance (dir -1); above it, support (dir 1). It flips when price closes out
+    // of the other side; only age (obLook) removes it. disp: how far price went away from it since it took that
+    // role (its significance).
     obStep(g) {
         const c = this.cfg, S = this.S, r = S.obRun;
         const { o, h, l } = g, cl = g.c;
@@ -453,19 +454,12 @@ class Engine {
         }
         for (let i = S.obs.length - 1; i >= 0; i--) {
             const ob = S.obs[i];
-            let drop = r.k - ob.k > c.obLook;
-            if (ob.dir === 0) {
-                if (cl < ob.lo) { ob.dir = -1; ob.ext = l; }
-                else if (cl > ob.hi) { ob.dir = 1; ob.ext = h; }
-            } else if (ob.dir === -1) {
-                ob.ext = Math.min(ob.ext, l);
-                drop = drop || cl > ob.hi;
-            } else {
-                ob.ext = Math.max(ob.ext, h);
-                drop = drop || cl < ob.lo;
-            }
+            if (cl < ob.lo && ob.dir !== -1) { ob.dir = -1; ob.ext = l; }
+            else if (cl > ob.hi && ob.dir !== 1) { ob.dir = 1; ob.ext = h; }
+            else if (ob.dir === -1) ob.ext = Math.min(ob.ext, l);
+            else if (ob.dir === 1) ob.ext = Math.max(ob.ext, h);
             ob.disp = ob.dir === -1 ? ob.lo - ob.ext : ob.dir === 1 ? ob.ext - ob.hi : 0;
-            if (drop) S.obs.splice(i, 1);
+            if (r.k - ob.k > c.obLook) S.obs.splice(i, 1);
         }
         if (S.obs.length > 200) S.obs.shift();
     }

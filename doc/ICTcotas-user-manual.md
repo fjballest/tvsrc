@@ -238,13 +238,13 @@ On charts up to 15m, at most two dashed lines with a label at the right: **OB- M
 
 The order blocks come from 15m candles. An order block is a run of candles closing the same way (up-close or down-close). A candle of the other color whose body stays inside the zone built so far does not end the run, so a small bear candle inside a bull candle stays in a bull run. The zone spans the bodies of its candles (or the full candles, with **zone** set to Full candle), and its MT is the middle of the zone.
 
-Price decides what the order block is for. When a later 15m candle closes below the zone, price left it downward and it is a resistance OB, for when price retraces back up. When a candle closes above it, it is a support OB, for a retrace back down. A 15m close through its far side (above a resistance OB, below a support OB) means price went through it, and it is discarded. Order blocks older than **lookback** 15m candles are dropped.
+Price decides what the order block is for, and it can change. When a 15m candle closes below the zone, price left it downward and it is a resistance OB, for when price retraces back up. When a candle closes above it, it is a support OB, for a retrace back down. Going through it does not discard it: price may move up from it, later come back down through it, and then use its MT on the way back up, so its role simply follows the side of the last close out of the zone. Only order blocks older than **lookback** 15m candles are dropped.
 
-Of the resistance OBs still above price, the most significant one is shown: the one price moved furthest away from (the deepest drop below it). The same goes for the support OBs below price (the highest rise above it).
+Of the resistance OBs above price, the most significant one is shown: the one price moved furthest away from since it became resistance (the deepest drop below it). The same goes for the support OBs below price (the highest rise above it since it became support).
 
 ### How to use it
 
-When price retraces into the zone, watch the MT: a wick through it that closes back, or a rejection at it, keeps the order block alive, and the move is expected to resume. A close through the far side kills it and the line goes away.
+When price retraces into the zone, watch the MT: a wick through it that closes back, or a rejection at it, keeps the order block alive, and the move is expected to resume. A close through it does not remove it: it changes role, and it can be shown again on the other side of price.
 
 
 ## 8. Settings reference

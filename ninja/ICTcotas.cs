@@ -7,7 +7,7 @@
 // FVGs closed through become IFVGs. Mitigated levels are removed.
 //
 // Port of the TradingView Pine Script v6 indicator ICTcotas.txt by franjballest
-// (source md5 eb9e14ad38cdfb573ee6c23b56140ba4). Mozilla Public License 2.0.
+// (source md5 cc269d4b8b7b6faef4d5bb366bde02df). Mozilla Public License 2.0.
 //
 // Install:
 //   1. Copy this file to  Documents\NinjaTrader 8\bin\Custom\Indicators\ICTcotas.cs
@@ -591,9 +591,10 @@ namespace NinjaTrader.NinjaScript.Indicators
 		#region OB mean threshold
 
 		// [OB] a run of 15m candles closing the same way is an order block zone (bodies or full candles); a candle of
-		// the other color whose body stays inside the zone does not end the run. Once it ends, the first close beyond
-		// the zone sets its side: below it, resistance (Dir -1); above it, support (Dir 1). A close through the far
-		// side discards it. Disp: how far price went away from it (its significance).
+		// the other color whose body stays inside the zone does not end the run. The side of the last close out of
+		// the zone sets its role: below it, resistance (Dir -1); above it, support (Dir 1). It flips when price
+		// closes out of the other side; only age (ObLookback) removes it. Disp: how far price went away from it
+		// since it took that role (its significance).
 		private class Ob
 		{
 			public double Hi, Lo, Ext = double.NaN, Disp;
@@ -633,32 +634,22 @@ namespace NinjaTrader.NinjaScript.Indicators
 			for (int i = obs.Count - 1; i >= 0; i--)
 			{
 				Ob b = obs[i];
-				bool drop = obK - b.K > ObLookback;
-				if (b.Dir == 0)
+				if (c < b.Lo && b.Dir != -1)
 				{
-					if (c < b.Lo)
-					{
-						b.Dir = -1;
-						b.Ext = l;
-					}
-					else if (c > b.Hi)
-					{
-						b.Dir = 1;
-						b.Ext = h;
-					}
+					b.Dir = -1;
+					b.Ext = l;
+				}
+				else if (c > b.Hi && b.Dir != 1)
+				{
+					b.Dir = 1;
+					b.Ext = h;
 				}
 				else if (b.Dir == -1)
-				{
 					b.Ext = Math.Min(b.Ext, l);
-					drop = drop || c > b.Hi;
-				}
-				else
-				{
+				else if (b.Dir == 1)
 					b.Ext = Math.Max(b.Ext, h);
-					drop = drop || c < b.Lo;
-				}
 				b.Disp = b.Dir == -1 ? b.Lo - b.Ext : b.Dir == 1 ? b.Ext - b.Hi : 0.0;
-				if (drop)
+				if (obK - b.K > ObLookback)
 					obs.RemoveAt(i);
 			}
 			if (obs.Count > 200)
@@ -2174,7 +2165,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 
 		// ---------------------------------------------------------------- OB mean threshold
 		[NinjaScriptProperty]
-		[Display(Name = "OB MT levels", GroupName = GOb, Order = 1, Description = "Charts up to 15m only, from 15m candles. An order block is a run of candles closing the same way (up or down); a candle of the other color whose body stays inside the zone so far does not end it. When price later closes below the zone it is a resistance OB (for a retrace back up), when it closes above it a support OB (for a retrace back down); a close through its far side discards it. Of the resistance OBs still above price and the support OBs still below it, the most significant one (the deepest move away from it) of each side is shown with its mean threshold (MT, the middle of the zone).")]
+		[Display(Name = "OB MT levels", GroupName = GOb, Order = 1, Description = "Charts up to 15m only, from 15m candles. An order block is a run of candles closing the same way (up or down); a candle of the other color whose body stays inside the zone so far does not end it. When price closes below the zone it is a resistance OB (for a retrace back up), when it closes above it a support OB (for a retrace back down); it changes role when price closes out of its other side, and is dropped only when older than the lookback. Of the resistance OBs still above price and the support OBs still below it, the most significant one (the deepest move away from it since it took that role) of each side is shown with its mean threshold (MT, the middle of the zone).")]
 		public bool DoOb { get; set; }
 
 		[NinjaScriptProperty]

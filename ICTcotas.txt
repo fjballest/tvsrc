@@ -283,10 +283,11 @@ const string G_OB = "OB mean threshold (15m, experimental)"
 bool doob = input.bool(true, "OB MT levels", group = G_OB, inline = "o1",
      tooltip = "Charts up to 15m only, from 15m candles. An order block is a run of candles closing the same way "
      + "(up or down); a candle of the other color whose body stays inside the zone so far does not end it. When "
-     + "price later closes below the zone it is a resistance OB (for a retrace back up), when it closes above it a "
-     + "support OB (for a retrace back down); a close through its far side discards it. Of the resistance OBs "
+     + "price closes below the zone it is a resistance OB (for a retrace back up), when it closes above it a "
+     + "support OB (for a retrace back down); it changes role when price closes out of its other side, and is "
+     + "dropped only when older than the lookback. Of the resistance OBs "
      + "still above price and the support OBs still below it, the most significant one (the deepest move away "
-     + "from it) of each side is shown with its mean threshold (MT, the middle of the zone).")
+     + "from it since it took that role) of each side is shown with its mean threshold (MT, the middle of the zone).")
 string obpart = input.string("Body", "zone", options = ["Body", "Full candle"], group = G_OB, inline = "o1")
 int oblook = input.int(300, "lookback (15m candles)", minval = 20, maxval = 2000, group = G_OB, inline = "o2")
 bool obzone = input.bool(false, "draw the zone", group = G_OB, inline = "o2")
@@ -1045,15 +1046,16 @@ for i = 0 to 5
 
 // ============================================================ OB mean threshold (15m, experimental)
 // [OB] a run of 15m candles closing the same way is an order block zone (bodies or full candles); a candle of the
-// other color whose body stays inside the zone does not end the run. Once it ends, the first close beyond the
-// zone sets its side: below it, resistance (dir -1); above it, support (dir 1). A close through the far side
-// discards it. disp: how far price went away from it (its significance).
+// other color whose body stays inside the zone does not end the run. The side of the last close out of the zone
+// sets its role: below it, resistance (dir -1); above it, support (dir 1). It flips when price closes out of the
+// other side, and only age (oblook) removes it. disp: how far price went away from it since it took that role
+// (its significance).
 type Ob
     float hi
     float lo
     int t
     int k        // 15m candle count at its end
-    int dir = 0  // 0 not left yet, -1 resistance, 1 support
+    int dir = 0  // side of the last close out of the zone: 0 none yet, -1 below (resistance), 1 above (support)
     float ext = na
     float disp = 0.0
 
@@ -1098,22 +1100,18 @@ obStep(float o, float h, float l, float c, int t) =>
     int i = obs.size() - 1
     while i >= 0
         Ob b = obs.get(i)
-        bool drop = obk - b.k > oblook
-        if b.dir == 0
-            if c < b.lo
-                b.dir := -1
-                b.ext := l
-            else if c > b.hi
-                b.dir := 1
-                b.ext := h
+        if c < b.lo and b.dir != -1
+            b.dir := -1
+            b.ext := l
+        else if c > b.hi and b.dir != 1
+            b.dir := 1
+            b.ext := h
         else if b.dir == -1
             b.ext := math.min(b.ext, l)
-            drop := drop or c > b.hi
-        else
+        else if b.dir == 1
             b.ext := math.max(b.ext, h)
-            drop := drop or c < b.lo
         b.disp := b.dir == -1 ? b.lo - b.ext : b.dir == 1 ? b.ext - b.hi : 0.0
-        if drop
+        if obk - b.k > oblook
             obs.remove(i)
         i -= 1
     if obs.size() > 200
