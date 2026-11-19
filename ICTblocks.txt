@@ -240,11 +240,11 @@ blkAge = input.int(60, "Max bars to the pullback", minval = 5, maxval = 1000, gr
     + "(of no interest at this timeframe, look at a higher one). Once tagged it is extended to each later pullback "
     + "into it, until a candle closes through its far side (failed; erased if no pullback had worked yet) or no "
     + "pullback comes for that many bars.")
-blkDraw = input.string("Shadow", "Draw", options = ["Rectangle", "Filled rectangle", "Shadow", "Segment"],
+blkDraw = input.string("Shadow", "Draw", options = ["Rectangle", "Filled rectangle", "Shadow", "Segment", "CE segment"],
     group = G_BLK, inline = "zd", tooltip = "Rectangle: border and label, no fill. Filled rectangle: with a "
     + "semi-transparent fill in the block color. Shadow: a grey transparent rectangle without border. Segment: only "
     + "the top of the zone (bullish) / its bottom (bearish), with the label; where it goes depends on Full candle / "
-    + "Body. Style and width are those of the border, the mid line and the segment. The bold IFVG labels and the "
+    + "Body. CE segment: the same, at the C.E. (middle) of the zone. Style and width are those of the border, the mid line and the segment. The bold IFVG labels and the "
     + "B / M labels of the FVGs are set either way.")
 blkSty = getstyle(input.string("dashed", "", options = ["solid", "dashed", "dotted"], group = G_BLK, inline = "zd"))
 blkW = attW(input.int(1, "width", minval = 1, maxval = 4, group = G_BLK, inline = "zd"))
@@ -255,14 +255,15 @@ blkFlag = input.bool(false, "Flag candles", group = G_BLK, inline = "zf",
 blkCe = input.bool(true, "Mid line (C.E.)", group = G_BLK, inline = "zf")
 blkLbl = input.string("right", "Label", options = ["right", "left", "center", "top left", "top right"], group = G_BLK,
     tooltip = "Where the B↑ / B↓ / M↑ / M↓ label goes in the rectangle: centered vertically on its right / left "
-    + "side, in the middle, or at a top corner. With the segment it sits on the segment, on that side.")
-blkSeg = blkDraw == "Segment"
+    + "side, in the middle, or at a top corner. With a segment it sits on the segment, on that side.")
+blkCeSeg = blkDraw == "CE segment"
+blkSeg = blkDraw == "Segment" or blkCeSeg
 blkLblH = blkLbl == "left" or blkLbl == "top left" ? text.align_left : blkLbl == "center" ? text.align_center : text.align_right
 blkLblV = blkLbl == "top left" or blkLbl == "top right" ? text.align_top : text.align_center
-// segment: the label goes on the segment (top of a bullish zone, bottom of a bearish one)
-blkLblVd(int d) => blkSeg ? (d == 1 ? text.align_top : text.align_bottom) : blkLblV
+// segment: the label goes on the segment (top of a bullish zone, bottom of a bearish one, middle for the CE segment)
+blkLblVd(int d) => blkCeSeg ? text.align_center : blkSeg ? (d == 1 ? text.align_top : text.align_bottom) : blkLblV
 // level of the mid line, or of the segment
-blkY(int d, float hi, float lo) => blkSeg ? (d == 1 ? hi : lo) : (hi + lo) / 2
+blkY(int d, float hi, float lo) => blkSeg and not blkCeSeg ? (d == 1 ? hi : lo) : (hi + lo) / 2
 
 // Breakers =========
 G_BRK = "Breakers"
