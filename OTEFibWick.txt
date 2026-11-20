@@ -281,7 +281,8 @@ wextend(array<WCE> ws, array<float> lens) =>
         idx = lens.sort_indices(order.descending)
         for j = 0 to math.min(wnext, idx.size()) - 1
             w = ws.get(idx.get(j))
-            w.ln.set_x2(bar_index + 1)
+            // one bar past the live candle, so the level stays visible while it moves through
+            w.ln.set_x2(bar_index + 2)
             w.extd := true
 
 dtr = math.max(dH - dL, math.abs(dH - nz(dC[1], dO)), math.abs(dL - nz(dC[1], dO)))
