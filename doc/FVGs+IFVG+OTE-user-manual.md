@@ -391,7 +391,7 @@ An IFVG with an arrow sits on a mitigation block that price has broken and come 
 
 ### What you see
 
-On charts up to 15m, at most two dashed lines with a label at the right: **OB- MT** (red) is the mean threshold of a resistance order block above price, and **OB+ MT** (green) that of a support order block below it. **draw the zone** also shows the order block itself. Nothing is drawn on higher timeframes.
+On charts up to 15m, at most two dashed lines, each running up to its **OBMT** label at the right: the red one is the mean threshold of a resistance order block above price, and the green one that of a support order block below it. **draw the zone** also shows the order block itself. Nothing is drawn on higher timeframes.
 
 ### What it is
 
@@ -550,8 +550,8 @@ Inputs on one line in the settings dialog are listed together; a field without i
 | lookback (15m candles) | 300 | Order blocks older than this are dropped |
 | draw the zone | off | Also draws the order block as a faint rectangle |
 | max height (15m ATRs) | 4 | A candle that would make the zone taller than this many 15m ATRs ends the run and starts the next one, so a rally of same-color candles is not one huge OB and the consolidation before it stays its own OB |
-| label offset (bars) | 2 | Bars from the last bar to the OB- MT / OB+ MT labels |
-| resistance / support | red / green | Colors of the OB- MT and OB+ MT lines, labels and zones |
+| label offset (bars) | 2 | Bars from the last bar to the OBMT labels (the MT lines run up to them) |
+| resistance / support | red / green | Colors of the resistance and support OBMT lines, labels and zones |
 | style, width | dashed, 1 | Line style and width |
 
 ### Delivery Engine (Nuno)

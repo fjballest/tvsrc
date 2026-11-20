@@ -169,8 +169,9 @@ obDraw(int dir, line ln0, label lb0, box bx0) =>
         color cc = dir == -1 ? obResCol : obSupCol
         float mt = (best.hi + best.lo) / 2
         int x = time + obXoff * timeframe.in_seconds() * 1000
-        ln := line.new(best.t, mt, time, mt, xloc = xloc.bar_time, color = cc, style = obSty, width = obWid)
-        lb := label.new(x, mt, dir == -1 ? "OB- MT" : "OB+ MT", xloc = xloc.bar_time, style = label.style_label_left,
+        // the MT line runs up to the label (its left end, half a bar before the text)
+        ln := line.new(best.t, mt, math.max(time, x - timeframe.in_seconds() * 500), mt, xloc = xloc.bar_time, color = cc, style = obSty, width = obWid)
+        lb := label.new(x, mt, "OBMT", xloc = xloc.bar_time, style = label.style_label_left,
              color = color.new(color.black, 100), textcolor = cc, size = size.small)
         bx := obZone ? box.new(best.t, best.hi, time, best.lo, xloc = xloc.bar_time, border_color = color.new(cc, 70),
              bgcolor = color.new(cc, 90)) : na
