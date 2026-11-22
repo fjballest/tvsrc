@@ -20,8 +20,8 @@ var dovhi = input.bool(true, "high volume dots", group=GS, inline="en2")
 var dovdiv = input.bool(true, "volume divergences", group=GS, inline="en2")
 var dothick = input.bool(true, "draw wicks", group=GS, inline="en3")
 var docote = input.bool(true, "candle OTE", group=GS, inline="en3",
-     tooltip="Candle OTE: small blue segments at the 0.62, 0.705 and 0.79 retracements of the last closed candle "
-     + "(its whole range, high to low), drawn while the next candle is live. Up-close candle: measured down from "
+     tooltip="Candle OTE: small segments (OTE color in the Wicks section) at the 0.62, 0.705 and 0.79 retracements of the last closed candle "
+     + "(its whole range, high to low), drawn while the next candle is live (only 0.62 and 0.79 when its range is not above the ATR). Up-close candle: measured down from "
      + "its high, where the live candle may retrace to for an OTE on it; down-close candle: measured up from its low. "
      + "If the last closed candle closed the same way as the one before and did not retrace to its 50%, the OTE of "
      + "the one before is kept, only that once.")
@@ -35,6 +35,7 @@ var bool nqscale = input.bool(true, "Scale sizes using NQ sizes as reference", g
 
 wick_width = input.int(2, "Wick Width", group = GW, minval=1, maxval=10, inline="w")
 wick_color = input.color(color.gray, "color", group = GW, inline = "w")
+cote_color = input.color(color.green, "OTE", group = GW, inline = "w", tooltip = "color of the candle OTE segments")
 var minwickIn = input.float(15, "wick CE sz", inline = "wick", group = GW)
 var wickdx = input.int(1, "bars",  inline = "wick", group=GW, 
      tooltip="0 for auto or number of bars for segment width")
@@ -424,9 +425,11 @@ if barstate.islast
     float cL1 = dL[ck]
     int cDir = coteKeep ? cDir2 : cDir1
     if docote and cDir != 0 and cH1 > cL1
-        for r in array.from(0.62, 0.705, 0.79)
+        // a candle not above the average size (its range up to the chart ATR) gets only 0.62 and 0.79
+        bool big = cH1 - cL1 > datr[ck]
+        for r in (big ? array.from(0.62, 0.705, 0.79) : array.from(0.62, 0.79))
             float p = cDir == 1 ? cH1 - r * (cH1 - cL1) : cL1 + r * (cH1 - cL1)
-            coteLns.push(line.new(bar_index - ck, p, bar_index + 1, p, color = color.blue, width = 1))
+            coteLns.push(line.new(bar_index - ck, p, bar_index + 1, p, color = cote_color, width = 1))
 
 mkfib(float lvl) =>
     f = Fib.new(lvl)
