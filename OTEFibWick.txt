@@ -18,6 +18,11 @@ var dofib = input.bool(true, "mark fib retracements for OTE", group=GS, inline="
 var dohtf = input.bool(false, "HTF OTEs", group=GS, inline="en")
 var dovhi = input.bool(true, "high volume dots", group=GS, inline="en2")
 var dovdiv = input.bool(true, "volume divergences", group=GS, inline="en2")
+var dothick = input.bool(true, "draw wicks", group=GS, inline="en3")
+var docote = input.bool(true, "candle OTE", group=GS, inline="en3",
+     tooltip="Candle OTE: small blue segments at the 0.62, 0.705 and 0.79 retracements of the last closed candle "
+     + "(its whole range, high to low), drawn while the next candle is live. Up-close candle: measured down from "
+     + "its high, where the live candle may retrace to for an OTE on it; down-close candle: measured up from its low.")
 var badatr = input.float(6, "ignore wicks longer than (daily ATRs)", minval = 0, step = 0.5, group = GS,
     tooltip = "Bad data: for the fib retracements and the HTF OTEs, a wick longer than this many daily ATRs is taken "+
         "as a bad print and the candle's high or low is taken at its body. 0: off.")
@@ -379,7 +384,7 @@ if dowick and compute and barstate.isconfirmed and bar_index > 2
         else
             kk += 1
 
-if compute 
+if compute and dothick
     body_top = math.max(dO, dC)
     body_bottom = math.min(dO, dC)
 
@@ -397,6 +402,20 @@ if compute
         ln = line.new(bar_index, dL, bar_index, body_bottom, color=wick_color, width=wick_width)
         wicks.push(ln)
     
+
+// candle OTE: the 0.62 / 0.705 / 0.79 retracements of the last closed candle (high to low), for the live candle
+var array<line> coteLns = array.new<line>()
+if barstate.islast
+    for l in coteLns
+        l.delete()
+    coteLns.clear()
+    float cH1 = dH[1]
+    float cL1 = dL[1]
+    int cDir = dC[1] > dO[1] ? 1 : dC[1] < dO[1] ? -1 : 0
+    if docote and cDir != 0 and cH1 > cL1
+        for r in array.from(0.62, 0.705, 0.79)
+            float p = cDir == 1 ? cH1 - r * (cH1 - cL1) : cL1 + r * (cH1 - cL1)
+            coteLns.push(line.new(bar_index - 1, p, bar_index + 1, p, color = color.blue, width = 1))
 
 mkfib(float lvl) =>
     f = Fib.new(lvl)
