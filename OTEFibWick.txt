@@ -414,7 +414,7 @@ int cDir1 = dC[1] > dO[1] ? 1 : dC[1] < dO[1] ? -1 : 0
 int cDir2 = dC[2] > dO[2] ? 1 : dC[2] < dO[2] ? -1 : 0
 float cMid2 = (dH[2] + dL[2]) / 2
 bool coteKeep = false
-coteKeep := cDir1 != 0 and cDir1 == cDir2 and (cDir1 == 1 ? dL[1] > cMid2 : dH[1] < cMid2) and not nz(coteKeep[1])
+coteKeep := cDir1 != 0 and cDir1 == cDir2 and (cDir1 == 1 ? dL[1] > cMid2 : dH[1] < cMid2) and not coteKeep[1]
 if barstate.islast
     for l in coteLns
         l.delete()
