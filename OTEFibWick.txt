@@ -22,7 +22,7 @@ var dothick = input.bool(true, "draw wicks", group=GS, inline="en3")
 var docote = input.bool(true, "candle OTE", group=GS, inline="en3",
      tooltip="Candle OTE: small segments (OTE color in the Wicks section) at the 0.62, 0.705 and 0.79 retracements of the last closed candle "
      + "(its whole range, high to low), drawn while the next candle is live (only 0.62 and 0.79 when its range is not above the ATR). Up-close candle: measured down from "
-     + "its high, where the live candle may retrace to for an OTE on it; down-close candle: measured up from its low. "
+     + "its high, where the live candle may retrace to for an OTE on it; down-close candle: measured up from its low. A tiny body (30% of the range at most) near the high (long down wick) counts as up-close, near the low (long up wick) as down-close. "
      + "If the last closed candle closed the same way as the one before and did not retrace to its 50%, the OTE of "
      + "the one before is kept, only that once.")
 var badatr = input.float(6, "ignore wicks longer than (daily ATRs)", minval = 0, step = 0.5, group = GS,
@@ -411,8 +411,16 @@ if compute and dothick
 // (up-close: its low stays above the middle; down-close: its high stays below), the OTE of the one before is kept.
 // Only once: the next candle uses its own again.
 var array<line> coteLns = array.new<line>()
-int cDir1 = dC[1] > dO[1] ? 1 : dC[1] < dO[1] ? -1 : 0
-int cDir2 = dC[2] > dO[2] ? 1 : dC[2] < dO[2] ? -1 : 0
+// direction for the OTE: a tiny body (at most 30% of the range) counts by where it sits: near the high (long down
+// wick) as up-close, near the low (long up wick) as down-close, whatever its color
+coteDir(float o, float h, float l, float c) =>
+    float bt = math.max(o, c)
+    float bb = math.min(o, c)
+    float mid = (h + l) / 2
+    h > l and bt - bb <= 0.3 * (h - l) and bb > mid ? 1 : h > l and bt - bb <= 0.3 * (h - l) and bt < mid ? -1
+         : c > o ? 1 : c < o ? -1 : 0
+int cDir1 = coteDir(dO[1], dH[1], dL[1], dC[1])
+int cDir2 = coteDir(dO[2], dH[2], dL[2], dC[2])
 float cMid2 = (dH[2] + dL[2]) / 2
 bool coteKeep = false
 coteKeep := cDir1 != 0 and cDir1 == cDir2 and (cDir1 == 1 ? dL[1] > cMid2 : dH[1] < cMid2) and not coteKeep[1]
