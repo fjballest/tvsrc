@@ -1008,7 +1008,9 @@ insertSorted(array<FVG> a, FVG f) =>
         bumpTags()
     true
 
-// older drawn FVG (any bias) that is almost exactly the same zone as f
+// older drawn FVG (any bias) that is almost exactly the same zone as f. Not a box shown as the IFVG of the other
+// direction (the candidate or kept IFVG f would not be): both would share one box, and releasing f (unconfirmed)
+// would restore it, wiping that IFVG (a bearish FVG at the zone of a confirmed IFVG- did).
 findDup(FVG f) =>
     FVG r = na
     float tol = (f.hi - f.lo) * dupTol / 100.0
@@ -1020,7 +1022,8 @@ findDup(FVG f) =>
             if n > 0
                 for i = n - 1 to 0
                     FVG g = arr.get(i)
-                    if math.abs(g.hi - f.hi) <= tol and math.abs(g.lo - f.lo) <= tol and (na(r) or g.start > r.start)
+                    bool clash = g.kept and g.kdir != (f.islong ? -1 : 1)
+                    if not clash and math.abs(g.hi - f.hi) <= tol and math.abs(g.lo - f.lo) <= tol and (na(r) or g.start > r.start)
                         r := g
                         break
     r
