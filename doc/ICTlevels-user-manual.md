@@ -29,6 +29,8 @@ ICTlevels is also available split in two, generated from it and always in sync w
 
 Both together draw what ICTlevels draws (each with its own 500 object budget). Use one of the two pairs: ICTlevels alone, or ICTgaps with ICTday.
 
+ICTgaps is also split in three, one kind of gap each, each with its own 500 object budget: **NWOGs** (`NWOGs.txt`, only the NWOGs), **NDOGs** (`NDOGs.txt`, only the NDOGs, with the Monday and Friday only option) and **RTHOGs** (`RTHOGs.txt`, the RTHOGs with their quadrants, octants and stddevs, and the premarket range, each with its switch). Each keeps the shared gap settings (gaps to keep, rectangles, combining) and Time & Settings. Use them instead of ICTgaps, next to ICTday.
+
 ## 2. Quick start
 
 1. Add **ICTlevels** to the chart.
