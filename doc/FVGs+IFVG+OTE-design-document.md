@@ -143,7 +143,7 @@ Pine requires every function to return a value, so functions that only mutate st
 | Function | Role |
 | --- | --- |
 | `route(FltState, FVG)` | Entry point for a regular FVG: merge into a duplicate, or show it, or put it in `pendF`. |
-| `findDup(FVG)` | Most recent drawn FVG (any bias) within the merge tolerance, searching `lfvgs`, `sfvgs`, `fpfvgs` and `keptIf`. |
+| `findDup(FVG)` | Most recent drawn FVG (any bias) within the merge tolerance, searching `lfvgs`, `sfvgs`, `fpfvgs` and `keptIf`; skips a box shown as the IFVG of the other direction (`kept` with `kdir` not the one `f` would be a candidate for: -1 for a bullish `f`, 1 for a bearish one), since both would share it and releasing `f` unconfirmed would restore it. |
 | `mergeZone(g, f)` | Widens both FVGs to max high / min low, moves the C.E., updates box and lines, and re-opens `g`. Frozen when `g` is a kept IFVG. |
 | `insertSorted(array, FVG)` | Inserts by start time and marks the FVG as shown. |
 | `reveal(FVG)` | Shows a pending FVG, or merges it into an existing duplicate (the merged box then starts at the earlier start). |

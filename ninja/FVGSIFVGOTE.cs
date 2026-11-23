@@ -2,7 +2,7 @@
 // FVGSIFVGOTE - Fair value gaps, 1st presented FVGs, inverse FVGs (IFVG) and ICT OTE, for NinjaTrader 8
 // ---------------------------------------------------------------------------------------------------------------------
 // Port of the TradingView Pine Script v6 indicator "FVGs+IFVG+OTE5" by franjballest
-// (source file FVGS+IFVG+OTE.txt, md5 99fb37d9ada7092e62572f0cfae67436). Mozilla Public License 2.0, as the original.
+// (source file FVGS+IFVG+OTE.txt, md5 c1e6f1ad96fd127603f2e23798f366b9). Mozilla Public License 2.0, as the original.
 //
 // What it draws: FVG boxes (or no-fill boxes, or hi / lo / C.E. segments) with C.E. lines, the 1st presented FVG of the
 // session open (New York 09:30, or Madrid 09:00 for DAX) and its optional inverse, wick C.E. segments, IFVG candidates
@@ -1638,7 +1638,9 @@ namespace NinjaTrader.NinjaScript.Indicators
                     for (int i = arr.Count - 1; i >= 0; i--)
                     {
                         Fvg g = arr[i];
-                        if (Math.Abs(g.hi - f.hi) <= tol && Math.Abs(g.lo - f.lo) <= tol && (r == null || g.start > r.start))
+                        // not a box shown as the IFVG of the other direction (it would be wiped when f is released)
+                        bool clash = g.kept && g.kdir != (f.islong ? -1 : 1);
+                        if (!clash && Math.Abs(g.hi - f.hi) <= tol && Math.Abs(g.lo - f.lo) <= tol && (r == null || g.start > r.start))
                         {
                             r = g;
                             break;

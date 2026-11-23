@@ -13,7 +13,7 @@
  *   BM↑/BM↓, inheritance of the tags by IFVGs) and LONG / SHORT / OTE signal markers.
  *
  *   Port of the TradingView Pine Script v6 indicator "FVGS+IFVG+OTE.txt"
- *   (md5 99fb37d9ada7092e62572f0cfae67436, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
+ *   (md5 c1e6f1ad96fd127603f2e23798f366b9, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
  *   input variable names (camelCase). See the design document (d.md) and user manual (m.md) for the logic.
  *
  * How to install
@@ -1481,7 +1481,9 @@ class FVGSIFVGOTE {
             for (const arr of [this.lfvgs, this.sfvgs, this.fpfvgs, this.keptIf]) {
                 for (let k = arr.length - 1; k >= 0; k--) {
                     const g = arr[k];
-                    if (Math.abs(g.hi - f.hi) <= tol && Math.abs(g.lo - f.lo) <= tol && (r === null || g.start > r.start)) {
+                    // not a box shown as the IFVG of the other direction (it would be wiped when f is released)
+                    const clash = g.kept && g.kdir !== (f.islong ? -1 : 1);
+                    if (!clash && Math.abs(g.hi - f.hi) <= tol && Math.abs(g.lo - f.lo) <= tol && (r === null || g.start > r.start)) {
                         r = g;
                         break;
                     }

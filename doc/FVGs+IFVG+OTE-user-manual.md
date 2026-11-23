@@ -131,7 +131,7 @@ The script keeps the last **keep** (200) bullish and the last 200 bearish FVGs; 
 
 ### Merging near-identical FVGs
 
-ICT price action often prints a second FVG at almost the same place as an existing one. With **Merge tol. %** at 10, a new FVG (of either bias) whose high and low are each within 10% of its height of an existing drawn FVG is not drawn. The existing box absorbs it: it is widened to the higher high and lower low, its C.E. moves, and if it had been mitigated it is opened again. The absorbed FVG still feeds the IFVG logic, so the merged box can become the IFVG box. A box currently shown as an IFVG is never widened. Set the tolerance to 0 to turn merging off.
+ICT price action often prints a second FVG at almost the same place as an existing one. With **Merge tol. %** at 10, a new FVG (of either bias) whose high and low are each within 10% of its height of an existing drawn FVG is not drawn. The existing box absorbs it: it is widened to the higher high and lower low, its C.E. moves, and if it had been mitigated it is opened again. The absorbed FVG still feeds the IFVG logic, so the merged box can become the IFVG box. A box currently shown as an IFVG is never widened, and it does not absorb an FVG that would be an IFVG candidate of the other direction (a bearish FVG at the zone of an `IFVG-`, a bullish one at an `IFVG+`): that one gets its own box, so the IFVG is kept. Set the tolerance to 0 to turn merging off.
 
 ### FVG filter (liquidity sweeps)
 
