@@ -16,16 +16,10 @@ string dataSym = dAlt ? dSym : syminfo.tickerid
 [dO, dH, dL, dC] = request.security(dataSym, timeframe.period, [open, high, low, close], gaps = barmerge.gaps_off,
      lookahead = barmerge.lookahead_off)
 
-// up to 250 wick lines are kept (the oldest go first); the live bar's wicks are updated in place on every tick
-var wicks = array.new<line>()
+// TradingView removes the oldest lines past max_lines_count (500), so the last wicks that fit are kept;
+// the live bar's wicks are updated in place on every tick
 var line upLn = na
 var line dnLn = na
-
-push(line ln) =>
-    wicks.push(ln)
-    if wicks.size() > 250
-        wicks.shift().delete()
-    ln
 
 if barstate.isnew
     upLn := na
@@ -35,7 +29,7 @@ if not na(dO)
     float bodyBot = math.min(dO, dC)
     if dH > bodyTop
         if na(upLn)
-            upLn := push(line.new(bar_index, dH, bar_index, bodyTop, color = wick_color, width = wick_width))
+            upLn := line.new(bar_index, dH, bar_index, bodyTop, color = wick_color, width = wick_width)
         else
             upLn.set_y1(dH)
             upLn.set_y2(bodyTop)
@@ -43,7 +37,7 @@ if not na(dO)
         upLn.set_y2(upLn.get_y1())
     if dL < bodyBot
         if na(dnLn)
-            dnLn := push(line.new(bar_index, dL, bar_index, bodyBot, color = wick_color, width = wick_width))
+            dnLn := line.new(bar_index, dL, bar_index, bodyBot, color = wick_color, width = wick_width)
         else
             dnLn.set_y1(dL)
             dnLn.set_y2(bodyBot)
