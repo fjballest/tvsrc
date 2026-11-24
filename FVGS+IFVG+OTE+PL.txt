@@ -156,7 +156,7 @@ var visible = input.bool(false, "Historic compute", group = GRP_MAIN, inline = "
     tooltip = "Off: keeps the last FVGs for real time use (scroll-safe, discards old FVGs).\n"+
         "On: computes FVGs up to the rightmost visible time (good for history, slower when scrolling).")
 var dofvgalert = input.bool(false, "FVG bounce alerts", group = GRP_MAIN, inline = "v")
-var sbCol = input.color(#C0C0C0, "SB border", group = GRP_MAIN, inline = "sb",
+var sbCol = input.color(#AB47BC, "SB border", group = GRP_MAIN, inline = "sb",
     tooltip = "Border of the first FVG of each silver bullet window (Silver bullet in Enable).")
 var sbWid = input.int(2, "width", minval = 1, maxval = 4, group = GRP_MAIN, inline = "sb")
 

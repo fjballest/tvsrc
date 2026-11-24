@@ -139,7 +139,7 @@ var visible = input.bool(false, "Historic compute", group = GRP_MAIN, inline = "
     tooltip = "Off: keeps the last FVGs for real time use (scroll-safe, discards old FVGs).\n"+
         "On: computes FVGs up to the rightmost visible time (good for history, slower when scrolling).")
 var dofvgalert = input.bool(false, "FVG bounce alerts", group = GRP_MAIN, inline = "v")
-var sbCol = input.color(#C0C0C0, "SB border", group = GRP_MAIN, inline = "sb",
+var sbCol = input.color(#AB47BC, "SB border", group = GRP_MAIN, inline = "sb",
     tooltip = "Border of the first FVG of each silver bullet window (Silver bullet in Enable).")
 var sbWid = input.int(2, "width", minval = 1, maxval = 4, group = GRP_MAIN, inline = "sb")
 
@@ -518,6 +518,10 @@ bumpTags() =>
     tagSeq.set(0, tagSeq.get(0) + 1)
 
 
+// [SB] border width: the silver bullet FVG has its own
+method bw(FVG f) =>
+    f.sb and not f.isfp and not f.isifp ? sbWid : 1
+
 
 // label of a plain FVG box: A+, or the breaker / mitigation block tag (B↑, M↓, BM↑...), plus OTE
 fvgLbl(FVG f) =>
@@ -777,7 +781,7 @@ method restore(FVG f) =>
         else
             f.rect.set_bgcolor(f.bgColor())
             f.rect.set_border_color(f.lnColor())
-            f.rect.set_border_width(1)
+            f.rect.set_border_width(f.bw())
             f.rect.set_text(fvgLbl(f))
             f.rect.set_right(f.endsAt())
             f.rect.set_extend((f.isifp or f.isfp) ? extend.right : extend.none)
@@ -1245,17 +1249,17 @@ updfvgs(array<FVG> fvgs) =>
                         color = f.lnColor(),
                         xloc = xloc.bar_time,
                         extend = (f.isifp or f.isfp) ? extend.right : extend.none,
-                        width = 1)
+                        width = f.bw())
                     f.loln := line.new(f.start, f.lo, et, f.lo,
                         color = f.lnColor(),
                         xloc = xloc.bar_time,
                         extend = (f.isifp or f.isfp) ? extend.right : extend.none,
-                        width = 1)
+                        width = f.bw())
             else if na(f.rect)
                 f.rect := box.new(f.start, f.hi, et, f.lo,
                     bgcolor = f.bgColor(),
                     border_color = f.lnColor(),
-                    border_width = 1,
+                    border_width = f.bw(),
                     xloc = xloc.bar_time,
                     extend = (f.isifp or f.isfp) ? extend.right : extend.none,
                     border_style = line.style_solid)
@@ -1342,7 +1346,7 @@ if fltRel and barstate.islast
             float dist = close > f.hi ? close - f.hi : close < f.lo ? f.lo - close : 0.0
             if dist <= rng
                 relB.push(box.new(f.start, f.hi, time, f.lo, xloc = xloc.bar_time,
-                     bgcolor = f.bgColor(), border_color = f.lnColor(), border_width = 1,
+                     bgcolor = f.bgColor(), border_color = f.lnColor(), border_width = f.bw(),
                      border_style = line.style_solid, text = fvgLbl(f), text_size = ifvgtsz,
                      text_halign = ifvgha, text_valign = ifvgva))
 

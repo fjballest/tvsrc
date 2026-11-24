@@ -111,7 +111,7 @@ GRP_MAIN = "FVG Settings"
 
 var visible = false
 var dofvgalert = false
-var sbCol = #C0C0C0
+var sbCol = #AB47BC
 var sbWid = 2
 
 var minfvgIn = input.float(3, "Size: min", minval = 1, maxval = 1000, group = GRP_MAIN, inline = "sz",
@@ -509,6 +509,10 @@ bumpTags() =>
     tagSeq.set(0, tagSeq.get(0) + 1)
 
 
+// [SB] border width: the silver bullet FVG has its own
+method bw(FVG f) =>
+    f.sb and not f.isfp and not f.isifp ? sbWid : 1
+
 
 // label of a plain FVG box: A+, or the breaker / mitigation block tag (B↑, M↓, BM↑...), plus OTE
 fvgLbl(FVG f) =>
@@ -722,7 +726,7 @@ method restore(FVG f) =>
         else
             f.rect.set_bgcolor(f.bgColor())
             f.rect.set_border_color(f.lnColor())
-            f.rect.set_border_width(1)
+            f.rect.set_border_width(f.bw())
             f.rect.set_text(fvgLbl(f))
             f.rect.set_right(f.endsAt())
             f.rect.set_extend((f.isifp or f.isfp) ? extend.right : extend.none)
@@ -1304,7 +1308,7 @@ if fltRel and barstate.islast
             float dist = close > f.hi ? close - f.hi : close < f.lo ? f.lo - close : 0.0
             if dist <= rng
                 relB.push(box.new(f.start, f.hi, time, f.lo, xloc = xloc.bar_time,
-                     bgcolor = f.bgColor(), border_color = f.lnColor(), border_width = 1,
+                     bgcolor = f.bgColor(), border_color = f.lnColor(), border_width = f.bw(),
                      border_style = line.style_solid, text = fvgLbl(f), text_size = ifvgtsz,
                      text_halign = ifvgha, text_valign = ifvgva))
 

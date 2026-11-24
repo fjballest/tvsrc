@@ -162,11 +162,12 @@ def derive(lines, tag, keep, setv, title, header, srctitle="FVGs+IFVG+OTE5"):
 
 
 def fold(txt):
-    """both derivatives have deFlag and deAplus as constants false: drop bw() (always 1) and deAp() (always
-    false), whose arguments would be unused"""
-    txt, n = re.subn(r"(?m)^// \[DE\] border width[^\n]*\nmethod bw\(FVG f\) =>\n(?: [^\n]*\n)+", "", txt)
+    """both derivatives have deFlag and deAplus as constants false: bw() keeps only the silver bullet width,
+    deAp() (always false) is dropped, its argument would be unused"""
+    txt, n = re.subn(r"(?m)^// \[DE\] border width[^\n]*\nmethod bw\(FVG f\) =>\n(?: [^\n]*\n)+",
+                     "// [SB] border width: the silver bullet FVG has its own\nmethod bw(FVG f) =>\n"
+                     "    f.sb and not f.isfp and not f.isifp ? sbWid : 1\n\n", txt)
     assert n == 1, "bw"
-    txt = txt.replace("f.bw()", "1")
     txt, n = re.subn(r"(?m)^(?:// A\+ for an IFVG[^\n]*\n)?deAp\(int d\) =>\n(?: [^\n]*\n)+", "", txt)
     assert n == 1, "deAp"
     txt = re.sub(r"\bdeAp\([^()]*\)", "false", txt)
@@ -174,7 +175,7 @@ def fold(txt):
     txt = re.sub(r"(?m)^    if isMss and false\n(?:        [^\n]*\n)+", "", txt)
     txt = re.sub(r"f\.aplus := deAplus and not na\(deMss(?:Up|Dn)Bar\)[^\n]*", "f.aplus := false // [DE] A+ off", txt)
     txt = re.sub(r"(?m)^var int deMss(?:Up|Dn)Bar = na[^\n]*\n", "", txt)
-    assert "bw(" not in txt and not re.search(r"\bdeAp\b|deMss(Up|Dn)Bar", txt)
+    assert "deFlag and f.disp" not in txt and not re.search(r"\bdeAp\b|deMss(Up|Dn)Bar", txt)
     return txt
 
 

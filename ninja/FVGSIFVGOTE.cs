@@ -2,7 +2,7 @@
 // FVGSIFVGOTE - Fair value gaps, 1st presented FVGs, inverse FVGs (IFVG) and ICT OTE, for NinjaTrader 8
 // ---------------------------------------------------------------------------------------------------------------------
 // Port of the TradingView Pine Script v6 indicator "FVGs+IFVG+OTE5" by franjballest
-// (source file FVGS+IFVG+OTE.txt, md5 eef7bd8d4b4195fc665d8615321ff89e). Mozilla Public License 2.0, as the original.
+// (source file FVGS+IFVG+OTE.txt, md5 48f43e5e3cb9323423c55eef78de80a8). Mozilla Public License 2.0, as the original.
 //
 // What it draws: FVG boxes (or no-fill boxes, or hi / lo / C.E. segments) with C.E. lines, the 1st presented FVG of the
 // session open (New York 09:30, or Madrid 09:00 for DAX) and its optional inverse, wick C.E. segments, IFVG candidates
@@ -358,7 +358,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                 HistoricCompute = false;
                 FvgBounceAlerts = false;
                 SilverBullet = true;
-                SbBorder = new SolidColorBrush(Color.FromRgb(0xC0, 0xC0, 0xC0));
+                SbBorder = new SolidColorBrush(Color.FromRgb(0xAB, 0x47, 0xBC));
                 SbWidth = 2;
                 MinFvgSize = 3;
                 MaxFvgSize = 10000;
@@ -619,7 +619,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             // colors
             cL = AttF(ColorOf(LongFvgColor, CTransp));
             cLn = AttB(ColorOf(LongFvgBorder, CBlack));
-            cSb = ColorOf(SbBorder, Color.FromRgb(0xC0, 0xC0, 0xC0));
+            cSb = ColorOf(SbBorder, Color.FromRgb(0xAB, 0x47, 0xBC));
             cS = AttF(ColorOf(ShortFvgColor, CTransp));
             cSn = AttB(ColorOf(ShortFvgBorder, CBlack));
             cFp = AttF(ColorOf(FpDayColor, CTransp));

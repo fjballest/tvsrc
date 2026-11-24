@@ -90,7 +90,7 @@ Note the IFVG colors: a bullish FVG that is closed through becomes a bearish IFV
 
 ### Silver bullet FVGs
 
-With **Silver bullet** on (Enable / Draw / Filter, on by default), the first FVG of either bias formed in each silver bullet window (3:00-4:00 AM, 10:00-11:00 AM and 2:00-3:00 PM New York time; the window of the candle that completes the gap) gets `SB` in its label and the SB border: silver (#C0C0C0), width 2, set with **SB border** and **width** in FVG Settings. The border shows whatever the attenuation. 1PFVGs keep their own look, and an SB FVG that becomes an IFVG takes the IFVG look (the `SB` label comes back if it returns to a plain FVG). Also in FVGs+IFVG+OTE4, FVGs+IFVG+OTE+PL and the NinjaTrader and Tradovate ports.
+With **Silver bullet** on (Enable / Draw / Filter, on by default), the first FVG of either bias formed in each silver bullet window (3:00-4:00 AM, 10:00-11:00 AM and 2:00-3:00 PM New York time; the window of the candle that completes the gap) gets `SB` in its label and the SB border: purple (#AB47BC), width 2, set with **SB border** and **width** in FVG Settings. The border shows whatever the attenuation. 1PFVGs keep their own look, and an SB FVG that becomes an IFVG takes the IFVG look (the `SB` label comes back if it returns to a plain FVG). Also in FVGs+IFVG+OTE4, FVGs+IFVG+OTE+PL and the NinjaTrader and Tradovate ports.
 
 ### Labels
 
@@ -435,7 +435,7 @@ Inputs on one line in the settings dialog are listed together; a field without i
 | --- | --- | --- |
 | Historic compute | Off | Off: keeps the last FVGs for real-time use; scroll-safe, older FVGs are discarded. On: computes FVGs up to the right edge of the visible chart; good for studying history, slower when scrolling. |
 | FVG bounce alerts | Off | Alerts when price touches the high, low or C.E. of an open FVG and closes away from it. |
-| SB border, width (same line) | silver #C0C0C0, 2 | Border color and width of the silver bullet FVGs |
+| SB border, width (same line) | purple #AB47BC, 2 | Border color and width of the silver bullet FVGs |
 | Size: min | 3 (1 - 1000) | Minimum FVG height (wick gap) to be valid. |
 | max | 10000 (min 100) | Ignore FVGs larger than this (bad data with huge gaps). |
 | keep | 200 (2 - 500) | Number of bullish and of bearish FVGs kept. |

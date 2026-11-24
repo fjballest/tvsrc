@@ -13,7 +13,7 @@
  *   BM↑/BM↓, inheritance of the tags by IFVGs) and LONG / SHORT / OTE signal markers.
  *
  *   Port of the TradingView Pine Script v6 indicator "FVGS+IFVG+OTE.txt"
- *   (md5 eef7bd8d4b4195fc665d8615321ff89e, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
+ *   (md5 48f43e5e3cb9323423c55eef78de80a8, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
  *   input variable names (camelCase). See the design document (d.md) and user manual (m.md) for the logic.
  *
  * How to install
@@ -96,7 +96,7 @@ const PARAMS = [
     ["attLvl", "n", 2, [1, 0]], ["nqscale", "b", true],
     // FVG Settings
     ["visible", "b", false], ["dofvgalert", "b", false], ["diag", "b", false],
-    ["sbCol", "c", "#C0C0C0"], ["sbWid", "n", 2, [1, 1]],
+    ["sbCol", "c", "#AB47BC"], ["sbWid", "n", 2, [1, 1]],
     ["minfvg", "n", 3, [0.25, 1]], ["maxfvg", "n", 10000, [1, 100]], ["maxfvgs", "n", 200, [1, 2]],
     ["dupTol", "n", 10, [1, 0]], ["flL", "n", 3, [1, 1]], ["flR", "n", 3, [1, 1]],
     ["drawStyle", "e", "box", { box: "Box", boxNoFill: "Box, no fill", segments: "Segments (hi / lo / C.E.)" }],
