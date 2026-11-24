@@ -704,7 +704,7 @@ method lnColor(FVG f) =>
     bool hid = hideReg and (ifvgOnly or (not f.isfp and not f.isifp))
     // [REL] too small for a C.E.: no border (boxes only; segments are the lines themselves)
     // [SB] silver bullet FVG: silver border (not its C.E.), whatever the attenuation or size
-    bool sbB = f.sb and not ce and not hid and not f.isfp and not f.isifp
+    bool sbB = f.sb and not hid and not f.isfp and not f.isifp
     sbB ? sbCol : hid or (false and not stySeg) or (attLvl >= 3 and not stySeg) ? color.new(c, 100) : c
 
 // IFVG boxes: the FVG box itself is turned into the IFVG box (no second box on the same place) ====
