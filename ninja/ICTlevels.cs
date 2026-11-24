@@ -4,7 +4,7 @@
 // quadrants and standard deviations, premarket range, EQH/EQL, PO3 lines, TGIF levels, macros,
 // silver bullet and a session/macro status text. Draws levels only: no plots, no signals, no alerts.
 //
-// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 cec25722d26c29c29f4f2eb4e3dfcdbf),
+// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 f3de0fbb1f97859a19bc5bc00c31d96a),
 // © franjballest, Mozilla Public License 2.0 (https://mozilla.org/MPL/2.0/).
 //
 // Install:
@@ -485,6 +485,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 				AddDataSeries(BarsPeriodType.Day, 1);    // BarsArray[1]: daily ATR(14) and daily swings
 				AddDataSeries(BarsPeriodType.Month, 1);  // BarsArray[2]: month high / low / close
 				AddDataSeries(BarsPeriodType.Minute, 15); // BarsArray[3]: 15m opens for the taken month levels
+				AddDataSeries(BarsPeriodType.Minute, 1);  // BarsArray[4]: 1m prices at the RTH close / open
 			}
 			else if (State == State.DataLoaded)
 			{
@@ -677,6 +678,11 @@ namespace NinjaTrader.NinjaScript.Indicators
 			if (BarsInProgress == 1)
 			{
 				OnDailyBar();
+				return;
+			}
+			if (BarsInProgress == 4)
+			{
+				On1mBar();
 				return;
 			}
 			if (BarsInProgress != 0)
@@ -917,7 +923,14 @@ namespace NinjaTrader.NinjaScript.Indicators
 				if (mktClose)
 				{
 					IRthog rt = new IRthog { id = nextId++ };
-					RStarts(rt, Close[1], Time[1]);
+					int dClose = (market.es - tsec + 86400) % 86400;
+					// the 1m bar ending at the close lies inside this bar when the close is not on a bar boundary
+					DateTime barOpen = Time[0].AddSeconds(-tfsecs);
+					if (tfsecs > 60 && dClose > 0 && dClose < tfsecs && !double.IsNaN(m1Settle)
+						&& m1SettleT > barOpen && m1SettleT <= Time[0])
+						RStarts(rt, m1Settle, Time[0]);
+					else
+						RStarts(rt, Close[1], Time[1]);
 					if (rthogs.Count > 0)
 					{
 						IRthog pv = rthogs[rthogs.Count - 1];
@@ -938,7 +951,12 @@ namespace NinjaTrader.NinjaScript.Indicators
 				{
 					IRthog cg = rthogs[rthogs.Count - 1];
 					if (!double.IsNaN(cg.cl) && (finalBar || rthOpenBar))
-						REnds(cg, rthOpenBar ? Open[0] : Close[0]);
+					{
+						// the open inside this bar (not on a bar boundary): the open of the 1m bar starting at it
+						bool midOpen = tfsecs > 60 && dOpen > 0 && dOpen < tfsecs && !double.IsNaN(m1Open)
+							&& m1OpenT > Time[0].AddSeconds(-tfsecs) && m1OpenT <= Time[0];
+						REnds(cg, rthOpenBar ? (midOpen ? m1Open : Open[0]) : Close[0]);
+					}
 				}
 				// automatic stddevs: extremes of the day from the open until the close
 				if (RthogAuto && !mktClose && rthogs.Count > 0)
@@ -1059,6 +1077,28 @@ namespace NinjaTrader.NinjaScript.Indicators
 		// [MON] a previous month high (low) is taken once a completed day after that month closes above (below) it
 		// and at least one of its 15m candles opens above (below) it. Checked on the first 15m bar of each session,
 		// for the day that just ended (its last 15m close, its lowest / highest 15m open).
+		// RTH close / open inside a chart bar (2m, 4m, 10m... bars do not end at 16:15 or start at 09:30): the
+		// price at that instant comes from the 1m bars, which close before the chart bar that contains it
+		private double m1Settle = double.NaN, m1Open = double.NaN;
+		private DateTime m1SettleT, m1OpenT;
+		private void On1mBar()
+		{
+			if (market == null)
+				return;
+			DateTime b = ToTz(Times[4][0].AddMinutes(-1));   // 1m bar open time in the target time zone
+			int s = (int)b.TimeOfDay.TotalSeconds;
+			if ((s + 60) % 86400 == market.es)
+			{
+				m1Settle = Closes[4][0];
+				m1SettleT = Times[4][0];
+			}
+			if (s == market.ss)
+			{
+				m1Open = Opens[4][0];
+				m1OpenT = Times[4][0];
+			}
+		}
+
 		private void On15mBar()
 		{
 			if (CurrentBars[3] < 1)

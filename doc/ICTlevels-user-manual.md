@@ -213,7 +213,7 @@ Opening gaps are price ranges the market jumped over. ICT treats their high, low
 
 ### 4.8 RTHOG
 
-The regular trading hours opening gap is the range between the settlement of the regular session (the close of the last bar before 16:15 New York / 17:30 Madrid) and the next regular open (09:30 New York / 09:00 Madrid). Needs a chart timeframe of 15 minutes or lower.
+The regular trading hours opening gap is the range between the settlement of the regular session (the price at 16:15 New York / 17:30 Madrid: the close of the last bar before it) and the next regular open (09:30 New York / 09:00 Madrid). On charts whose bars do not end at the close or start at the open (2m, 4m, 10m...: their bars are aligned to the session start), the settlement and the open are taken from the 1m candles inside that bar, so they are the same as on 1m or 5m. Tradovate has no 1m data there and uses the chart bars. Needs a chart timeframe of 15 minutes or lower.
 
 **What you see**
 

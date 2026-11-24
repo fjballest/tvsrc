@@ -11,7 +11,7 @@
  *   It draws levels only: no signals, no alerts, no plots.
  *
  *   It is a port of the TradingView Pine Script v6 indicator ICTlevels.txt
- *   (md5 cec25722d26c29c29f4f2eb4e3dfcdbf). Parameter names are the Pine variable names and the
+ *   (md5 f3de0fbb1f97859a19bc5bc00c31d96a). Parameter names are the Pine variable names and the
  *   defaults are the Pine defaults; see "doc/ICTlevels-user-manual.md" for what every level means.
  *
  * How to install

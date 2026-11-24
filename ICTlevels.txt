@@ -1802,10 +1802,42 @@ bool rthOpenBar = dOpen < tfsecs            // bar containing the open
 bool rthOk = inWin and dogaps and dorthog and tfsecs <= 900 and bar_index > 0
      and last_bar_index - bar_index <= 5000 and dow != dayofweek.sunday
 
+// The settlement is the price at the market close (16:15 US), the open the price at the RTH open. When that
+// instant falls inside a bar (charts like 2m, 4m or 10m: their bars are aligned to the 18:00 session start, not to
+// 16:15 or 09:30), the chart bars do not have it: it comes from the 1m candles of that bar (the close of the one
+// ending at the close instant, the open of the one starting at the open instant).
+int dClose = (market.es - tsec + 86400) % 86400
+bool rthLtfOn = dogaps and dorthog and tfsecs > 60 and tfsecs <= 900
+[ltT, ltO, ltC] = request.security_lower_tf(syminfo.tickerid, rthLtfOn ? "1" : timeframe.period, [time, open, close])
+// close of the last 1m candle ending at or before t (na: none)
+ltCloseBefore(int t) =>
+    float r = na
+    int n = ltT.size()
+    if n > 0
+        for i = 0 to n - 1
+            if ltT.get(i) + 60000 <= t
+                r := ltC.get(i)
+    r
+// open of the first 1m candle starting at or after t (na: none)
+ltOpenAt(int t) =>
+    float r = na
+    int n = ltT.size()
+    if n > 0
+        for i = n - 1 to 0
+            if ltT.get(i) >= t
+                r := ltO.get(i)
+    r
+bool rthMidClose = rthLtfOn and dClose > 0 and dClose < tfsecs
+bool rthMidOpen = rthLtfOn and dOpen > 0 and dOpen < tfsecs
+
 if rthOk
     if mktClose
         RTHOG rt = RTHOG.new()
-        rt.rstarts(close[1], time[1])
+        float stl = rthMidClose ? ltCloseBefore(time + dClose * 1000) : na
+        if na(stl)
+            rt.rstarts(close[1], time[1])
+        else
+            rt.rstarts(stl, time)
         if rthogs.size() > 0
             RTHOG pv = rthogs.last()
             pv.killq()
@@ -1819,7 +1851,8 @@ if rthOk
     else if rthStarting and rthogs.size() > 0
         RTHOG cg = rthogs.last()
         if not na(cg.cl) and (finalBar or rthOpenBar)
-            cg.rends(rthOpenBar ? open : close)
+            float rop = rthMidOpen ? ltOpenAt(time + dOpen * 1000) : na
+            cg.rends(rthOpenBar ? nz(rop, open) : close)
     // automatic stddevs: extremes of the day from the open (open bar included) until the close
     if rthogauto and not mktClose and rthogs.size() > 0
         RTHOG ag = rthogs.last()
