@@ -56,6 +56,7 @@ GRP_EN = "Enable / Draw / Filter"
 var dofp = false
 doifvg = true
 var dowick = false
+var sbOn = false
 
 drawMode = "all"
 fltMode = "none"
@@ -110,6 +111,8 @@ GRP_MAIN = "FVG Settings"
 
 var visible = false
 var dofvgalert = false
+var sbCol = #C0C0C0
+var sbWid = 2
 
 var minfvgIn = input.float(3, "Size: min", minval = 1, maxval = 1000, group = GRP_MAIN, inline = "sz",
     tooltip = "Minimum FVG size (points) to be valid.")
@@ -496,6 +499,7 @@ type FVG
     bool swp = false // [REL] last FVG before a sweep: shown once it becomes an IFVG
     bool ext = false // [REL] extended by a merged duplicate
     int dbar = na // [REL] bar index where it was filled
+    bool sb = false // [SB] first FVG of a silver bullet window
 
 // [PERF] bumped whenever an FVG gets a breaker / mitigation block tag, is widened by a merge or a tagged one is
 // drawn: ifvgInherit
@@ -515,6 +519,8 @@ fvgLbl(FVG f) =>
         t := (f.brk and f.mbD != 0 ? "BM" : f.brk ? "B" : "M") + (f.lblD == 1 ? "↑" : "↓")
     if f.ote and not hideReg
         t += (t == "" ? "" : " ") + "OTE"
+    if f.sb and not hideReg
+        t += (t == "" ? "" : " ") + "SB"
     t
 
 // [OTEF] swings of the chart timeframe for the leg origin
@@ -697,7 +703,9 @@ method lnColor(FVG f) =>
         c := ilnfpcol
     bool hid = hideReg and (ifvgOnly or (not f.isfp and not f.isifp))
     // [REL] too small for a C.E.: no border (boxes only; segments are the lines themselves)
-    hid or (false and not stySeg) or (attLvl >= 3 and not stySeg) ? color.new(c, 100) : c
+    // [SB] silver bullet FVG: silver border (not its C.E.), whatever the attenuation or size
+    bool sbB = f.sb and not ce and not hid and not f.isfp and not f.isifp
+    sbB ? sbCol : hid or (false and not stySeg) or (attLvl >= 3 and not stySeg) ? color.new(c, 100) : c
 
 // IFVG boxes: the FVG box itself is turned into the IFVG box (no second box on the same place) ====
 var array<FVG> keptIf = array.new<FVG>()   // FVGs whose box is currently shown as IFVG
@@ -1069,6 +1077,13 @@ if hour(time,tz) != fph
 timeat(int n) =>
     time[-n]
 FVG lastlongfvg = na
+// [SB] silver bullet windows in New York time: 3-4 AM, 10-11 AM, 2-3 PM. sbKey: day and window of the candle that
+// completes the FVG ([1]); sbLast: the window that already has its first FVG
+int sbH = hour(time[1], "America/New_York")
+int sbW = sbH == 3 ? 1 : sbH == 10 ? 2 : sbH == 14 ? 3 : 0
+int sbKey = ((year(time[1], "America/New_York") * 100 + month(time[1], "America/New_York")) * 100
+     + dayofmonth(time[1], "America/New_York")) * 10 + sbW
+var int sbLast = na
 FVG lastshortfvg = na
 if true
     [hi, lo, fhi, flo] = longFVGHL(open[1], close[1], low[1], open[2],
@@ -1087,6 +1102,9 @@ if true
         f.aplus := false // [DE] A+ off
         f.disp := deDispOK // [DE]
         lastlongfvg := f
+        if sbOn and sbW > 0 and sbKey != nz(sbLast)
+            f.sb := true
+            sbLast := sbKey
         if not hasifp and hasfp and fpKept and doifp and not fpLow
             fp = fpfvgs.last()
             if fp.islong != f.islong
@@ -1127,6 +1145,9 @@ if true
         f.aplus := false // [DE] A+ off
         f.disp := deDispOK // [DE]
         lastshortfvg := f
+        if sbOn and sbW > 0 and sbKey != nz(sbLast)
+            f.sb := true
+            sbLast := sbKey
         if not hasifp and hasfp and fpKept and doifp and not fpLow
             fp = fpfvgs.last()
             if fp.islong != f.islong

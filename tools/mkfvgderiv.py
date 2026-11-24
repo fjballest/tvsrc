@@ -23,7 +23,7 @@ OTE4_SET = {"brkOn": "false", "mbOn": "false", "lblAp": "false"}
 # OB mean threshold section of tools/ictblocks-ob.txt (appended as is)
 BLK_KEEP = re.compile(r"^(brk\w*|mb\w*|deDisp|deDispType|deStdLen|deStdX|deDispBar|deDispCol|deConf|deInv|"
                       r"deMaxInv|plMode|minfvgIn|maxfvgIn|nqscale)$")
-BLK_SET = {"dofp": "false", "dowick": "false", "useOTE": "false", "oteFvg": "false", "showOTEband": "false",
+BLK_SET = {"sbOn": "false", "dofp": "false", "dowick": "false", "useOTE": "false", "oteFvg": "false", "showOTEband": "false",
            "showSignals": "false", "showOTEsig": "false", "doifvgalert": "false", "dofvgalert": "false",
            "dowickalert": "false", "fp1m": "false", "oteHtf1": "false", "oteHtf2": "false",
            "deAplus": "false", "deFlag": "false", "showSwing": "false", "ifvgswings": "false",

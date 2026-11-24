@@ -11,7 +11,7 @@
  *   It draws levels only: no signals, no alerts, no plots.
  *
  *   It is a port of the TradingView Pine Script v6 indicator ICTlevels.txt
- *   (md5 f3de0fbb1f97859a19bc5bc00c31d96a). Parameter names are the Pine variable names and the
+ *   (md5 10d7bfc663548e2c71a93d7a83bfc7f8). Parameter names are the Pine variable names and the
  *   defaults are the Pine defaults; see "doc/ICTlevels-user-manual.md" for what every level means.
  *
  * How to install
@@ -549,7 +549,7 @@ class ICTlevels {
             "1515-1530", "1545-1600", "0230-0300", "0403-0430"]
             : ["0700-0710", "0750-0810", "0850-0910", "0955-1010", "1050-1110", "1245-1310", "1650-1710",
                 "1515-1540", "1850-1910", "1350-1410"];
-        const sbTimes = useUS ? ["1000-1100", "1400-1500"] : ["1000-1100"];
+        const sbTimes = useUS ? ["0300-0400", "1000-1100", "1400-1500"] : ["1000-1100"];
 
         // styles: { sty, wid, col, op } (op: fill opacity for rectangles)
         // [ATT] day lines minor, day / session max and min normal; session rectangles: filled and lighter at

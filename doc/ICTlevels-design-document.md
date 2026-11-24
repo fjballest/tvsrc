@@ -36,7 +36,7 @@ All time-of-day logic works on `tsec`, the open time of the bar in seconds since
 | NY AM | 0700-1130 | 1330-1800 |
 | NY PM | 1330-1600 | 1900-2200 |
 | Premarket (Auto) | 0700-0900 | 0630-0830 |
-| Silver bullet | 1000-1100, 1400-1500 | 1000-1100 |
+| Silver bullet | 0300-0400, 1000-1100, 1400-1500 | 1000-1100 |
 
 Macros are ten fixed windows per market. The names and times sit in the arrays `mNames` and `mTimes`.
 

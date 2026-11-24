@@ -13,7 +13,7 @@
  *   BM↑/BM↓, inheritance of the tags by IFVGs) and LONG / SHORT / OTE signal markers.
  *
  *   Port of the TradingView Pine Script v6 indicator "FVGS+IFVG+OTE.txt"
- *   (md5 c1e6f1ad96fd127603f2e23798f366b9, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
+ *   (md5 eef7bd8d4b4195fc665d8615321ff89e, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
  *   input variable names (camelCase). See the design document (d.md) and user manual (m.md) for the logic.
  *
  * How to install
@@ -89,13 +89,14 @@ const TV = {
 const STYLE_OPTS = { solid: "solid", dashed: "dashed", dotted: "dotted" };
 const PARAMS = [
     // Enable / Draw / Filter
-    ["dofp", "b", true], ["doifvg", "b", true], ["dowick", "b", true],
+    ["dofp", "b", true], ["doifvg", "b", true], ["dowick", "b", true], ["sbOn", "b", true],
     ["drawMode", "e", "all", { all: "all", PFVG: "1PFVGs", IFVG: "IFVGs", PFVG_IFVG: "1PFVGs+IFVGs" }],
     ["fltMode", "e", "none", { none: "none", sweeps: "sweeps", sweepsMid: "sweeps&mid", relevant: "relevant", recentRelevant: "recent relevant" }],
     ["fpMode", "e", "all", { all: "all", week: "week", weekFridays: "week+fridays", weekFridaysLast: "week+fridays+last" }],
     ["attLvl", "n", 2, [1, 0]], ["nqscale", "b", true],
     // FVG Settings
     ["visible", "b", false], ["dofvgalert", "b", false], ["diag", "b", false],
+    ["sbCol", "c", "#C0C0C0"], ["sbWid", "n", 2, [1, 1]],
     ["minfvg", "n", 3, [0.25, 1]], ["maxfvg", "n", 10000, [1, 100]], ["maxfvgs", "n", 200, [1, 2]],
     ["dupTol", "n", 10, [1, 0]], ["flL", "n", 3, [1, 1]], ["flR", "n", 3, [1, 1]],
     ["drawStyle", "e", "box", { box: "Box", boxNoFill: "Box, no fill", segments: "Segments (hi / lo / C.E.)" }],
@@ -469,6 +470,7 @@ class FVGSIFVGOTE {
         this.wicks = [];
         // FVGs
         this.lfvgs = []; this.sfvgs = []; this.fpfvgs = []; this.keptIf = []; this.pendF = [];
+        this.sbLast = -1; // [SB] day and window of the last silver bullet FVG
         // [REL] live FVGs not shown (yet), small drawn FVGs just filled (swing check), boxes near the price
         this.relF = []; this.relS = []; this.relB = [];
         this.otePL = null; this.otePLb = null; this.otePH = null; this.otePHb = null; // [OTEF] last chart swings
@@ -848,6 +850,15 @@ class FVGSIFVGOTE {
                     f.aplus = P.deAplus && mssBar !== null && j - mssBar <= 3;
                     f.disp = deDispOK;
                     if (islong) lastlongfvg = f; else lastshortfvg = f;
+                    // [SB] the first FVG (either bias) whose completing candle ([1]) opens in a silver bullet
+                    // window (New York 3-4 AM, 10-11 AM, 2-3 PM) gets the SB label and border
+                    if (P.sbOn && j >= 1) {
+                        const li = localInfo(this.T[j - 1], "America/New_York");
+                        const hr = Math.floor(li.mod / 60);
+                        const w = hr === 3 ? 1 : hr === 10 ? 2 : hr === 14 ? 3 : 0;
+                        const key = li.day * 10 + w;
+                        if (w > 0 && key !== this.sbLast) { f.sb = true; this.sbLast = key; }
+                    }
                     if (!this.hasifp && this.hasfp && this.fpKept && P.doifp && this.fpfvgs.length > 0) {
                         const fp = this.fpfvgs[this.fpfvgs.length - 1];
                         if (fp.islong !== f.islong) {
@@ -1203,7 +1214,7 @@ class FVGSIFVGOTE {
             hi, lo, ce, islong, start, end: null, rect: null, celine: null, isfp: false, iswfp: false, isffp: false, isifp: false, fptmp: false,
             sbar: null, hiln: null, loln: null, kept: false, kdir: 0, khold: null, dup: null, cand: false, own: false,
             shown: false, aplus: false, disp: false, brk: false, brkD: 0, mbD: 0,
-            lblD: 0, ote: false, oLo: null, oHi: null,
+            lblD: 0, ote: false, sb: false, oLo: null, oHi: null,
             swp: false, ext: false, dbar: null   // [REL] last FVG before a sweep, extended by a merge, bar filled
         };
     }
@@ -1213,6 +1224,7 @@ class FVGSIFVGOTE {
         if (f.aplus && this.P.lblAp) t = this.hideReg ? "" : "A+";
         else if (f.brk || f.mbD !== 0) t = (f.brk && f.mbD !== 0 ? "BM" : f.brk ? "B" : "M") + (f.lblD === 1 ? "\u2191" : "\u2193");
         if (f.ote && !this.hideReg) t += (t === "" ? "" : " ") + "OTE";
+        if (f.sb && !this.hideReg) t += (t === "" ? "" : " ") + "SB";
         return t;
     }
     // [OTEF] leg of a new FVG (candles [3] to [1]): origin = the lowest low (bullish) / highest high (bearish)
@@ -1310,7 +1322,10 @@ class FVGSIFVGOTE {
     cB(c, t) { return col(c, t + (100 - t) * this.attE() * 0.18); }
     cBx(c, t) { return this.P.attLvl >= 3 ? col(c, 100) : this.cB(c, t); }
     attW(w) { return Math.max(1, w - Math.floor(this.attE() / 2)); }
-    bw(f) { return this.P.deFlag && f.disp && !f.isfp && !f.isifp ? this.attW(this.P.deFlagW) : 1; } // 1PFVGs keep their look
+    bw(f) {
+        const w = this.P.deFlag && f.disp && !f.isfp && !f.isifp ? this.attW(this.P.deFlagW) : 1; // 1PFVGs keep their look
+        return f.sb && !f.isfp && !f.isifp ? Math.max(w, this.P.sbWid) : w; // [SB] its own border width
+    }
     kill(f) {
         if (!f) return;
         this.g.del(f.rect); this.g.del(f.celine); this.g.del(f.hiln); this.g.del(f.loln);
@@ -1336,6 +1351,8 @@ class FVGSIFVGOTE {
         if (f.isfp) { c = P.lnfpcol; if (f.iswfp) c = P.lnwfpcol; else if (f.isffp) c = P.lnffpcol; }
         if (f.isifp) c = P.ilnfpcol;
         const hid = this.hideReg && (this.ifvgOnly || (!f.isfp && !f.isifp));
+        // [SB] silver bullet FVG: silver border (not its C.E.), whatever the attenuation or size
+        if (f.sb && !ce && !hid && !f.isfp && !f.isifp) return col(P.sbCol, 0);
         // [REL] too small for a C.E.: no border (boxes only; segments are the lines themselves)
         return hid || (this.relSmall(f) && !this.stySeg) ? col(c, 100) : (ce ? (this.P.attLvl >= 4 && !this.stySeg ? col(c, 100) : this.cBc(c, 20)) : (this.stySeg ? this.cB(c, 20) : this.cBx(c, 20)));
     }

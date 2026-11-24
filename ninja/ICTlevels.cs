@@ -4,7 +4,7 @@
 // quadrants and standard deviations, premarket range, EQH/EQL, PO3 lines, TGIF levels, macros,
 // silver bullet and a session/macro status text. Draws levels only: no plots, no signals, no alerts.
 //
-// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 f3de0fbb1f97859a19bc5bc00c31d96a),
+// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 10d7bfc663548e2c71a93d7a83bfc7f8),
 // © franjballest, Mozilla Public License 2.0 (https://mozilla.org/MPL/2.0/).
 //
 // Install:
@@ -571,7 +571,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 			string[] mTimes = useUS
 				? new[] { "0740-0810", "0850-0910", "0950-1010", "1050-1110", "1150-1210", "1310-1340", "1515-1530", "1545-1600", "0230-0300", "0403-0430" }
 				: new[] { "0700-0710", "0750-0810", "0850-0910", "0955-1010", "1050-1110", "1245-1310", "1650-1710", "1515-1540", "1850-1910", "1350-1410" };
-			string[] sbTimes = useUS ? new[] { "1000-1100", "1400-1500" } : new[] { "1000-1100" };
+			string[] sbTimes = useUS ? new[] { "0300-0400", "1000-1100", "1400-1500" } : new[] { "1000-1100" };
 			macros = new List<ZI>();
 			for (int i = 0; i < mNames.Length; i++)
 			{

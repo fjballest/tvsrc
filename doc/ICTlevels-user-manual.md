@@ -64,7 +64,7 @@ All times below are in the script's time zone: New York for US, Madrid for EU. W
 | NY AM session | 07:00-11:30 | 13:30-18:00 |
 | NY PM session | 13:30-16:00 | 19:00-22:00 |
 | Premarket range (Auto) | 07:00-09:00 | 06:30-08:30 |
-| Silver bullet | 10:00-11:00 and 14:00-15:00 | 10:00-11:00 |
+| Silver bullet | 03:00-04:00, 10:00-11:00 and 14:00-15:00 | 10:00-11:00 |
 
 Macros are ten fixed windows per market:
 
@@ -595,6 +595,6 @@ To stay fast, the script processes only a window of recent history: about 1.5 ti
 | REH / REL | Relative equal highs / lows: highs (lows) close to each other within a tolerance. |
 | RTHOG | Regular trading hours opening gap: between the regular session settlement and the next regular open. |
 | Settlement | The last price of the regular session as used by the script (close of the last bar before 16:15 New York or 17:30 Madrid). |
-| Silver bullet | A one-hour ICT window (10:00-11:00, and 14:00-15:00 for US) for a fair value gap entry. |
+| Silver bullet | A one-hour ICT window (US: 03:00-04:00, 10:00-11:00 and 14:00-15:00 New York; EU: 10:00-11:00) for a fair value gap entry. |
 | Sweep / taken | Price trading through a level, taking the liquidity resting there. |
 | TGIF | "Thank God it's Friday": the expected 20%-30% retracement of a displaced week on Friday or Monday. |

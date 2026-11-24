@@ -2,7 +2,7 @@
 // FVGSIFVGOTE - Fair value gaps, 1st presented FVGs, inverse FVGs (IFVG) and ICT OTE, for NinjaTrader 8
 // ---------------------------------------------------------------------------------------------------------------------
 // Port of the TradingView Pine Script v6 indicator "FVGs+IFVG+OTE5" by franjballest
-// (source file FVGS+IFVG+OTE.txt, md5 c1e6f1ad96fd127603f2e23798f366b9). Mozilla Public License 2.0, as the original.
+// (source file FVGS+IFVG+OTE.txt, md5 eef7bd8d4b4195fc665d8615321ff89e). Mozilla Public License 2.0, as the original.
 //
 // What it draws: FVG boxes (or no-fill boxes, or hi / lo / C.E. segments) with C.E. lines, the 1st presented FVG of the
 // session open (New York 09:30, or Madrid 09:00 for DAX) and its optional inverse, wick C.E. segments, IFVG candidates
@@ -141,6 +141,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             public int brkD, mbD;
             public int lblD;                       // direction of the B / M / BM label
             public bool ote;                       // [OTEF] OTE FVG
+            public bool sb;                        // [SB] first FVG of a silver bullet window
             public double oLo = double.NaN, oHi = double.NaN; // [OTEF] leg low / high
             public bool swp;                       // [REL] last FVG before a sweep: shown once it becomes an IFVG
             public bool ext;                       // [REL] extended by a merged duplicate
@@ -244,7 +245,7 @@ namespace NinjaTrader.NinjaScript.Indicators
         // derived inputs
         private bool fponly, ifvgOnly, hideReg, fltOff, fltMid, fltRel, fltRecent, styNoFill, stySeg;
         private const int RelMaxAge = 1000;   // RecentRelevant: hidden FVGs older than this (bars) are dropped
-        private Color cL, cLn, cS, cSn, cFp, cFpn, cWfp, cWfpn, cFfp, cFfpn, cIfp, cIfpn, cWick, cDead, cBullIf, cBearIf;
+        private Color cL, cLn, cS, cSn, cFp, cFpn, cWfp, cWfpn, cFfp, cFfpn, cIfp, cIfpn, cWick, cDead, cBullIf, cBearIf, cSb;
         private Color cOteBand, cOteHi, cOteTxt, cBrk, cMb, cBrkDn, cMbDn, cIfvgTxt;
         private Brush dispBrush;
         private int ifvgTs, ifvgHa, ifvgVa;
@@ -356,6 +357,9 @@ namespace NinjaTrader.NinjaScript.Indicators
                 NqScale = true;
                 HistoricCompute = false;
                 FvgBounceAlerts = false;
+                SilverBullet = true;
+                SbBorder = new SolidColorBrush(Color.FromRgb(0xC0, 0xC0, 0xC0));
+                SbWidth = 2;
                 MinFvgSize = 3;
                 MaxFvgSize = 10000;
                 FvgsKept = 200;
@@ -615,6 +619,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             // colors
             cL = AttF(ColorOf(LongFvgColor, CTransp));
             cLn = AttB(ColorOf(LongFvgBorder, CBlack));
+            cSb = ColorOf(SbBorder, Color.FromRgb(0xC0, 0xC0, 0xC0));
             cS = AttF(ColorOf(ShortFvgColor, CTransp));
             cSn = AttB(ColorOf(ShortFvgBorder, CBlack));
             cFp = AttF(ColorOf(FpDayColor, CTransp));
@@ -1277,7 +1282,32 @@ namespace NinjaTrader.NinjaScript.Indicators
             return r;
         }
 
-        private int Bw(Fvg f) { return FlagDispFvgs && f.disp && !f.isfp && !f.isifp ? AttW(FlagDispWidth) : 1; } // 1PFVGs keep their look
+        private int Bw(Fvg f)
+        {
+            int w = FlagDispFvgs && f.disp && !f.isfp && !f.isifp ? AttW(FlagDispWidth) : 1; // 1PFVGs keep their look
+            // [SB] silver bullet FVG: its own border width
+            return f.sb && !f.isfp && !f.isifp ? Math.Max(w, SbWidth) : w;
+        }
+
+        // [SB] silver bullet windows in New York time: 3-4 AM, 10-11 AM, 2-3 PM. The first FVG (either bias) whose
+        // completing candle ([1]) opens in one of them gets the SB label and border; sbLast: day and window used
+        private TimeZoneInfo nyTz;
+        private long sbLast = -1;
+        private void SbMark(Fvg f)
+        {
+            if (!SilverBullet)
+                return;
+            if (nyTz == null)
+                nyTz = FindTz("America/New_York");
+            DateTime t = ToZone(BarOpen(1), nyTz);
+            int w = t.Hour == 3 ? 1 : t.Hour == 10 ? 2 : t.Hour == 14 ? 3 : 0;
+            long key = ((long)(t.Year * 100 + t.Month) * 100 + t.Day) * 10 + w;
+            if (w > 0 && key != sbLast)
+            {
+                f.sb = true;
+                sbLast = key;
+            }
+        }
 
         // 1PFVG (or inverse 1PFVG) zone, or a duplicate merged into one: it keeps its own look
         private static bool IsFp(Fvg fv) { if (fv == null) return false; Fvg f = fv.dup ?? fv; return f.isfp || f.isifp; }
@@ -1292,6 +1322,8 @@ namespace NinjaTrader.NinjaScript.Indicators
                 t = (f.brk && f.mbD != 0 ? "BM" : f.brk ? "B" : "M") + (f.lblD == 1 ? "\u2191" : "\u2193");
             if (f.ote && !hideReg)
                 t += (t == "" ? "" : " ") + "OTE";
+            if (f.sb && !hideReg)
+                t += (t == "" ? "" : " ") + "SB";
             return t;
         }
 
@@ -1435,6 +1467,9 @@ namespace NinjaTrader.NinjaScript.Indicators
             if (f.isifp) c = cIfpn;
             bool hid = hideReg && (ifvgOnly || (!f.isfp && !f.isifp));
             // [REL] too small for a C.E.: no border (boxes only; segments are the lines themselves)
+            // [SB] silver bullet FVG: silver border (not its C.E.), whatever the attenuation or size
+            if (f.sb && !ce && !hid && !f.isfp && !f.isifp)
+                return cSb;
             return hid || (RelSmall(f) && !stySeg) || (Attenuation >= (ce ? 4 : 3) && !stySeg) ? Tr(c, 100) : ce ? AttCE(c) : c;
         }
 
@@ -3163,6 +3198,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                         f.aplus = APlusSetups && deMssUpBar.HasValue && bi - deMssUpBar.Value <= 3;
                         f.disp = deDispOK;
                         lastlongfvg = f;
+                        SbMark(f);
                         Classify(f, fpNow);
                     }
                 }
@@ -3196,6 +3232,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                         f.aplus = APlusSetups && deMssDnBar.HasValue && bi - deMssDnBar.Value <= 3;
                         f.disp = deDispOK;
                         lastshortfvg = f;
+                        SbMark(f);
                         Classify(f, fpNow);
                     }
                 }
@@ -3629,6 +3666,10 @@ namespace NinjaTrader.NinjaScript.Indicators
         public bool ShowWickCE { get; set; }
 
         [NinjaScriptProperty]
+        [Display(Name = "Silver bullet", GroupName = "Enable / Draw / Filter", Order = 109, Description = "The first FVG (either bias) formed in each silver bullet window (3-4 AM, 10-11 AM and 2-3 PM New York time) gets SB in its label and the SB border (color and width in FVG Settings).")]
+        public bool SilverBullet { get; set; }
+
+        [NinjaScriptProperty]
         [Display(Name = "Draw", GroupName = "Enable / Draw / Filter", Order = 104, Description = "All: everything. OnlyPFVGs: only 1PFVGs, no other FVG. IFVGs: only IFVG boxes and OTE bands. PFVGsAndIFVGs: both. The IFVGs modes hide regular FVGs, wick C.E., swing labels and signals (alerts keep working).")]
         public FioDrawMode DrawSelection { get; set; }
 
@@ -3656,6 +3697,23 @@ namespace NinjaTrader.NinjaScript.Indicators
         [NinjaScriptProperty]
         [Display(Name = "FVG bounce alerts", GroupName = "FVG Settings", Order = 202, Description = "Alert when price touches the high, low or C.E. of an open FVG and closes away from it.")]
         public bool FvgBounceAlerts { get; set; }
+
+        [NinjaScriptProperty]
+        [XmlIgnore]
+        [Display(Name = "SB border", GroupName = "FVG Settings", Order = 2021, Description = "Border of the first FVG of each silver bullet window (Silver bullet in Enable).")]
+        public Brush SbBorder { get; set; }
+
+        [Browsable(false)]
+        public string SbBorderSerializable
+        {
+            get { return Serialize.BrushToString(SbBorder); }
+            set { SbBorder = Serialize.StringToBrush(value); }
+        }
+
+        [NinjaScriptProperty]
+        [Range(1, 4)]
+        [Display(Name = "SB border width", GroupName = "FVG Settings", Order = 2022)]
+        public int SbWidth { get; set; }
 
         [NinjaScriptProperty]
         [Range(1, 1000)]
