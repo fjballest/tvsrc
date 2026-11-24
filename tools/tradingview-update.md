@@ -30,13 +30,19 @@ goes in as a synthetic paste:
 | NDOGs                | NDOGs.txt              |
 | RTHOGs               | RTHOGs.txt             |
 
-Saving does not update the copies already on the charts. In the ICT6win layout,
-for each changed script open it in the editor, select each of the six panes
-(click inside the pane) and press "Update on chart" (the editor button's title;
-"Add to chart" means it is not on that pane: skip it). It keeps the inputs.
-Then select the 15m pane and save its indicators as the "ICTmany" template
-(templates menu, "Save indicator template...", replace), and save the layout.
-Do not click the template shortcuts in the top toolbar: they apply a template.
+Saving does not update the copies already on the charts. In the ICT6win layout
+do it once, on the 15m pane, which has the full ICTmany set:
+
+1. For each changed script, open its source from that pane's legend ("Source
+   code" on the indicator), paste the new source, save, and press "Update on
+   chart". It keeps the inputs.
+2. With all of them updated, select the 15m pane and save its indicators as the
+   "ICTmany" template (templates menu, "Save indicator template...", replace).
+3. Select each of the other five panes and load the ICTmany template from the
+   templates menu, so they all get the new versions. Then save the layout.
+
+Do not click the template shortcuts in the top toolbar by mistake: they apply a
+template to whichever pane is selected.
 
 Publishing an update is public: the release notes are shown to the user and
 published only with the user's OK, as an update of the existing publication
