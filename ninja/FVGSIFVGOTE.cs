@@ -2,7 +2,7 @@
 // FVGSIFVGOTE - Fair value gaps, 1st presented FVGs, inverse FVGs (IFVG) and ICT OTE, for NinjaTrader 8
 // ---------------------------------------------------------------------------------------------------------------------
 // Port of the TradingView Pine Script v6 indicator "FVGs+IFVG+OTE5" by franjballest
-// (source file FVGS+IFVG+OTE.txt, md5 48f43e5e3cb9323423c55eef78de80a8). Mozilla Public License 2.0, as the original.
+// (source file FVGS+IFVG+OTE.txt, md5 ed09c92cc5f32bb8d931e5c244c235ac). Mozilla Public License 2.0, as the original.
 //
 // What it draws: FVG boxes (or no-fill boxes, or hi / lo / C.E. segments) with C.E. lines, the 1st presented FVG of the
 // session open (New York 09:30, or Madrid 09:00 for DAX) and its optional inverse, wick C.E. segments, IFVG candidates
@@ -1295,7 +1295,8 @@ namespace NinjaTrader.NinjaScript.Indicators
         private long sbLast = -1;
         private void SbMark(Fvg f)
         {
-            if (!SilverBullet)
+            // a 1m / 2m concept, like the 1PFVGs
+            if (!SilverBullet || !isMinutes || tfsecs > 120)
                 return;
             if (nyTz == null)
                 nyTz = FindTz("America/New_York");
@@ -3666,7 +3667,7 @@ namespace NinjaTrader.NinjaScript.Indicators
         public bool ShowWickCE { get; set; }
 
         [NinjaScriptProperty]
-        [Display(Name = "Silver bullet", GroupName = "Enable / Draw / Filter", Order = 109, Description = "The first FVG (either bias) formed in each silver bullet window (3-4 AM, 10-11 AM and 2-3 PM New York time) gets SB in its label and the SB border (color and width in FVG Settings).")]
+        [Display(Name = "Silver bullet", GroupName = "Enable / Draw / Filter", Order = 109, Description = "On 1m and 2m charts, the first FVG (either bias) formed in each silver bullet window (3-4 AM, 10-11 AM and 2-3 PM New York time) gets SB in its label and the SB border (color and width in FVG Settings).")]
         public bool SilverBullet { get; set; }
 
         [NinjaScriptProperty]

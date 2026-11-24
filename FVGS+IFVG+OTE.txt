@@ -81,7 +81,7 @@ doifvg = input.bool(true, "IFVGs", group = GRP_EN, inline = "en",
 var dowick = input.bool(true, "Wick C.E.", group = GRP_EN, inline = "en",
     tooltip = "Draw the C.E. of candle wicks.")
 var sbOn = input.bool(true, "Silver bullet", group = GRP_EN, inline = "en",
-    tooltip = "The first FVG (either bias) formed in each silver bullet window (3-4 AM, 10-11 AM and 2-3 PM New York "+
+    tooltip = "On 1m and 2m charts, the first FVG (either bias) formed in each silver bullet window (3-4 AM, 10-11 AM and 2-3 PM New York "+
         "time) gets SB in its label and the SB border (color and width in FVG Settings).")
 
 drawMode = input.string("all", "Draw", options = ["all", "1PFVGs", "IFVGs", "1PFVGs+IFVGs"], group = GRP_EN, inline = "dr",
@@ -1295,10 +1295,10 @@ if hour(time,tz) != fph
 timeat(int n) =>
     time[-n]
 FVG lastlongfvg = na
-// [SB] silver bullet windows in New York time: 3-4 AM, 10-11 AM, 2-3 PM. sbKey: day and window of the candle that
+// [SB] silver bullet windows in New York time: 3-4 AM, 10-11 AM, 2-3 PM, on 1m and 2m charts only. sbKey: day and window of the candle that
 // completes the FVG ([1]); sbLast: the window that already has its first FVG
 int sbH = hour(time[1], "America/New_York")
-int sbW = sbH == 3 ? 1 : sbH == 10 ? 2 : sbH == 14 ? 3 : 0
+int sbW = not (timeframe.isminutes and timeframe.in_seconds() <= 120) ? 0 : sbH == 3 ? 1 : sbH == 10 ? 2 : sbH == 14 ? 3 : 0
 int sbKey = ((year(time[1], "America/New_York") * 100 + month(time[1], "America/New_York")) * 100
      + dayofmonth(time[1], "America/New_York")) * 10 + sbW
 var int sbLast = na

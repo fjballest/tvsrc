@@ -13,7 +13,7 @@
  *   BM↑/BM↓, inheritance of the tags by IFVGs) and LONG / SHORT / OTE signal markers.
  *
  *   Port of the TradingView Pine Script v6 indicator "FVGS+IFVG+OTE.txt"
- *   (md5 48f43e5e3cb9323423c55eef78de80a8, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
+ *   (md5 ed09c92cc5f32bb8d931e5c244c235ac, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
  *   input variable names (camelCase). See the design document (d.md) and user manual (m.md) for the logic.
  *
  * How to install
@@ -852,7 +852,7 @@ class FVGSIFVGOTE {
                     if (islong) lastlongfvg = f; else lastshortfvg = f;
                     // [SB] the first FVG (either bias) whose completing candle ([1]) opens in a silver bullet
                     // window (New York 3-4 AM, 10-11 AM, 2-3 PM) gets the SB label and border
-                    if (P.sbOn && j >= 1) {
+                    if (P.sbOn && j >= 1 && this.tfsecs <= 120) { // a 1m / 2m concept, like the 1PFVGs
                         const li = localInfo(this.T[j - 1], "America/New_York");
                         const hr = Math.floor(li.mod / 60);
                         const w = hr === 3 ? 1 : hr === 10 ? 2 : hr === 14 ? 3 : 0;

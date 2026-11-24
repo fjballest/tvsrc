@@ -90,7 +90,7 @@ Note the IFVG colors: a bullish FVG that is closed through becomes a bearish IFV
 
 ### Silver bullet FVGs
 
-With **Silver bullet** on (Enable / Draw / Filter, on by default), the first FVG of either bias formed in each silver bullet window (3:00-4:00 AM, 10:00-11:00 AM and 2:00-3:00 PM New York time; the window of the candle that completes the gap) gets `SB` in its label and the SB border: purple (#AB47BC), width 2, set with **SB border** and **width** in FVG Settings. The border shows whatever the attenuation. 1PFVGs keep their own look, and an SB FVG that becomes an IFVG takes the IFVG look (the `SB` label comes back if it returns to a plain FVG). Also in FVGs+IFVG+OTE4, FVGs+IFVG+OTE+PL and the NinjaTrader and Tradovate ports.
+With **Silver bullet** on (Enable / Draw / Filter, on by default), on 1m and 2m charts (a low timeframe concept, like the 1PFVGs), the first FVG of either bias formed in each silver bullet window (3:00-4:00 AM, 10:00-11:00 AM and 2:00-3:00 PM New York time; the window of the candle that completes the gap) gets `SB` in its label and the SB border: purple (#AB47BC), width 2, set with **SB border** and **width** in FVG Settings. The border shows whatever the attenuation. 1PFVGs keep their own look, and an SB FVG that becomes an IFVG takes the IFVG look (the `SB` label comes back if it returns to a plain FVG). Also in FVGs+IFVG+OTE4, FVGs+IFVG+OTE+PL and the NinjaTrader and Tradovate ports.
 
 ### Labels
 
@@ -422,7 +422,7 @@ Inputs on one line in the settings dialog are listed together; a field without i
 | 1PFVGs | On | Track and draw the 1st presented FVGs. |
 | IFVGs | On | Detect, draw and alert IFVGs (needed for OTE). |
 | Wick C.E. | On | Draw the C.E. of large candle wicks. |
-| Silver bullet | On | The first FVG of each silver bullet window (3-4 AM, 10-11 AM, 2-3 PM New York) gets `SB` in its label and the SB border |
+| Silver bullet | On | On 1m and 2m charts, the first FVG of each silver bullet window (3-4 AM, 10-11 AM, 2-3 PM New York) gets `SB` in its label and the SB border |
 | Draw | `all` | `all`, `1PFVGs`, `IFVGs`, `1PFVGs+IFVGs` (see section 7, Draw modes). Alerts keep working in every mode. |
 | FVG filter | `none` | `none`, `sweeps`, `sweeps&mid`, `relevant`, `recent relevant` (see section 4; `relevant` is the slowest). Does not filter 1PFVGs or the close-mode IFVG logic. |
 | 1PFVG filter | `all` | `all`, `week` (Mondays only), `week+fridays` (Mondays and Fridays), `week+fridays+last` (also the latest one). Which days keep their 1PFVG (section 5). |
