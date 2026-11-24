@@ -38,8 +38,9 @@ do it once, on the 15m pane, which has the full ICTmany set:
    chart". It keeps the inputs.
 2. With all of them updated, select the 15m pane and save its indicators as the
    "ICTmany" template (templates menu, "Save indicator template...", replace).
-3. Select each of the other five panes and load the ICTmany template from the
-   templates menu, so they all get the new versions. Then save the layout.
+3. Select each of the other five panes and load the ICTmany template (its
+   shortcut button in the top toolbar, or the templates menu), so they all get
+   the new versions. Then save the layout.
 
 Do not click the template shortcuts in the top toolbar by mistake: they apply a
 template to whichever pane is selected.
@@ -51,4 +52,4 @@ button, "Update existing script", pick the publication, tick "Don't update
 the chart", write the notes, Continue, tick the House Rules box, "Publish new
 version". TradingView only publishes a script that is on the selected chart:
 if it says "Script is not on the chart", add it, publish, then remove that
-copy from the pane legend.
+copy ("Undo insert" in the top toolbar, or from the pane legend).
