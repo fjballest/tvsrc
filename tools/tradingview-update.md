@@ -32,4 +32,9 @@ goes in as a synthetic paste:
 
 Publishing an update is public: the release notes are shown to the user and
 published only with the user's OK, as an update of the existing publication
-without a new chart image.
+without a new chart image. With the script open in the editor: the publish
+button, "Update existing script", pick the publication, tick "Don't update
+the chart", write the notes, Continue, tick the House Rules box, "Publish new
+version". TradingView only publishes a script that is on the selected chart:
+if it says "Script is not on the chart", add it, publish, then remove that
+copy from the pane legend.
