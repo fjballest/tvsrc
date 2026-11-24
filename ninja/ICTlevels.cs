@@ -4,7 +4,7 @@
 // quadrants and standard deviations, premarket range, EQH/EQL, PO3 lines, TGIF levels, macros,
 // silver bullet and a session/macro status text. Draws levels only: no plots, no signals, no alerts.
 //
-// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 10d7bfc663548e2c71a93d7a83bfc7f8),
+// Port of the TradingView Pine Script v6 indicator ICTlevels.txt (md5 eadb3fd8a2d600295e4b0e2e5f21e2cf),
 // © franjballest, Mozilla Public License 2.0 (https://mozilla.org/MPL/2.0/).
 //
 // Install:
@@ -519,7 +519,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 			else if (bp.BarsPeriodType == BarsPeriodType.Second)
 				tfsecs = bp.Value;
 			tfok = tfsecs > 0 && tfsecs <= 3600;
-			rectOn = DoRect && !(NoLowRects && tfsecs < 900 && tfsecs <= RectMinTf * 60);
+			rectOn = DoRect && tfsecs < 3600 && !(NoLowRects && tfsecs < 900 && tfsecs <= RectMinTf * 60);
 			preOn = DoPremarket && tfsecs <= 300;
 			rdx = tfsecs <= 60 ? 4 : 2;
 
@@ -3291,7 +3291,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 		public int NSessions { get; set; }
 
 		[NinjaScriptProperty]
-		[Display(Name = "Draw session rectangles", GroupName = "Session Settings", Order = 503)]
+		[Display(Name = "Draw session rectangles", GroupName = "Session Settings", Order = 503, Description = "Draws a shaded box for each session, below 1H only.")]
 		public bool DoRect { get; set; }
 
 		[NinjaScriptProperty]

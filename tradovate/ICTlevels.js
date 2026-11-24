@@ -11,7 +11,7 @@
  *   It draws levels only: no signals, no alerts, no plots.
  *
  *   It is a port of the TradingView Pine Script v6 indicator ICTlevels.txt
- *   (md5 10d7bfc663548e2c71a93d7a83bfc7f8). Parameter names are the Pine variable names and the
+ *   (md5 eadb3fd8a2d600295e4b0e2e5f21e2cf). Parameter names are the Pine variable names and the
  *   defaults are the Pine defaults; see "doc/ICTlevels-user-manual.md" for what every level means.
  *
  * How to install
@@ -720,7 +720,7 @@ class ICTlevels {
         }
         const tfsecs = C.tfFixed || S.tfInf || 60;
         const tfok = tfsecs <= 3600;
-        const rectOn = P.dorect && !(P.nolowrects && tfsecs < 900 && tfsecs <= P.rectmintf * 60);
+        const rectOn = P.dorect && tfsecs < 3600 && !(P.nolowrects && tfsecs < 900 && tfsecs <= P.rectmintf * 60);
         const preOn = P.dopremarket && tfsecs <= 300;
         const rdx = tfsecs <= 60 ? 4 : 2;
         const p = tzParts(t, C.tz);

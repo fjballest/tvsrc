@@ -177,7 +177,7 @@ const string G_ZONES = "Session Settings"
 int nses = input.int(20, "Sessions to keep", minval = 3, group = G_ZONES, inline = "ses")
 bool dorect = input.bool(true, "Draw session rectangles", inline = "transp", group = G_ZONES)
 int rtransp = input.int(75, "transparency", inline = "transp", group = G_ZONES,
-     tooltip = "transparency for the session rectangles when drawn")
+     tooltip = "transparency for the session rectangles when drawn (never on 1H and above)")
 bool rectbord = input.bool(false, "Session rectangles: border only", group = G_ZONES,
      tooltip = "draw only the outline of the session rectangles, no fill: 2 px wide, in the session color "
      + "with half the transparency above")
@@ -311,7 +311,8 @@ float eq3pts = eq3ptsIn * sizeK
 int tfsecs = timeframe.in_seconds()
 int tfms = tfsecs * 1000
 bool tfok = tfsecs <= 3600
-bool rectOn = dorect and not (nolowrects and tfsecs < 900
+// [SES] no session rectangles on 1H and above
+bool rectOn = dorect and tfsecs < 3600 and not (nolowrects and tfsecs < 900
      and tfsecs <= timeframe.in_seconds(rectmintf))
 bool preOn = dopremarket and tfsecs <= 300
 int rdx = tfsecs <= 60 ? 4 : 2

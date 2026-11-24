@@ -262,7 +262,8 @@ float eq3pts = eq3ptsIn * sizeK
 int tfsecs = timeframe.in_seconds()
 int tfms = tfsecs * 1000
 bool tfok = tfsecs <= 3600
-bool rectOn = dorect and not (nolowrects and tfsecs < 900
+// [SES] no session rectangles on 1H and above
+bool rectOn = dorect and tfsecs < 3600 and not (nolowrects and tfsecs < 900
      and tfsecs <= timeframe.in_seconds(rectmintf))
 bool preOn = dopremarket and tfsecs <= 300
 int rdx = tfsecs <= 60 ? 4 : 2

@@ -159,7 +159,7 @@ For each Asia, London, NY AM and NY PM session (times in section 3):
 
 - **Session high and low lines** (green and red, solid, width 1) from the bar that made the extreme, extending right until price takes the level. Taken levels keep their line up to the bar that took them.
 - **Labels** on untaken levels: "Asia hi", "Asia lo", "London hi", "London lo", "NY AM hi", "NY AM lo", "NY PM hi", "NY PM lo". The label disappears when the level is taken.
-- **Session rectangles** (optional): a shaded box from the session start to its end, between its high and low, in the session color (Asia red, London green, NY blue) at 75% transparency. With **border only**, just its outline is drawn, 2 px wide and with half the transparency. By default rectangles are hidden on 5m and lower charts.
+- **Session rectangles** (optional): a shaded box from the session start to its end, between its high and low, in the session color (Asia red, London green, NY blue) at 75% transparency. With **border only**, just its outline is drawn, 2 px wide and with half the transparency. By default rectangles are hidden on 5m and lower charts, and they are never drawn on 1H and higher charts.
 
 The current session's lines and rectangle grow while it is in progress.
 
@@ -419,7 +419,7 @@ Attenuation dims the drawings without changing their settings. Drawings have thr
 | Label in dialog | Default | What it does |
 | --- | --- | --- |
 | Sessions to keep | 20 (min 3) | How many sessions to keep, all four kinds together. Values above 40 are reduced to 40. Also the number of premarket ranges kept. |
-| Draw session rectangles | on | Draws a shaded box for each session. |
+| Draw session rectangles | on | Draws a shaded box for each session, below 1H only. |
 | transparency | 75 | Transparency of the session boxes (0 opaque, 100 invisible). |
 | Session rectangles: border only | off | Draws only the outline of each session box, 2 px wide, in the session color with half the transparency above (37 at the default 75), and no fill. On Tradovate the outline color is blended into the chart background (attbg) instead. |
 | No session rectangles at or under | on | Hides the session boxes on low timeframes. |
