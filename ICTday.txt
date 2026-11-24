@@ -2417,18 +2417,18 @@ if finalBar and tfok
         drawMonth(2, mh3, ml3, mc3, mt3, mtc3)
 
     string sname = ""
+    string mname = ""
+    string bname = ""
     if dozones
         for zi in zinfos
             if zi.inside(tsec)
                 sname := zi.name
                 break
-    string mname = ""
     if domacros
         for m in macros
             if m.inside(tsec)
                 mname := m.name
                 break
-    string bname = ""
     if dosilver
         for m in sbs
             if not na(m) and m.inside(tsec)

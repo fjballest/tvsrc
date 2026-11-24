@@ -4,7 +4,8 @@
 #   python3 tools/mklevelsderiv.py            (from the tvsrc folder)
 #
 # Rerun it after every change to ICTlevels.txt: the files are generated, never edited by hand.
-# Both keep all the ICTlevels code; the inputs of the features a derivative does not have become constants
+# ICTday keeps all the ICTlevels code; the gap scripts (ICTgaps, NWOGs, NDOGs, RTHOGs) also drop the session,
+# macro and silver bullet code between "//#cut nses" and "//#end" in ICTlevels.txt (dead there). The inputs of the features a derivative does not have become constants
 # that turn those features off (other inputs it does not show become constants with their default value).
 import re, os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -47,7 +48,7 @@ def main():
     lic = "\n".join(lines[:3]) + "\n"
     note = ("// GENERATED from ICTlevels.txt by tools/mklevelsderiv.py: do not edit, change ICTlevels.txt and rerun\n"
             "// the script.\n")
-    gaps = derive(lines, "none", lambda n: n in COMMON or bool(GAPS.match(n)), {k: "false" for k in DAY_OFF},
+    gaps = derive(lines, "nses", lambda n: n in COMMON or bool(GAPS.match(n)), {k: "false" for k in DAY_OFF},
                   "ICTgaps",
                   lic + note +
                   "// ICTgaps: the gaps and ranges of ICTlevels (NDOG / NWOG / RTHOG with quadrants, octants and\n"
@@ -60,7 +61,7 @@ def main():
                  "// max / min, REH / REL, equilibrium, open), TGIF, sessions, EQH / EQL, macros and events.\n\n",
                  srctitle="ICTlevels")
     for name, (keep, off, hdr) in ONE.items():
-        s = derive(lines, "none", lambda n, keep=keep: n in COMMON or keep(n), {k: "false" for k in DAY_OFF + off},
+        s = derive(lines, "nses", lambda n, keep=keep: n in COMMON or keep(n), {k: "false" for k in DAY_OFF + off},
                    name, lic + note + hdr + "\n", srctitle="ICTlevels")
         open(name + ".txt", "w", newline="").write(s)
         print(name + ".txt", s.count("\n"), "lines")

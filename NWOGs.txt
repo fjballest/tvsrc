@@ -281,22 +281,9 @@ bool useUS = TZ == "US" or (TZ == "Auto" and not autoEU)
 string tz = useUS ? "America/New_York" : "Europe/Madrid"
 string mktstr = useUS ? "0930-1615" : "0900-1730"
 string gapstr = useUS ? "1700-1800" : "2300-0000"
-string asiastr = useUS ? "2000-0000" : "2300-0600"
-string londonstr = useUS ? "0200-0500" : "0800-1300"
-string nyamstr = useUS ? "0700-1130" : "1330-1800"
-string nypmstr = useUS ? "1330-1600" : "1900-2200"
 string premarketstr = pmmode == "Manual" ? pmsession
      : (useUS ? "0700-0900" : "0630-0830")
 
-var array<string> mNames = useUS ? array.from("NYpre", "NYAM.1", "NYAM.2", "NYAM.3", "NY.lunch",
-     "NYPM", "NYLast", "MOC", "LDN.1", "LDN.2")
-     : array.from("Dax7", "Dax8", "DaxOpen", "Dax10", "Dax11", "DaxTapas", "Dax17", "NYopen",
-     "Dax19", "DaxLunch")
-var array<string> mTimes = useUS ? array.from("0740-0810", "0850-0910", "0950-1010", "1050-1110",
-     "1150-1210", "1310-1340", "1515-1530", "1545-1600", "0230-0300", "0403-0430")
-     : array.from("0700-0710", "0750-0810", "0850-0910", "0955-1010", "1050-1110", "1245-1310",
-     "1650-1710", "1515-1540", "1850-1910", "1350-1410")
-var array<string> sbTimes = useUS ? array.from("0300-0400", "1000-1100", "1400-1500") : array.from("1000-1100")
 
 // time of day in seconds in the script timezone (bar open) and a few derived series
 int tsec = hour(time, tz) * 3600 + minute(time, tz) * 60 + second(time, tz)
@@ -585,24 +572,11 @@ int rtrF = attLvl == 1 ? attT(rtransp, 1) : rtransp
 bool rbord = rectbord or attLvl >= 2
 int rtrB = attLvl >= 2 ? int(math.min(100, rtransp / 2 + (100 - rtransp / 2) * (attLvl - 1) * 0.2)) : int(rtransp / 2)
 var Sty nysty = Sty.new(daylnsty, 1, color.new(uscolor, rtrF))
-var Sty londonsty = Sty.new(daylnsty, 1, color.new(londoncolor, rtrF))
-var Sty asiasty = Sty.new(daylnsty, 1, color.new(asiacolor, rtrF))
 
 var ZoneInfo market = mkZoneInfo("market", mktstr)
-var ZoneInfo asia = mkZoneInfo("Asia", asiastr, asiasty)
-var ZoneInfo london = mkZoneInfo("London", londonstr, londonsty)
-var ZoneInfo nyam = mkZoneInfo("NY AM", nyamstr, nysty)
-var ZoneInfo nypm = mkZoneInfo("NY PM", nypmstr, nysty)
 var ZoneInfo premarket = mkZoneInfo("Pre-mkt", premarketstr, nysty)
-var array<ZoneInfo> zinfos = array.from(asia, london, nyam, nypm)
-var array<ZoneInfo> macros = array.new<ZoneInfo>()
-var array<ZoneInfo> sbs = array.new<ZoneInfo>()
 
 if barstate.isfirst
-    for i = 0 to mNames.size() - 1
-        macros.push(mkZoneInfo(mNames.get(i), mTimes.get(i)))
-    for i = 0 to sbTimes.size() - 1
-        sbs.push(mkZoneInfo("S.Bullet", sbTimes.get(i)))
     if capped
         log.info("object budget: days {0}->{1}, sessions {2}->{3}, gaps {4}->{5}", ndays, ndaysEff,
              nses, nsesEff, ngaps, ngapsEff)
@@ -1090,20 +1064,6 @@ if inWin and tfok
         actz.push(d)
         if days.size() > ndaysEff
             days.shift().kill()
-    if doses
-        for zi in zinfos
-            if zi.starts()
-                Zone s = mkZone(zi.name, zi)
-                s.drawmaxmin := dosmaxmin
-                s.drawrect := rectOn
-                s.drawlbl := doseslbl
-                s.lnsty := zi.sty
-                s.maxsty := sesmaxsty
-                s.minsty := sesminsty
-                zones.push(s)
-                actz.push(s)
-                if zones.size() > nsesEff
-                    zones.shift().kill()
     if preOn and premarket.starts()
         Zone p = mkZone(premarket.name, premarket)
         p.drawmaxmin := dosmaxmin
@@ -2288,13 +2248,6 @@ zLevels(array<Zone> arr, int nbh0, int nbl0) =>
 // table
 var table tbl = table.new(position.top_right, 1, 4, bgcolor = transparent)
 
-bool inMacro = false
-if domacrobg and tfok and tfsecs < 900  // not on 15m and above
-    for m in macros
-        if m.inside(tsec)
-            inMacro := true
-            break
-bgcolor(inMacro ? attL(macrobgcolor, 1) : na)
 
 if finalBar and tfok
     if doreh and dodaylbl and dodmaxmin
@@ -2368,23 +2321,8 @@ if finalBar and tfok
         drawMonth(2, mh3, ml3, mc3, mt3, mtc3)
 
     string sname = ""
-    if dozones
-        for zi in zinfos
-            if zi.inside(tsec)
-                sname := zi.name
-                break
     string mname = ""
-    if domacros
-        for m in macros
-            if m.inside(tsec)
-                mname := m.name
-                break
     string bname = ""
-    if dosilver
-        for m in sbs
-            if not na(m) and m.inside(tsec)
-                bname := m.name
-                break
     table.cell(tbl, 0, 0, sname, text_color = zonecolor, text_size = size.large)
     table.cell(tbl, 0, 1, mname, text_color = macrocolor, text_size = size.large)
     table.cell(tbl, 0, 2, bname, text_color = silvercolor, text_size = size.large)
