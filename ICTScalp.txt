@@ -375,7 +375,7 @@ bool condOn = input.bool(true, "Conditions table", group = G_S, inline = "cnd",
          "the last session trended (T) or consolidated (C), bright when the previous session filter allows "+
          "entries. Time: ● inside the killzones and macros in use. Armed: every HTF, time and session condition "+
          "and took liquidity agree, only the entry trigger (FVG return) is missing.")
-string condPos = input.string("Bottom left", "", options = ["Bottom left", "Bottom center", "Middle right",
+string condPos = input.string("Bottom center", "", options = ["Bottom left", "Bottom center", "Middle right",
      "Top left"], group = G_S, inline = "cnd")
 bool armOn = input.bool(true, "Armed dots on the candles (and 'armed' alerts)", group = G_S,
      tooltip = "A small dot below (long) / above (short) each closed candle where the setup is armed: only the "+
