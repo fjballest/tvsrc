@@ -1350,9 +1350,9 @@ htfCode() =>
     var float org = na
     var float ext = na
     var float rx = na
-    var int b1 = 0          // OTE rejection direction
-    var int b1src = 0       // 1 major leg, 2 minor leg
-    var int b3 = 0          // liquidity draw
+    var int bOte = 0          // OTE rejection direction
+    var int bOteSrc = 0       // 1 major leg, 2 minor leg
+    var int bLiq = 0          // liquidity draw
     var float sh = na       // last swing high / low not taken yet
     var float sl = na
     var array<float> uN = array.new<float>()    // bearish FVGs (above): near edge (bottom), newest candle low
@@ -1378,14 +1378,14 @@ htfCode() =>
             org := ext
             ext := ld == 1 ? high : low
             rx := ext
-            b1 := 0
-            b1src := 0
+            bOte := 0
+            bOteSrc := 0
         else if ld == 1 ? high > ext : low < ext
             ext := ld == 1 ? high : low
             rx := ext
-            if b1src == 2
-                b1 := 0
-                b1src := 0
+            if bOteSrc == 2
+                bOte := 0
+                bOteSrc := 0
         else
             bool maj = r > 0 and (ld == 1 ? low <= m62 and low >= org and close >= m79
                  : high >= m62 and high <= org and close <= m79)
@@ -1395,11 +1395,11 @@ htfCode() =>
             bool mnr = minorOk and (ld == 1 ? high >= n62 and high <= ext and close <= n79
                  : low <= n62 and low >= ext and close >= n79)
             if maj
-                b1 := ld
-                b1src := 1
+                bOte := ld
+                bOteSrc := 1
             else if mnr
-                b1 := -ld
-                b1src := 2
+                bOte := -ld
+                bOteSrc := 2
             rx := ld == 1 ? math.min(rx, low) : math.max(rx, high)
     float rr = math.abs(ext - org)
     float mm = math.abs(ext - rx)
@@ -1414,9 +1414,9 @@ htfCode() =>
     bool tH = not na(sh) and high > sh
     bool tL = not na(sl) and low < sl
     if tH and not tL
-        b3 := -1
+        bLiq := -1
     else if tL and not tH
-        b3 := 1
+        bLiq := 1
     if tH
         sh := na
     if tL
@@ -1460,8 +1460,8 @@ htfCode() =>
         if na(dnN) or v > dnN
             dnN := v
             dnC := dC.get(i)
-    int b2 = na(upN) and na(dnN) ? 0 : na(dnN) ? 1 : na(upN) ? -1 : (upN - close <= close - dnN ? 1 : -1)
-    [b1[1], b2[1], b3[1], a62[1], a705[1], a79[1], i62[1], i705[1], i79[1], upN[1], upC[1], dnN[1], dnC[1]]
+    int bFvg = na(upN) and na(dnN) ? 0 : na(dnN) ? 1 : na(upN) ? -1 : (upN - close <= close - dnN ? 1 : -1)
+    [bOte[1], bFvg[1], bLiq[1], a62[1], a705[1], a79[1], i62[1], i705[1], i79[1], upN[1], upC[1], dnN[1], dnC[1]]
 
 string hRq = timeframe.in_seconds(hTf) > tfsecs ? hTf : timeframe.period
 [hbOte, hbFvg, hbLiq, hA62, hA705, hA79, hI62, hI705, hI79, hUpN, hUpC, hDnN, hDnC] = request.security(
@@ -1626,38 +1626,6 @@ blkAdd(int kind, int dir, float zh, float zl, int zt1) =>
                 break
     true
 
-// breaker (kind 0): bearish = high, low, higher high; bullish = low, high, lower low.
-// mitigation block (kind 1): bearish = high, low, lower high; bullish = low, high, higher low.
-// Armed on the swing between the first two; formed on the close through it.
-blkSeqStep(BlkSeq s, int kind, float ph, float pl, int len, int age, bool body, bool whole) =>
-    if not na(ph) and blkPivot(s.p, s.b, s.t, ph, bar_index - len, 1)
-        if s.t.size() == 3 and s.t.get(0) == 1 and s.b.get(1) != nz(s.dnDone, -1)
-            bool ok = kind == 0 ? s.p.get(2) > s.p.get(0) : s.p.get(2) < s.p.get(0)
-            s.dnLvl := ok ? s.p.get(1) : na
-            s.dnBar := s.b.get(1)
-    if not na(pl) and blkPivot(s.p, s.b, s.t, pl, bar_index - len, -1)
-        if s.t.size() == 3 and s.t.get(0) == -1 and s.b.get(1) != nz(s.upDone, -1)
-            bool ok = kind == 0 ? s.p.get(2) < s.p.get(0) : s.p.get(2) > s.p.get(0)
-            s.upLvl := ok ? s.p.get(1) : na
-            s.upBar := s.b.get(1)
-    if not na(s.dnLvl) and bar_index - s.dnBar > age
-        s.dnLvl := na
-    if not na(s.upLvl) and bar_index - s.upBar > age
-        s.upLvl := na
-    if not na(s.dnLvl) and close < s.dnLvl
-        [zh, zl, zt1] = blkZone(-1, bar_index - s.dnBar, body, whole)
-        if not na(zt1)
-            blkAdd(kind, -1, zh, zl, zt1)
-        s.dnDone := s.dnBar
-        s.dnLvl := na
-    if not na(s.upLvl) and close > s.upLvl
-        [zh, zl, zt1] = blkZone(1, bar_index - s.upBar, body, whole)
-        if not na(zt1)
-            blkAdd(kind, 1, zh, zl, zt1)
-        s.upDone := s.upBar
-        s.upLvl := na
-    true
-
 // chart FVGs not closed through nor used yet: bullish (long) / bearish (short), for the FVG return trigger
 // and the pullback tags of the blocks
 var array<FVG> fvL = array.new<FVG>()
@@ -1696,9 +1664,44 @@ blkMatch(Blk b) =>
         r := true
     r
 
+// breaker (kind 0): bearish = high, low, higher high; bullish = low, high, lower low.
+// mitigation block (kind 1): bearish = high, low, lower high; bullish = low, high, higher low.
+// Armed on the swing between the first two; formed on the close through it.
 if blkOn and barstate.isconfirmed
-    blkSeqStep(bSeq, 0, bPH, bPL, brkLen, brkAge, brkPart == "Body", brkMode == "Whole sequence")
-    blkSeqStep(mSeq, 1, mPH, mPL, mbLen, mbAge, mbPart == "Body", mbMode == "Whole sequence")
+    for kind = 0 to 1
+        BlkSeq s = kind == 0 ? bSeq : mSeq
+        float ph = kind == 0 ? bPH : mPH
+        float pl = kind == 0 ? bPL : mPL
+        int len = kind == 0 ? brkLen : mbLen
+        int age = kind == 0 ? brkAge : mbAge
+        bool body = (kind == 0 ? brkPart : mbPart) == "Body"
+        bool whole = (kind == 0 ? brkMode : mbMode) == "Whole sequence"
+        if not na(ph) and blkPivot(s.p, s.b, s.t, ph, bar_index - len, 1)
+            if s.t.size() == 3 and s.t.get(0) == 1 and s.b.get(1) != nz(s.dnDone, -1)
+                bool ok = kind == 0 ? s.p.get(2) > s.p.get(0) : s.p.get(2) < s.p.get(0)
+                s.dnLvl := ok ? s.p.get(1) : na
+                s.dnBar := s.b.get(1)
+        if not na(pl) and blkPivot(s.p, s.b, s.t, pl, bar_index - len, -1)
+            if s.t.size() == 3 and s.t.get(0) == -1 and s.b.get(1) != nz(s.upDone, -1)
+                bool ok = kind == 0 ? s.p.get(2) < s.p.get(0) : s.p.get(2) > s.p.get(0)
+                s.upLvl := ok ? s.p.get(1) : na
+                s.upBar := s.b.get(1)
+        if not na(s.dnLvl) and bar_index - s.dnBar > age
+            s.dnLvl := na
+        if not na(s.upLvl) and bar_index - s.upBar > age
+            s.upLvl := na
+        if not na(s.dnLvl) and close < s.dnLvl
+            [zh, zl, zt1] = blkZone(-1, bar_index - s.dnBar, body, whole)
+            if not na(zt1)
+                blkAdd(kind, -1, zh, zl, zt1)
+            s.dnDone := s.dnBar
+            s.dnLvl := na
+        if not na(s.upLvl) and close > s.upLvl
+            [zh, zl, zt1] = blkZone(1, bar_index - s.upBar, body, whole)
+            if not na(zt1)
+                blkAdd(kind, 1, zh, zl, zt1)
+            s.upDone := s.upBar
+            s.upLvl := na
     if blks.size() > 0
         for i = blks.size() - 1 to 0
             Blk b = blks.get(i)
@@ -2136,7 +2139,7 @@ if showTrades and simulate and statsOn and barstate.islast
     int r = 2
     for i = 0 to 13
         if indMode.get(i) > 0
-            statRow(r, 1 + i, (i >= 10 ? "HTF " : "") + indName.get(i) + (indMode.get(i) == 2 ? " (M)" : ""))
+            statRow(r, 1 + i, indName.get(i) + (indMode.get(i) == 2 ? " (M)" : ""))
             r += 1
 
 plotshape(goShort, "Enter short", shape.triangledown, location.abovebar, shortCol, size = size.small,
