@@ -298,15 +298,12 @@ datr = ta.rma(dtr, 14)
 dwph = ta.pivothigh(dH, oteswingleft, oteswingright)
 dwpl = ta.pivotlow(dL, oteswingleft, oteswingright)
 
-if dowick and compute and barstate.isconfirmed and bar_index > 2
+// [PERF] only the last 5000 bars: older CEs are deleted anyway (bar index limits of the lines), so the result is
+// the same and long low timeframe charts do not time out
+if dowick and compute and barstate.isconfirmed and bar_index > 2 and bar_index >= last_bar_index - 5000
     i = bar_index
     bodyh = math.max(dO, dC)
     bodyl = math.min(dO, dC)
-
-    // the closed candle body crosses older CEs
-    for w in wces
-        if not w.dead and w.b < i and bodyl < w.ce and bodyh > w.ce
-            w.dead := true
 
     if wswing and not na(dwph)
         wp = wfind(i - oteswingright, true)
@@ -332,17 +329,22 @@ if dowick and compute and barstate.isconfirmed and bar_index > 2
     if bodyl - dL > minwick
         wces.push(WCE.new(i, math.avg(dL, bodyl), bodyl - dL, false))
 
-    // draw and forget; pick the longest live ones above and below price
+    // draw and forget; pick the longest live ones above and below price. [PERF] One pass: it also marks the CEs
+    // crossed by the closed candle body and counts the drawn lines (nd) for the line budget below
     hold = math.max(wrecent, oteswingright + 1)
     reach = wreach * datr
     xa = array.new<WCE>()
     xal = array.new<float>()
     xb = array.new<WCE>()
     xbl = array.new<float>()
+    int nd = 0
     n = wces.size()
     if n > 0
         for k = n - 1 to 0
             w = wces.get(k)
+            // the closed candle body crosses older CEs
+            if not w.dead and w.b < i and bodyl < w.ce and bodyh > w.ce
+                w.dead := true
             recent = w.b > i - wrecent
             if w.b < i - 5000
                 // too old to touch its line again (bar index limits): deleted, it would only use line budget
@@ -355,6 +357,7 @@ if dowick and compute and barstate.isconfirmed and bar_index > 2
             else
                 if na(w.ln)
                     w.ln := line.new(w.b, w.ce, w.b + wdx(), w.ce)
+                nd += 1
                 if w.extd
                     w.ln.set_x2(w.b + wdx())
                     w.extd := false
@@ -369,14 +372,12 @@ if dowick and compute and barstate.isconfirmed and bar_index > 2
     wextend(xb, xbl)
     while wces.size() > 400
         w = wces.shift()
+        if not na(w.ln)
+            nd -= 1
         w.hide()
     // line budget (max_lines_count 500, the oldest lines are deleted beyond it): the thick wicks (250), the fibs
     // and the volume divergences come first; the oldest CEs (never those of the last candles) are dropped
     int ceMax = 500 - 250 - 10 - (dovdiv ? dvkeep + 2 : 0) - 10
-    int nd = 0
-    for wc in wces
-        if not na(wc.ln)
-            nd += 1
     int kk = 0
     while nd > ceMax and kk < wces.size()
         wd = wces.get(kk)
