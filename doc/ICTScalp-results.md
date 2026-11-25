@@ -2,7 +2,7 @@
 
 Summary of the ICTScalp backtests on TradingView, kept up to date as the script changes. All figures are on MNQ1! (points per trade, NQ points) over the chart history TradingView loads for each timeframe, from the simulated trades table of the script. They come from one history window on one instrument, so they show which way to go, not a proven edge. The 1m history moves as new candles come in (1m went from +10.1 with 60 trades to +8.6 with 62 during the day).
 
-Last update: 2026-11-25, script commit 47b041b (TradingView version 35).
+Last update: 2026-11-25, script commit 6fc3ea0 (TradingView version 36).
 
 ## 1. Current default setup
 
@@ -16,6 +16,7 @@ Last update: 2026-11-25, script commit 47b041b (TradingView version 35).
 | Stop | Past the short-term high / low since the FVG, 2 points margin |
 | Take profit | Risk ratio 1:2; candle trailing stop once 50 points in favour (the TP is then dropped) |
 | Previous session filter | Off (see section 4, Sessions) |
+| PO3 | Off (see section 4, PO3) |
 
 ## 2. Results of the default setup
 
@@ -103,6 +104,20 @@ Exploration split by what the session turned out to be (hindsight, 5m):
 
 The range setup of Predict (IFVG return + HTF FVG draw after a trending session) makes about +20 per trade on 5m but loses on 1m (-0.8) and 2m (-3.6). On 1m and 2m the default (trend) setup is clearly better after a consolidating session, which fits the idea that a trend follows a consolidation. These filters are kept as options and are off by default: the samples are small and the best choice differs by timeframe.
 
+### PO3 (power of three)
+
+On the candle in progress of the chosen timeframe: short when it already traded at least 10 points above its open (the manipulation wick) and price is now below the open (the expansion down); long the other way around. Tested as Mandatory on top of the default setup:
+
+| PO3 timeframe | 1m | 2m | 5m |
+| ------------- | -- | -- | -- |
+| Off (default) | +8.6 (62) | +15.1 (76) | +22.4 (87) |
+| D | +8.1 (22) | +14.1 (30) | +0.1 (30) |
+| 4H | +8.3 (30) | **+27.7 (36)** | **+55.4 (38), 61% win, +2,106 points** |
+| 1H | +7.5 (41) | +19.2 (45) | +35.0 (57) |
+| 15m | +7.9 (52) | +15.1 (62) | +32.0 (69), +2,208 points |
+
+PO3 makes no difference on 1m but is the strongest filter found so far on 5m: with 4H PO3 the average per trade more than doubles and total points also go up, with fewer than half the trades. The daily PO3 does not help. It is off by default because the default chart is 1m; for 5m, turn on PO3 Mandatory with 4H (or 15m for more trades).
+
 ### Other things tried and removed
 
 | Idea | Result |
@@ -116,4 +131,5 @@ The range setup of Predict (IFVG return + HTF FVG draw after a trending session)
 
 - NWOG / RTHOG quadrants on 5m, once there is more history.
 - Previous session filter per timeframe: after a consolidation on 1m / 2m, after a trend on 5m.
+- 5m with PO3 4H combined with the previous session filter.
 - Checking the setup on other instruments (ES, DAX) and other history windows.
