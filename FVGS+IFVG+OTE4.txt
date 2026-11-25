@@ -479,6 +479,8 @@ type FVG
     int start  // time for start
     int end = na// time when mitigated
     int updEnd = na // [PERF] end already applied to the drawings (finished FVGs are then skipped)
+    int lst = 0 // [PERF] list it is in: 1 lfvgs / sfvgs, 2 fpfvgs, 0 none
+    bool inW = false // [PERF] in the work list of its list
     int inhSeq = na // [PERF] tagSeq when ifvgInherit last scanned for this IFVG
     box rect = na // box drawn
     line celine = na // CE line
@@ -632,6 +634,25 @@ method alerts(FVG f) =>
 var array<FVG> lfvgs = array.new<FVG>()
 var array<FVG> sfvgs = array.new<FVG>()
 var array<FVG> fpfvgs = array.new<FVG>()
+// [PERF] the FVGs each list still has to update: live ones, and finished ones whose drawings do not reach
+// their end yet. Walking every kept FVG (up to 200 per list) on every bar was most of the run time on long low
+// timeframe charts ("computation timed out"). A finished FVG leaves its work list and comes back (wTouch) when
+// a merge resets its end or its drawings are cleared.
+var array<FVG> wl = array.new<FVG>()
+var array<FVG> ws = array.new<FVG>()
+var array<FVG> wf = array.new<FVG>()
+
+wTouch(FVG f) =>
+    if f.lst != 0 and not f.inW
+        array<FVG> w = f.lst == 2 ? wf : (f.islong ? wl : ws)
+        w.push(f)
+        f.inW := true
+    true
+
+fpAdd(FVG f) =>
+    fpfvgs.push(f)
+    f.lst := 2
+    wTouch(f)
 
 // FVG functions =========
 
@@ -643,6 +664,8 @@ var array<FVG> fpfvgs = array.new<FVG>()
 clearlastfp(array<FVG> fpfvgs) =>
     while fpfvgs.size() > nfp
         f = fpfvgs.shift()
+        if not na(f)
+            f.lst := 0
         if not na(f) and f.isfp
             if not na(f.rect)
                 f.rect.set_extend(extend.none)
@@ -663,6 +686,7 @@ fpDropTmp(array<FVG> fpfvgs) =>
             FVG f = fpfvgs.get(i)
             if f.fptmp
                 fpfvgs.remove(i)
+                f.lst := 0
                 f.isfp := false
                 f.isifp := false
                 f.kill()
@@ -809,6 +833,7 @@ method restore(FVG f) =>
             f.rect.delete()
             f.rect := na
             f.own := false
+            wTouch(f)
         else
             f.rect.set_bgcolor(f.bgColor())
             f.rect.set_border_color(f.lnColor())
@@ -942,6 +967,7 @@ method mergeZone(FVG g, FVG f) =>
             g.celine.set_y1(g.ce)
             g.celine.set_y2(g.ce)
         g.end := na
+        wTouch(g)
         g.ext := true
         bumpTags()
     true
@@ -966,6 +992,8 @@ insertSorted(array<FVG> a, FVG f) =>
         pos -= 1
     f.shown := true
     a.insert(pos, f)
+    f.lst := 1
+    wTouch(f)
     if f.brkD != 0 or f.mbD != 0
         bumpTags()
     true
@@ -1130,7 +1158,7 @@ if true
                 f.isifp := true
                 f.fptmp := fp.fptmp
                 hasifp := true
-                fpfvgs.push(f)
+                fpAdd(f)
         bool fpNow = not hasfp and isFPFVG() and not f.isifp
         if fpNow
             hasfp := true
@@ -1141,7 +1169,7 @@ if true
             fpKept := true
             fpDropTmp(fpfvgs)
             f.fptmp := fpTemp(dayofweek)
-            fpfvgs.push(f)
+            fpAdd(f)
             clearlastfp(fpfvgs)
         else if not fponly and not f.isifp and (not deDisp or deDispOK)
             fs.route(f)
@@ -1174,7 +1202,7 @@ if true
                 f.isifp := true
                 f.fptmp := fp.fptmp
                 hasifp := true
-                fpfvgs.push(f)
+                fpAdd(f)
         bool fpNow = not hasfp and isFPFVG() and not f.isifp
         if fpNow
             hasfp := true
@@ -1185,7 +1213,7 @@ if true
             fpKept := true
             fpDropTmp(fpfvgs)
             f.fptmp := fpTemp(dayofweek)
-            fpfvgs.push(f)
+            fpAdd(f)
             clearlastfp(fpfvgs)
         else if not fponly and not f.isifp and (not deDisp or deDispOK)
             fs.route(f)
@@ -1243,7 +1271,7 @@ if fpLow and barstate.isconfirmed and not na(l1t) and l1t.size() > 0
                         f.isifp := true
                         f.fptmp := fpfvgs.last().fptmp
                         hasifp := true
-                        fpfvgs.push(f)
+                        fpAdd(f)
                     else
                         f.isfp := true
                         f.iswfp := dayofweek(t0, tz) == dayofweek.monday
@@ -1252,17 +1280,22 @@ if fpLow and barstate.isconfirmed and not na(l1t) and l1t.size() > 0
                         fpKept := true
                         fpDropTmp(fpfvgs)
                         f.fptmp := fpTemp(dayofweek(t0, tz))
-                        fpfvgs.push(f)
+                        fpAdd(f)
                         clearlastfp(fpfvgs)
 
-updfvgs(array<FVG> fvgs) =>
+updfvgs(array<FVG> fvgs, array<FVG> work, int lid) =>
     if fvgs.size() > 0
-        for i = 0 to fvgs.size()-1
-            f = fvgs.get(i)
-            // [PERF] a finished FVG whose drawings already end at its end needs no more work (a merge resets
-            // end, and a kill clears the drawings, so those are redone)
-            if not na(f.end) and f.end == f.updEnd and (stySeg ? not na(f.hiln) : not na(f.rect))
+        int i = 0
+        while i < work.size()
+            f = work.get(i)
+            // [PERF] dropped from its list, or finished with drawings that already end at its end: done (a merge
+            // resets end, and clearing the drawings puts it back in the work list)
+            bool gone = f.lst != lid or (not na(f.end) and f.end == f.updEnd and (stySeg ? not na(f.hiln) : not na(f.rect)))
+            if gone
+                f.inW := false
+                work.remove(i)
                 continue
+            i += 1
             isdone = not na(f.end)
             // check if filled
             if not isdone and f.isDone(open,close)
@@ -1328,6 +1361,7 @@ updfvgs(array<FVG> fvgs) =>
                 f.alerts()
         if fvgs.size() >= maxfvgs  and fvgs.size() > 0
             df = fvgs.shift()
+            df.lst := 0
             df.kill()
 
 // FVG filter: liquidity sweeps ===================================
@@ -1386,14 +1420,14 @@ if fltRel and barstate.islast
                      text_halign = ifvgha, text_valign = ifvgva))
 
 if not visible and barstate.isnew
-    updfvgs(lfvgs)
-    updfvgs(sfvgs)
-    updfvgs(fpfvgs)
+    updfvgs(lfvgs, wl, 1)
+    updfvgs(sfvgs, ws, 1)
+    updfvgs(fpfvgs, wf, 2)
 else if true
     if time < chart.right_visible_bar_time + (chart.right_visible_bar_time-chart.left_visible_bar_time)
-        updfvgs(lfvgs)
-        updfvgs(sfvgs)
-        updfvgs(fpfvgs)
+        updfvgs(lfvgs, wl, 1)
+        updfvgs(sfvgs, ws, 1)
+        updfvgs(fpfvgs, wf, 2)
 
 // [OTE] prior leg detection =====================================
 // Pivot sets: one for the chart timeframe and one for each of the next two higher timeframes.
@@ -1473,6 +1507,7 @@ relHide(FVG f) =>
             FVG g = arr.get(k)
             if g.start == f.start and g.hi == f.hi and g.lo == f.lo
                 arr.remove(k)
+                g.lst := 0
                 break
     f.shown := false
     f.kill()
