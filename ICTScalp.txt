@@ -156,6 +156,15 @@ string emEq = input.string(OFF, "EQH / EQL to target", options = [OFF, CON, MAN]
 string emDlv = input.string(OFF, "Delivery", options = [OFF, CON, MAN], group = G_E,
      tooltip = "The delivery of the chart timeframe (the DLV logic of IFVGCISDbias, settings below) matches the "+
          "direction of the trade on the entry candle. " + IMODE)
+bool backEq = input.bool(true, "Wait for the EQH / EQL behind the entry within", group = G_E, inline = "bk",
+     tooltip = "No short while an EQH (relative equal highs, EQH / EQL settings) not taken yet lies above the entry "+
+         "price within this many points; no long with such an EQL below it. Applies to every entry and to the "+
+         "exploration.")
+float backPtsIn = input.float(30.0, "", minval = 0.0, step = 1.0, group = G_E, inline = "bk")
+bool inFvgHi = input.bool(true, "Wait for the highs / lows inside the FVG to be taken", group = G_E,
+     tooltip = "No short on an FVG / IFVG (or sweep leg zone) while a short-term high not taken yet lies inside it; "+
+         "no long while a short-term low not taken yet lies inside it. The entry comes on a later trigger, once it "+
+         "was taken and price turns. Applies to every entry and to the exploration.")
 int eN = input.int(1, "At least N of the considered confirmations", minval = 0, maxval = 10, group = G_E,
      tooltip = "Consider confirmations (not triggers) that have to be true, besides the Mandatory ones. Capped at "+
          "the number of Consider confirmations. Triggers: at least one Consider or Mandatory trigger has to fire, "+
@@ -398,6 +407,7 @@ float beMin = beMinIn * sizeK
 float trPts = trPtsIn * sizeK
 float swpMin = swpMinIn * sizeK
 float eq3pts = eq3ptsIn * sizeK
+float backPts = backPtsIn * sizeK
 
 int tfsecs = timeframe.in_seconds()
 
@@ -1967,7 +1977,7 @@ float epl = ta.pivotlow(low, eqlen, eqlen)
 float eph3 = ta.pivothigh(high, 1, 1)
 float epl3 = ta.pivotlow(low, 1, 1)
 
-if barstate.isconfirmed and (emEq != OFF or tpMode == "EQH / EQL" or explore)
+if barstate.isconfirmed and (emEq != OFF or tpMode == "EQH / EQL" or explore or backEq)
     float tol = eqtol * nz(eqAtr, 0.0)
     for side = 0 to 1
         bool isHigh = side == 0
@@ -2040,6 +2050,22 @@ eqNext(int dir, float p) =>
         if v.eq and (v.p - p) * dir > 0
             r := na(r) ? v.p : (dir == 1 ? math.min(r, v.p) : math.max(r, v.p))
     r
+
+// no EQH (short) / EQL (long) behind the entry within backPts, and no short-term high (short) / low (long)
+// not taken yet inside the zone of f
+backOk(int dir, FVG f) =>
+    bool ok = true
+    if backEq
+        array<EqPiv> arr = dir == 1 ? eqLs : eqHs
+        for v in arr
+            if v.eq and (v.p - close) * dir <= 0 and math.abs(v.p - close) <= backPts
+                ok := false
+    if inFvgHi and not na(f)
+        array<float> u = dir == 1 ? ulP : uhP
+        for q in u
+            if q >= f.lo and q <= f.hi
+                ok := false
+    ok
 
 // sweep legs: long after a short-term low is taken (leg from that low up to the highest high since), short after
 // a short-term high is taken; a candle wicking into the OTE band of the leg and closing back is the trigger
@@ -2247,7 +2273,7 @@ if barstate.isconfirmed and timeOk
                     if not go and fired
                         FVG cf = k == 0 ? iv : k == 1 ? sv : fv
                         [ok, m] = ltfCheck(dir, cf, k == 0 ? 0 : k == 1 ? 2 : 1, tLv, tRt, tFv, tSw)
-                        if ok
+                        if ok and backOk(dir, cf)
                             go := true
                             ent := cf
                             msk := m + hMask
@@ -2561,7 +2587,7 @@ exConds(int dir, FVG f, int kind) =>
 
 exOpen(int dir, int trig, FVG f, int kind, int id) =>
     [stp, tp, ok] = tradeLevels(dir, f)
-    if ok
+    if ok and backOk(dir, f)
         array<bool> v = exConds(dir, f, kind)
         array<int> cs = array.new<int>()
         int side = dir == 1 ? 1 : 0
