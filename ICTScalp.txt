@@ -119,7 +119,14 @@ bool qNwog = input.bool(true, "NWOG", group = G_H, inline = "hq2")
 bool qRth = input.bool(true, "RTHOG", group = G_H, inline = "hq2")
 bool qFvg = input.bool(true, "HTF FVGs", group = G_H, inline = "hq2")
 bool qWick = input.bool(true, "HTF wicks", group = G_H, inline = "hq2")
-int hN = input.int(1, "At least N of the considered", minval = 0, maxval = 7, group = G_H,
+string hmPo3 = input.string(OFF, "PO3", options = [OFF, CON, MAN], group = G_H, inline = "po3",
+     tooltip = "Power of three on the candle in progress of the chosen timeframe: short when it has already "+
+         "traded at least 'min' points above its open (the manipulation wick) and price is now below the open "+
+         "(the expansion down); long the other way around. The exploration shows each timeframe as P3D, P34, "+
+         "P31 and P315. " + IMODE)
+string po3Tf = input.string("4H", "", options = ["D", "4H", "1H", "15m"], group = G_H, inline = "po3")
+float po3MinIn = input.float(10.0, "min", minval = 0.0, step = 1.0, group = G_H, inline = "po3")
+int hN = input.int(1, "At least N of the considered", minval = 0, maxval = 8, group = G_H,
      tooltip = "Consider indications that have to agree with the direction, besides the Mandatory ones. "+
          "Capped at the number of Consider indications. With every indication Off both directions are allowed.")
 bool hShow = input.bool(true, "Show the HTF OTE lines and draw targets", group = G_H,
@@ -1676,16 +1683,36 @@ quadOk(int dir) =>
     dir == 1 ? (qNwog and qNwB) or (qRth and qRthB) or (qFvg and qFvgB) or (qWick and qWkB)
          : (qNwog and qNwS) or (qRth and qRthS) or (qFvg and qFvgS) or (qWick and qWkS)
 
-// Indications: 0..11 LTF (triggers 0..3), 12..18 HTF
-const int NIND = 19
+// power of three of the candle in progress of timeframe tf: -1 short, 1 long, 0 none
+po3Track(string tf) =>
+    var float o = na
+    var float h = na
+    var float l = na
+    if timeframe.change(tf) or na(o)
+        o := open
+        h := high
+        l := low
+    else
+        h := math.max(h, high)
+        l := math.min(l, low)
+    float mn = po3MinIn * sizeK
+    h - o >= mn and close < o ? -1 : o - l >= mn and close > o ? 1 : 0
+int p3D = po3Track("D")
+int p34 = po3Track("240")
+int p31 = po3Track("60")
+int p315 = po3Track("15")
+int p3Sel = po3Tf == "D" ? p3D : po3Tf == "4H" ? p34 : po3Tf == "1H" ? p31 : p315
+
+// Indications: 0..11 LTF (triggers 0..3), 12..19 HTF
+const int NIND = 20
 var array<string> indName = array.from("IFVG leaving", "IFVG return", "FVG return", "Sweep+OTE", "OTE", "Breaker",
      "Mit. block", "Liquidity", "HTF level", "HTF OTE line", "EQH/EQL", "Delivery", "HTF OTE rej.", "HTF FVG draw",
-     "HTF liq. draw", "Cotas triangles", "HTF blocks", "HTF 0.5 rej.", "Quadrants")
+     "HTF liq. draw", "Cotas triangles", "HTF blocks", "HTF 0.5 rej.", "Quadrants", "PO3")
 var array<string> indShort = array.from("IFVGl", "IFVGr", "FVGr", "SwOTE", "OTE", "B", "MB", "Liq", "Lvl", "OTEl",
-     "EQ", "DLV", "hOTE", "hFVG", "hLiq", "Tri", "hBlk", "h50", "Quad")
+     "EQ", "DLV", "hOTE", "hFVG", "hLiq", "Tri", "hBlk", "h50", "Quad", "PO3")
 var array<int> indMode = array.from(modeOf(emLeave), modeOf(emRet), modeOf(emFvg), modeOf(emSwp), modeOf(emOte),
      modeOf(emBrk), modeOf(emMb), modeOf(emLiq), modeOf(emLvl), modeOf(emOteL), modeOf(emEq), modeOf(emDlv),
-     modeOf(hmOte), modeOf(hmFvg), modeOf(hmLiq), modeOf(hmTri), modeOf(hmBlk), modeOf(hm50), modeOf(hmQuad))
+     modeOf(hmOte), modeOf(hmFvg), modeOf(hmLiq), modeOf(hmTri), modeOf(hmBlk), modeOf(hm50), modeOf(hmQuad), modeOf(hmPo3))
 
 // [pass, bit mask of the true indications] for indications i0..i1 with values v (index 0 is i0) and N.
 // Indications below i0 + nTrig are triggers: they never count towards N.
@@ -2369,8 +2396,8 @@ triAgree(int dir) =>
 
 // HTF bias of direction dir: [allowed, mask]
 htfAllow(int dir) =>
-    [ok, mask] = indCheck(12, 18, 0, array.from(hbOte == dir, hbFvg == dir, hbLiq == dir,
-         triAgree(dir), hbDir == dir, hb50 == dir, quadOk(dir)), hN)
+    [ok, mask] = indCheck(12, 19, 0, array.from(hbOte == dir, hbFvg == dir, hbLiq == dir,
+         triAgree(dir), hbDir == dir, hb50 == dir, quadOk(dir), p3Sel == dir), hN)
     [ok, mask]
 
 // LTF entry of direction dir with FVG / IFVG f (kind 0 IFVG, 1 FVG, 2 sweep leg); t0..t3: the triggers that
@@ -2763,25 +2790,25 @@ if showTrades and simulate and statsOn and barstate.islast
 
 // ============================================================ exploration of combinations
 // Every trigger, whatever its setting, is a virtual trade (stop / take profit / trailing of Show Trades); its
-// result counts for the trigger alone and with every one or two of the 30 confirmations that were true.
-// Combination c = trigger * 466 + k, k: 0 alone, 1..30 one confirmation, 31..465 two.
+// result counts for the trigger alone and with every one or two of the 34 confirmations that were true.
+// Combination c = trigger * 596 + k, k: 0 alone, 1..34 one confirmation, 35..595 two.
 // Confirmations 14..21 are triangle patterns, 22..23 macro times, 24..27 quadrant reactions per zone kind,
-// 28..29 previous session trended / consolidated.
-const int EXC = 466
+// 28..29 previous session trended / consolidated, 30..33 PO3 of D, 4H, 1H, 15m.
+const int EXC = 596
 const int EXTRI = 14
 var array<string> exTrig = array.from("IFVGl", "IFVGr", "SwOTE", "FVGr")
 var array<string> exCond = array.from("OTE", "B", "MB", "Liq", "Lvl", "OTEl", "EQ", "DLV", "hOTE", "hFVG", "hLiq",
-     "Tri", "hBlk", "h50", "T4s", "T4c", "T1s", "T1c", "T15s", "T15c", "Tall", "T4s+LC", "Mac", "MacH", "qNW", "qRTH", "qFVG", "qWk", "pT", "pC")
+     "Tri", "hBlk", "h50", "T4s", "T4c", "T1s", "T1c", "T15s", "T15c", "Tall", "T4s+LC", "Mac", "MacH", "qNW", "qRTH", "qFVG", "qWk", "pT", "pC", "P3D", "P34", "P31", "P315")
 var array<int> exA = array.new<int>()
 var array<int> exB = array.new<int>()
 if barstate.isfirst
     exA.push(-1)
     exB.push(-1)
-    for a = 0 to 29
+    for a = 0 to 33
         exA.push(a)
         exB.push(-1)
-    for a = 0 to 28
-        for b = a + 1 to 29
+    for a = 0 to 32
+        for b = a + 1 to 33
             exA.push(a)
             exB.push(b)
 var array<int> exN = array.new<int>(4 * EXC, 0)
@@ -2824,7 +2851,7 @@ exAdd(array<int> cs, float pts) =>
 
 var array<VTrade> vts = array.new<VTrade>()
 
-// the 30 confirmations for a trade of direction dir on f (kind 0 IFVG, 1 FVG, 2 sweep leg)
+// the 34 confirmations for a trade of direction dir on f (kind 0 IFVG, 1 FVG, 2 sweep leg)
 exConds(int dir, FVG f, int kind) =>
     bool ote = kind == 0 ? (dir == 1 ? gBull.flagged : gBear.flagged) : kind == 2 ? true : oteFvg(dir, f)
     int sw = dir == 1 ? lastSweepL : lastSweepH
@@ -2837,7 +2864,8 @@ exConds(int dir, FVG f, int kind) =>
          triCode(1, dir) == 2, triCode(0, dir) == 1, triCode(0, dir) == 2,
          triCode(0, dir) > 0 and triCode(1, dir) > 0 and triCode(2, dir) > 0,
          triCode(2, dir) == 1 and triCode(1, dir) == 2 and triCode(0, dir) == 2, inMac, inMacH,
-         dir == 1 ? qNwB : qNwS, dir == 1 ? qRthB : qRthS, dir == 1 ? qFvgB : qFvgS, dir == 1 ? qWkB : qWkS, sesPrev == 1, sesPrev == 0)
+         dir == 1 ? qNwB : qNwS, dir == 1 ? qRthB : qRthS, dir == 1 ? qFvgB : qFvgS, dir == 1 ? qWkB : qWkS, sesPrev == 1, sesPrev == 0,
+         p3D == dir, p34 == dir, p31 == dir, p315 == dir)
 
 exOpen(int dir, int trig, FVG f, int kind, int id) =>
     [stp, tp, ok] = tradeLevels(dir, f)
