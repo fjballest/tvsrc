@@ -157,7 +157,7 @@ string emLvl = input.string(OFF, "HTF level rejection", options = [OFF, CON, MAN
          "and its whole body stayed above it. Levels are those of the ICTcotas settings below. N is shared with "+
          "the HTF OTE line rejection. " + IMODE)
 int htfLook = input.int(3, "within", minval = 1, maxval = 50, group = G_E, inline = "htf")
-string emOteL = input.string(CON, "HTF OTE line rejection", options = [OFF, CON, MAN], group = G_E,
+string emOteL = input.string(OFF, "HTF OTE line rejection", options = [OFF, CON, MAN], group = G_E,
      tooltip = "As the HTF level rejection, with the 0.62 / 0.705 / 0.79 lines of the HTF major and minor legs "+
          "(HTF bias, OTE rejection). " + IMODE)
 string emEq = input.string(OFF, "EQH / EQL to target", options = [OFF, CON, MAN], group = G_E,
