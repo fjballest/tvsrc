@@ -1,0 +1,97 @@
+# ICTScalp: Results So Far
+
+Summary of the ICTScalp backtests on TradingView, kept up to date as the script changes. All figures are on MNQ1! (points per trade, NQ points) over the chart history TradingView loads for each timeframe, from the simulated trades table of the script. They come from one history window on one instrument, so they show which way to go, not a proven edge.
+
+Last update: 2026-11-25, script commit a24a3bc / cc4a244 (TradingView version 32).
+
+## 1. Current default setup
+
+| Part | Setting |
+| ---- | ------- |
+| Trigger | FVG return only (IFVG leaving, IFVG return and sweep + OTE off) |
+| HTF bias (4H) | Cotas triangles Mandatory, pattern "15m turtle soup"; quadrant reactions Consider; the rest off |
+| LTF confirmations | Took liquidity Mandatory; the rest off |
+| Back checks | EQH / EQL behind the entry taken (backEq), highs / lows inside the FVG taken (inFvgHi) |
+| Time | ICT killzones (London, NY AM, NY PM) and hourly macro :50 to :10, New York time |
+| Stop | Past the short-term high / low since the FVG, 2 points margin |
+| Take profit | Risk ratio 1:2; candle trailing stop once 50 points in favour (the TP is then dropped) |
+| Max stop | Off |
+
+## 2. Results of the default setup
+
+| LTF | Trades | Win | Avg win | Avg loss | Points | Avg per trade |
+| --- | ------ | --- | ------- | -------- | ------ | ------------- |
+| 1m | 60 | 63% | +42.1 | -45.3 | +604 | **+10.1** |
+| 2m | 75 | 56% | +57.0 | -38.2 | +1132 | **+15.1** |
+| 5m | 95 | 48% | +86.3 | -41.3 | +1942 | **+20.4** |
+
+## 3. How we got here
+
+Each step kept only what improved the results; what did not work was removed from the script.
+
+| Step | 1m | 2m | 5m |
+| ---- | -- | -- | -- |
+| Old defaults (IFVG / sweep triggers, OTE, breaker, MB, HTF OTE and FVG draw) | +1.9 (376) | -2.75 (316) | +0.75 (312) |
+| FVG return + 15m turtle soup triangles (config P) | +2.96 (207) | +1.31 (247) | +10.9 (355) |
+| + took liquidity Mandatory | +3.8 (194) | +2.7 (208) | +14.6 (265) |
+| + hourly macro :50-:10 with killzones | +8.2 (76) | +9.3 (86) | +19.7 (106) |
+| + quadrant reactions (current default) | +10.1 (60) | +15.1 (75) | +20.4 (95) |
+
+Avg points per trade, trades in brackets. Total points are highest on 5m without the time filter (+3,877 with 265 trades), so the time filter trades total points for quality.
+
+## 4. Findings by topic
+
+### HTF triangles (ICTcotas)
+
+- A turtle soup (sweep) on 15m in the trade direction, with 1H and 4H not against it, beat every other pattern tried: all agree, 4H continuation, and 4H sweep with the rest continuing.
+- Mixing the triangles with the other HTF indications (OTE rejection, FVG draw, blocks, 0.5 rejections) as Consider made results negative, so those are off by default.
+
+### Time (ICT macros)
+
+| Filter | 1m | 2m | 5m |
+| ------ | -- | -- | -- |
+| Killzones only | +3.8 (194) | +2.7 (208) | +14.6 (265) |
+| ICT macro list, no killzones | +5.5 (64) | +13.0 (76) | +15.2 (94) |
+| Hourly :50-:10, no killzones | +6.4 (152) | +7.8 (159) | +6.7 (210) |
+| Hourly :50-:10 with killzones | +8.2 (76) | +9.3 (86) | +19.7 (106) |
+
+The ICT macro list is 02:33-03:00, 04:03-04:30, 08:50-09:10, 09:50-10:10, 10:50-11:10, 11:50-12:10, 13:10-13:40 and 15:15-15:45 (New York).
+
+### Quadrant reactions
+
+A closed candle wicks to the 0, 25, 50, 75 or 100% level of a zone and closes back on the trade side, within the last 10 candles. Zones: last NWOG, last RTHOG, last 1H and 4H FVGs, last 1H and 4H candle wicks.
+
+| Zones | 1m | 2m | 5m |
+| ----- | -- | -- | -- |
+| All (default) | +10.1 (60) | +15.1 (75) | +20.4 (95) |
+| NWOG and RTHOG only | +0.7 (12) | +14.4 (20) | +51.1 (32, 66% win) |
+| HTF FVGs and wicks only | +10.8 (59) | +14.0 (69) | +11.0 (92) |
+
+NWOG / RTHOG quadrants on 5m stand out, but with too few trades to rely on yet.
+
+### Stops and take profit
+
+| Variant | Result | Status |
+| ------- | ------ | ------ |
+| Candle trailing after 50 points, RR 2 | Best of those tried | Default |
+| Structure trailing (new short-term highs / lows and FVGs after the entry) | 1m +1.7, 5m +4.9 with HTF TP; 5m +7.9 with RR 2, vs +10.9 | Removed |
+| Max stop 40, wait for a retracement | 1m +6.4, 2m +10.7, 5m -2.2 | Off |
+| Max stop 80, wait for a retracement | 1m +8.3, 2m +11.6, 5m +15.0 | Off |
+| Max stop 80, skip (wait 1 bar) | 1m +7.1, 5m +14.4 | Off |
+
+Wide-stop trades are net winners in this sample: waiting for a retracement to get a smaller stop, or skipping them, lowered the results on every timeframe.
+
+### Other things tried and removed
+
+| Idea | Result |
+| ---- | ------ |
+| Block rejection trigger | Worse than without |
+| OTE-or-liquidity gate | Worse than without |
+| Cool-down after a loss | +1.37 vs +1.9 on 1m |
+| HTF IFVG re-leave | -3.46; -17.57 with a 2-candle hold |
+
+## 5. Open ideas
+
+- NWOG / RTHOG quadrants on 5m, once there is more history.
+- A max stop that moves the stop to a nearer structure (a newer short-term high / low or LTF FVG) instead of keeping the original stop level.
+- Checking the setup on other instruments (ES, DAX) and other history windows.
