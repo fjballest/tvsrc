@@ -165,10 +165,6 @@ bool inFvgHi = input.bool(true, "Wait for the highs / lows inside the FVG to be 
      tooltip = "No short on an FVG / IFVG (or sweep leg zone) while a short-term high not taken yet lies inside it; "+
          "no long while a short-term low not taken yet lies inside it. The entry comes on a later trigger, once it "+
          "was taken and price turns. Applies to every entry and to the exploration.")
-bool coolOn = input.bool(true, "After a stopped entry, wait for liquidity or an HTF OTE rejection", group = G_E,
-     tooltip = "Once an entry hits its initial stop, no new entry in that direction until a short-term low (long) / "+
-         "high (short) is taken or a candle rejects an HTF OTE line in that direction after the stop. Not applied to "+
-         "the exploration.")
 int eN = input.int(1, "At least N of the considered confirmations", minval = 0, maxval = 10, group = G_E,
      tooltip = "Consider confirmations (not triggers) that have to be true, besides the Mandatory ones. Capped at "+
          "the number of Consider confirmations. Triggers: at least one Consider or Mandatory trigger has to fire, "+
@@ -2250,27 +2246,6 @@ if modeOf(emFvg) == 0
 bool tFvgS = not na(fRetS)
 bool tFvgL = not na(fRetL)
 
-// entries that hit their initial stop (index 0 short, 1 long), for the wait after a stopped entry
-var array<float> ckStp = array.new<float>(2, na)
-var array<float> ckTp = array.new<float>(2, na)
-var array<int> ckBar = array.new<int>(2, -1)
-var array<int> failBar = array.new<int>(2, -1)
-if barstate.isconfirmed and coolOn
-    for i = 0 to 1
-        float cs = ckStp.get(i)
-        if not na(cs) and bar_index > ckBar.get(i)
-            if i == 1 ? low <= cs : high >= cs
-                failBar.set(i, bar_index)
-                ckStp.set(i, na)
-            else if i == 1 ? high >= ckTp.get(i) : low <= ckTp.get(i)
-                ckStp.set(i, na)
-
-coolOk(int dir) =>
-    int fb = failBar.get(dir == 1 ? 1 : 0)
-    int sw = dir == 1 ? lastSweepL : lastSweepH
-    int orj = dir == 1 ? lastORejBull : lastORejBear
-    not coolOn or fb < 0 or nz(sw, -1) > fb or nz(orj, -1) > fb
-
 bool goShort = false
 bool goLong = false
 FVG entS = na
@@ -2289,7 +2264,7 @@ if barstate.isconfirmed and timeOk
         bool go = false
         FVG ent = na
         int msk = 0
-        if (tLv or tRt or tFv or tSw) and coolOk(dir)
+        if tLv or tRt or tFv or tSw
             [hOk, hMask] = htfAllow(dir)
             if hOk
                 // candidates in order: IFVG, sweep leg, FVG
@@ -2520,15 +2495,6 @@ if showTrades and goShort
     newTrade(-1, entS, maskS)
 if showTrades and goLong
     newTrade(1, entL, maskL)
-// initial stop and take profit of the entries, for the wait after a stopped entry
-if coolOn
-    for dir in array.from(-1, 1)
-        if dir == 1 ? goLong : goShort
-            [cs, ct, cok] = tradeLevels(dir, dir == 1 ? entL : entS)
-            int ci = dir == 1 ? 1 : 0
-            ckStp.set(ci, cs)
-            ckTp.set(ci, ct)
-            ckBar.set(ci, bar_index)
 
 // results table of the simulated trades: all, then each indication in use
 // text of a percentage / an average, "-" when there is nothing to divide by
