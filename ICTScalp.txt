@@ -108,7 +108,7 @@ string hm50 = input.string(OFF, "0.5 rejections", options = [OFF, CON, MAN], gro
          "its 0.5 level (not beyond the origin) and close back on the leg side. Gives the leg direction (a down "+
          "leg rejected at 0.5 gives short) until the leg breaks or a candle closes beyond 0.5. " + IMODE)
 int r50Min = input.int(2, "at least", minval = 1, maxval = 5, group = G_H, inline = "h50")
-string hmQuad = input.string(OFF, "Quadrant reactions", options = [OFF, CON, MAN], group = G_H, inline = "hq",
+string hmQuad = input.string(CON, "Quadrant reactions", options = [OFF, CON, MAN], group = G_H, inline = "hq",
      tooltip = "A closed candle wicks to the 0, 25, 50, 75 or 100% level of a zone and closes back on the trade side "+
          "(a low tags the level and the close is above it: long; a high tags it and the close is below: short), "+
          "within the last 'bars' candles. Zones: the last NWOG, the last RTHOG (16:00 close to 09:30 open, New York), "+
