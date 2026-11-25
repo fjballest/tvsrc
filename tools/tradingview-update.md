@@ -60,9 +60,16 @@ ICTScalp is not in the ICTmany template. In the ICT6win layout it is on the
 m1, m3 and m5 panes, which use the "ICTmanyscalp" indicator template (ICTmany
 plus ICTScalp). To update it:
 
-1. Save the new source of ICTScalp in the Pine Editor (as above).
-2. On the m1 pane, update ICTScalp on the chart (its source from the pane
-   legend, "Update on chart" if offered) and check its inputs.
+1. Save the new source of ICTScalp in the Pine Editor (as above) and check
+   the editor console: a save with errors still says "saved" but the copies
+   on the charts stay on the old version.
+2. On the m1 pane, update ICTScalp on the chart. Copies that came from a
+   template are pinned to their version (the legend shows "ICTScalp · 44.0")
+   and do not follow a save. Then: open its settings and record the inputs
+   (the dialog's comboboxes and inputs, in order), remove it, select the m1
+   pane, open ICTScalp in the editor (Recently used) and press "Add to chart".
+   Compare the new copy's inputs with the recorded ones (a new input shifts
+   the order) and set back any that differ.
 3. With the m1 pane selected, save its indicators as the "ICTmanyscalp"
    template (templates menu, "Save indicator template...", replace).
 4. Select the m5 pane and then the m3 pane and load the ICTmanyscalp template
