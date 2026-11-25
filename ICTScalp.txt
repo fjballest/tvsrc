@@ -234,6 +234,11 @@ bool kzAsia = input.bool(false, "Asia", group = G_TM, inline = "kz")
 bool kzLondon = input.bool(true, "London", group = G_TM, inline = "kz")
 bool kzNyam = input.bool(true, "NY AM", group = G_TM, inline = "kz")
 bool kzNypm = input.bool(true, "NY PM", group = G_TM, inline = "kz")
+string macMode = input.string("Off", "Only inside ICT macros", options = ["Off", "ICT macros", "Hourly :50-:10"],
+     group = G_TM, tooltip = "Entries only on candles that open inside a macro, always in New York time.\n"+
+         "ICT macros: 02:33-03:00, 04:03-04:30, 08:50-09:10, 09:50-10:10, 10:50-11:10, 11:50-12:10, "+
+         "13:10-13:40, 15:15-15:45.\nHourly: from :50 to :10 of every hour.\n"+
+         "Combined with the other time options (all have to be met). The exploration shows both as Mac / MacH.")
 
 const string G_T = "Show Trades"
 bool showTrades = input.bool(false, "Show trades", group = G_T,
@@ -2275,7 +2280,18 @@ bool inKz = (kzAsia and not na(time(timeframe.period, asiastr, tz)))
      or (kzLondon and not na(time(timeframe.period, londonstr, tz)))
      or (kzNyam and not na(time(timeframe.period, nyamstr, tz)))
      or (kzNypm and not na(time(timeframe.period, nypmstr, tz)))
-bool timeOk = (not useWin or inWin) and (not useKz or inKz)
+string MACS = "0233-0300,0403-0430,0850-0910,0950-1010,1050-1110,1150-1210,1310-1340,1515-1545"
+macHourly() =>
+    string s = ""
+    for h = 0 to 23
+        string a = str.format("{0}{1}50-{2}{3}10", h < 10 ? "0" : "", h, (h + 1) % 24 < 10 ? "0" : "", (h + 1) % 24)
+        s += (h > 0 ? "," : "") + a
+    s
+var string MACH = macHourly()
+bool inMac = not na(time(timeframe.period, MACS, "America/New_York"))
+bool inMacH = not na(time(timeframe.period, MACH, "America/New_York"))
+bool macOk = macMode == "Off" or (macMode == "ICT macros" ? inMac : inMacH)
+bool timeOk = (not useWin or inWin) and (not useKz or inKz) and macOk
 
 // triggers of this candle; a trigger that is Off never fires
 bool tLeaveS = modeOf(emLeave) > 0 and bearLeave
@@ -2582,24 +2598,24 @@ if showTrades and simulate and statsOn and barstate.islast
 
 // ============================================================ exploration of combinations
 // Every trigger, whatever its setting, is a virtual trade (stop / take profit / trailing of Show Trades); its
-// result counts for the trigger alone and with every one or two of the 22 confirmations that were true.
-// Combination c = trigger * 254 + k, k: 0 alone, 1..22 one confirmation, 23..253 two.
-// Confirmations 14..21 are triangle patterns (exploration only).
-const int EXC = 254
+// result counts for the trigger alone and with every one or two of the 24 confirmations that were true.
+// Combination c = trigger * 301 + k, k: 0 alone, 1..24 one confirmation, 25..300 two.
+// Confirmations 14..21 are triangle patterns and 22..23 macro times (exploration only).
+const int EXC = 301
 const int EXTRI = 14
 var array<string> exTrig = array.from("IFVGl", "IFVGr", "SwOTE", "FVGr")
 var array<string> exCond = array.from("OTE", "B", "MB", "Liq", "Lvl", "OTEl", "EQ", "DLV", "hOTE", "hFVG", "hLiq",
-     "Tri", "hBlk", "h50", "T4s", "T4c", "T1s", "T1c", "T15s", "T15c", "Tall", "T4s+LC")
+     "Tri", "hBlk", "h50", "T4s", "T4c", "T1s", "T1c", "T15s", "T15c", "Tall", "T4s+LC", "Mac", "MacH")
 var array<int> exA = array.new<int>()
 var array<int> exB = array.new<int>()
 if barstate.isfirst
     exA.push(-1)
     exB.push(-1)
-    for a = 0 to 21
+    for a = 0 to 23
         exA.push(a)
         exB.push(-1)
-    for a = 0 to 20
-        for b = a + 1 to 21
+    for a = 0 to 22
+        for b = a + 1 to 23
             exA.push(a)
             exB.push(b)
 var array<int> exN = array.new<int>(4 * EXC, 0)
@@ -2622,7 +2638,7 @@ type VTrade
 
 var array<VTrade> vts = array.new<VTrade>()
 
-// the 22 confirmations for a trade of direction dir on f (kind 0 IFVG, 1 FVG, 2 sweep leg)
+// the 24 confirmations for a trade of direction dir on f (kind 0 IFVG, 1 FVG, 2 sweep leg)
 exConds(int dir, FVG f, int kind) =>
     bool ote = kind == 0 ? (dir == 1 ? gBull.flagged : gBear.flagged) : kind == 2 ? true : oteFvg(dir, f)
     int sw = dir == 1 ? lastSweepL : lastSweepH
@@ -2634,7 +2650,7 @@ exConds(int dir, FVG f, int kind) =>
          hbDir == dir, hb50 == dir, triCode(2, dir) == 1, triCode(2, dir) == 2, triCode(1, dir) == 1,
          triCode(1, dir) == 2, triCode(0, dir) == 1, triCode(0, dir) == 2,
          triCode(0, dir) > 0 and triCode(1, dir) > 0 and triCode(2, dir) > 0,
-         triCode(2, dir) == 1 and triCode(1, dir) == 2 and triCode(0, dir) == 2)
+         triCode(2, dir) == 1 and triCode(1, dir) == 2 and triCode(0, dir) == 2, inMac, inMacH)
 
 exOpen(int dir, int trig, FVG f, int kind, int id) =>
     [stp, tp, ok] = tradeLevels(dir, f)
@@ -2713,7 +2729,7 @@ if explore and showTrades and simulate and barstate.islast
         int best = -1
         for c = 0 to 4 * EXC - 1
             int kk = c % EXC
-            bool tOk = exOnly == "All" or exA.get(kk) >= EXTRI or exB.get(kk) >= EXTRI
+            bool tOk = exOnly == "All" or (exA.get(kk) >= EXTRI and exA.get(kk) < EXTRI + 8) or (exB.get(kk) >= EXTRI and exB.get(kk) < EXTRI + 8)
             if tOk and not done.get(c) and exN.get(c) >= exMin and (best < 0 or exP.get(c) > exP.get(best))
                 best := c
         if best >= 0
