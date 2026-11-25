@@ -134,8 +134,13 @@ string hmPo3In = input.string(OFF, "PO3", options = [OFF, CON, MAN], group = G_H
          "traded at least 'min' points above its open (the manipulation wick) and price is now below the open "+
          "(the expansion down); long the other way around. The exploration shows each timeframe as P3D, P34, "+
          "P31 and P315. " + IMODE)
-string po3TfIn = input.string("4H", "", options = ["D", "4H", "1H", "15m"], group = G_H, inline = "po3")
+string po3TfIn = input.string("4H", "", options = ["D", "4H", "2H", "1H", "30m", "15m", "10m", "5m", "3m"],
+     group = G_H, inline = "po3")
 float po3MinIn = input.float(10.0, "min", minval = 0.0, step = 1.0, group = G_H, inline = "po3")
+string po3Tf2In = input.string("None", "PO3 also on", options = ["None", "D", "4H", "2H", "1H", "30m", "15m", "10m",
+     "5m", "3m"], group = G_H, inline = "po3b",
+     tooltip = "A second PO3 timeframe: when set, both candles in progress have to show the PO3 in the trade "+
+         "direction. Timeframes at or below the chart timeframe make no sense.")
 int hN = input.int(1, "At least N of the considered", minval = 0, maxval = 8, group = G_H,
      tooltip = "Consider indications that have to agree with the direction, besides the Mandatory ones. "+
          "Capped at the number of Consider indications. With every indication Off both directions are allowed.")
@@ -282,6 +287,7 @@ string macMode = input.string("Hourly :50-:10", "Only inside ICT macros", option
 // effective settings (Auto overrides the inputs on 1m, 2m and 5m)
 string hmPo3 = autoTf ? (tfMin == 1 ? OFF : MAN) : hmPo3In
 string po3Tf = autoTf ? "4H" : po3TfIn
+string po3Tf2 = autoTf ? "None" : po3Tf2In
 string regMode = autoTf ? (tfMin == 1 ? "Consolidated" : "Off") : regModeIn
 
 const string G_T = "Show Trades"
@@ -1716,7 +1722,12 @@ int p3D = po3Track("D")
 int p34 = po3Track("240")
 int p31 = po3Track("60")
 int p315 = po3Track("15")
-int p3Sel = po3Tf == "D" ? p3D : po3Tf == "4H" ? p34 : po3Tf == "1H" ? p31 : p315
+po3TfStr(string s) =>
+    s == "D" ? "D" : s == "4H" ? "240" : s == "2H" ? "120" : s == "1H" ? "60" : s == "30m" ? "30" :
+     s == "15m" ? "15" : s == "10m" ? "10" : s == "5m" ? "5" : "3"
+int p3A = po3Track(po3TfStr(po3Tf))
+int p3B = po3Track(po3TfStr(po3Tf2 == "None" ? "4H" : po3Tf2))
+int p3Sel = po3Tf2 == "None" ? p3A : p3A == p3B ? p3A : 0
 
 // Indications: 0..11 LTF (triggers 0..3), 12..19 HTF
 const int NIND = 20
