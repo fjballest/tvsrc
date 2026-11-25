@@ -80,6 +80,9 @@ doifvg = input.bool(true, "IFVGs", group = GRP_EN, inline = "en",
     tooltip = "Detect, draw and alert interesting IFVGs.")
 var dowick = input.bool(true, "Wick C.E.", group = GRP_EN, inline = "en",
     tooltip = "Draw the C.E. of candle wicks.")
+var sbOn = input.bool(true, "Silver bullet", group = GRP_EN, inline = "en",
+    tooltip = "On 1m and 2m charts, the first FVG (either bias) formed in each silver bullet window (3-4 AM, 10-11 AM and 2-3 PM New York "+
+        "time) gets SB in its label and the SB border (color and width in FVG Settings).")
 
 drawMode = input.string("all", "Draw", options = ["all", "1PFVGs", "IFVGs", "1PFVGs+IFVGs"], group = GRP_EN, inline = "dr",
     tooltip = "all: everything.\n1PFVGs: only 1PFVGs, no other FVG.\nIFVGs: only IFVG boxes and OTE bands.\n"+
@@ -96,14 +99,49 @@ fltMode = input.string("none", "FVG filter", options = ["none", "sweeps", "sweep
         "extended by a merged FVG. relevant is the slowest filter: every bar it checks all hidden live FVGs.\n"+
         "recent relevant: as relevant, but hidden FVGs older than 1000 bars are dropped (they no longer "+
         "reappear), which keeps it fast on long histories.")
-fpMode = input.string("all", "1PFVG filter", options = ["all", "week", "week+fridays"], group = GRP_EN, inline = "dr",
+fpMode = input.string("all", "1PFVG filter", options = ["all", "week", "week+fridays", "week+fridays+last"], group = GRP_EN, inline = "dr",
     tooltip = "Which 1st presented FVGs are kept and drawn.\nall: every day's 1PFVG.\nweek: only the week 1PFVGs "+
-        "(Mondays).\nweek+fridays: the Monday and the Friday 1PFVGs. The others are plain FVGs (and no inverse 1PFVG "+
+        "(Mondays).\nweek+fridays: the Monday and the Friday 1PFVGs.\nweek+fridays+last: also the latest 1PFVG, whatever "+
+        "the day (it goes away when the next one forms). The others are plain FVGs (and no inverse 1PFVG "+
         "follows them). Keep counts the kept ones, so with week it holds that many weeks.")
+attLvl = input.int(2, "Attenuation", minval = 0, maxval = 4, group = GRP_EN, inline = "att",
+    tooltip = "Tones down the drawings for a cleaner chart. 0: as configured (2 by default). 1 and 2: fills, borders, lines and "+
+        "texts more transparent, and thinner. 3: as 2 and more, boxes without border (fills only) but with their C.E. "+
+        "line. 4: as 3, without the C.E. lines either. Applied on top of the colors and widths chosen below. "+
+        "Segments, signals and breaker / mitigation block fills keep their look apart from the colors.")
+nqscale = input.bool(true, "Scale sizes using NQ sizes as reference", group = GRP_EN,
+    tooltip = "Sizes in points (minimum sizes and the like) are set for NQ. On: they are scaled for the chart "
+        + "instrument by a fixed factor, its typical range relative to NQ: ES 0.2, YM 1.3, RTY 0.1, DAX 0.7 "
+        + "(and their micros and CFDs); other instruments keep them as given.")
+// [ATT] attenuation: fills (F), borders / lines / text (B), box borders (gone from 3, C.E. lines at 4),
+// transparencies (T) and widths; attE is the strength (levels 1, 2, 3 and 4 -> 2, 3, 4 and 4)
+attEof(int l) =>
+    l == 0 ? 0 : l == 1 ? 2 : l == 2 ? 3 : 4
+int attE = attEof(attLvl)
+int attEc = attEof(math.max(attLvl - 1, 0)) // C.E. lines: one level less
+attF(color c) =>
+    attE == 0 or na(c) ? c : color.new(c, color.t(c) + (100 - color.t(c)) * attE * 0.15)
+attB(color c) =>
+    attE == 0 or na(c) ? c : color.new(c, color.t(c) + (100 - color.t(c)) * attE * 0.18)
+attT(int t) =>
+    int(math.round(t + (100 - t) * attE * 0.15))
+attTB(int t) =>
+    attLvl >= 3 ? 100 : int(math.round(t + (100 - t) * attE * 0.18))
+attW(int w) =>
+    math.max(1, w - int(attE / 2))
+// a border color (already attB) as for one level less: the C.E. lines
+attCE(color c) =>
+    attE == 0 or na(c) ? c : color.new(c, 100 - (100 - color.t(c)) * (1 - attEc * 0.18) / (1 - attE * 0.18))
+attWc(int w) =>
+    math.max(1, w - int(attEc / 2))
 bool fponly = drawMode == "1PFVGs"            // regular FVGs are discarded
 // [1PF] the 1PFVG of a day of the week d (dayofweek.*) is kept as a 1PFVG
 fpPass(int d) =>
-    fpMode == "all" or d == dayofweek.monday or (fpMode == "week+fridays" and d == dayofweek.friday)
+    fpMode == "all" or fpMode == "week+fridays+last" or d == dayofweek.monday or
+         (fpMode == "week+fridays" and d == dayofweek.friday)
+// [1PF] kept only while it is the latest 1PFVG (week+fridays+last, not a Monday or Friday)
+fpTemp(int d) =>
+    fpMode == "week+fridays+last" and d != dayofweek.monday and d != dayofweek.friday
 bool ifvgOnly = drawMode == "IFVGs"           // all FVGs are hidden, 1PFVGs included
 bool hideReg = drawMode == "IFVGs" or drawMode == "1PFVGs+IFVGs"  // regular FVGs, wicks, swing labels, signals hidden
 bool fltOff = fltMode == "none"
@@ -122,10 +160,13 @@ var visible = input.bool(false, "Historic compute", group = GRP_MAIN, inline = "
     tooltip = "Off: keeps the last FVGs for real time use (scroll-safe, discards old FVGs).\n"+
         "On: computes FVGs up to the rightmost visible time (good for history, slower when scrolling).")
 var dofvgalert = input.bool(false, "FVG bounce alerts", group = GRP_MAIN, inline = "v")
+var sbCol = input.color(#AB47BC, "SB border", group = GRP_MAIN, inline = "sb",
+    tooltip = "Border of the first FVG of each silver bullet window (Silver bullet in Enable).")
+var sbWid = input.int(2, "width", minval = 1, maxval = 4, group = GRP_MAIN, inline = "sb")
 
-var minfvg = input.float(3, "Size: min", minval = 1, maxval = 1000, group = GRP_MAIN, inline = "sz",
+var minfvgIn = input.float(3, "Size: min", minval = 1, maxval = 1000, group = GRP_MAIN, inline = "sz",
     tooltip = "Minimum FVG size (points) to be valid.")
-var maxfvg = input.float(10000, "max", minval = 100, group = GRP_MAIN, inline = "sz",
+var maxfvgIn = input.float(10000, "max", minval = 100, group = GRP_MAIN, inline = "sz",
     tooltip = "Ignore FVGs larger than this (buggy data with huge gaps).")
 var maxfvgs = input.int(200, "keep", minval = 2, maxval = 500, group = GRP_MAIN, inline = "sz",
     tooltip = "Number of FVGs to keep.")
@@ -143,15 +184,15 @@ drawStyle = input.string("Box", "FVG style", options = ["Box", "Box, no fill", "
 bool styNoFill = drawStyle == "Box, no fill"
 bool stySeg = drawStyle == "Segments (hi / lo / C.E.)"
 
-var mince = input.int(20, "C.E.: min height", minval = 10, maxval = 1000, group = GRP_MAIN, inline = "ce",
+var minceIn = input.int(20, "C.E.: min height", minval = 10, maxval = 1000, group = GRP_MAIN, inline = "ce",
     tooltip = "Min FVG height to draw the C.E.")
 var celnwid = input.int(2, "width", minval = 1, maxval = 3, group = GRP_MAIN, inline = "ce")
 var cesty = getstyle(input.string("dotted", "style", options = ["solid", "dashed", "dotted"], group = GRP_MAIN, inline = "ce"))
 
-var lcol = input.color( color.new(#FF6D00, 90), "Long FVG color", group = GRP_MAIN, inline = "lfvg")
-var lnlcol = input.color( color.new(#FF6D00, 20), "border", group = GRP_MAIN, inline = "lfvg")
-var scol = input.color( color.new(#f7525f, 90), "Short FVG color", group = GRP_MAIN, inline = "sfvg")
-var lnscol = input.color( color.new(#f7525f, 20), "border", group = GRP_MAIN, inline = "sfvg")
+var lcol = attF(input.color( color.new(#FF6D00, 90), "Long FVG color", group = GRP_MAIN, inline = "lfvg"))
+var lnlcol = attB(input.color( color.new(#FF6D00, 20), "border", group = GRP_MAIN, inline = "lfvg"))
+var scol = attF(input.color( color.new(#f7525f, 90), "Short FVG color", group = GRP_MAIN, inline = "sfvg"))
+var lnscol = attB(input.color( color.new(#f7525f, 20), "border", group = GRP_MAIN, inline = "sfvg"))
 
 // 1st Presented FVGs ========================================
 GRP_F1 = "1st Presented FVGs"
@@ -162,30 +203,34 @@ var tz = input.string("Auto", "TZ", group = GRP_F1, inline = "fp",
 var nfp = input.int(6, "Keep", group = GRP_F1, inline = "fp",
     tooltip = "Number of 1st presented FVGs kept.")
 fp1m = input.bool(true, "From 1m candles", group = GRP_F1, inline = "fp",
-    tooltip = "On charts above 1m and below 15m, the 1st presented FVG is found on the 1m candles "+
-        "(request.security_lower_tf) instead of the chart candles. Off: only on 1m to 3m charts, from the chart candles.")
+    tooltip = "On charts above 1m, the 1st presented FVG is found on the 1m candles (request.security_lower_tf) "+
+        "instead of the chart candles. Off: on 2m to 5m charts only 1m to 3m charts show it, from the chart candles; "+
+        "above 5m the 1m candles are always used.")
+fpMaxTf = input.timeframe("60", "Show 1m 1PFVGs up to", group = GRP_F1, inline = "fptf",
+    tooltip = "1PFVGs (and inverse 1PFVGs) found on the 1m candles are shown on minute charts at or below this "+
+        "timeframe, so the week / Friday 1PFVGs (see the 1PFVG filter) can be seen on 15m or 1H charts.")
 
-var fpcol = input.color( color.new(#00fbff, 90), "Day 1PFVG", group = GRP_F1, inline = "fp1")
-var lnfpcol = input.color( color.new(#0097a7, 20), "border", group = GRP_F1, inline = "fp1")
-var wfpcol = input.color( color.new(#2962ff, 90), "Week 1PFVG", group = GRP_F1, inline = "wfp")
-var lnwfpcol = input.color( color.new(#2962ff, 20), "border", group = GRP_F1, inline = "wfp")
-var ffpcol = input.color( color.new(#9c27b0, 90), "Friday 1PFVG", group = GRP_F1, inline = "ffp")
-var lnffpcol = input.color( color.new(#9c27b0, 20), "border", group = GRP_F1, inline = "ffp")
+var fpcol = attF(input.color( color.new(#00fbff, 90), "Day 1PFVG", group = GRP_F1, inline = "fp1"))
+var lnfpcol = attB(input.color( color.new(#0097a7, 20), "border", group = GRP_F1, inline = "fp1"))
+var wfpcol = attF(input.color( color.new(#2962ff, 90), "Week 1PFVG", group = GRP_F1, inline = "wfp"))
+var lnwfpcol = attB(input.color( color.new(#2962ff, 20), "border", group = GRP_F1, inline = "wfp"))
+var ffpcol = attF(input.color( color.new(#9c27b0, 90), "Friday 1PFVG", group = GRP_F1, inline = "ffp"))
+var lnffpcol = attB(input.color( color.new(#9c27b0, 20), "border", group = GRP_F1, inline = "ffp"))
 var doifp = input.bool(false, "1PFVG inverse", group = GRP_F1, inline = "ifp1")
-var ifpcol = input.color( color.new(#880e4f, 80), "color", group = GRP_F1, inline = "ifp1")
-var ilnfpcol = input.color( color.new(#880e4f, 20), "border", group = GRP_F1, inline = "ifp1")
+var ifpcol = attF(input.color( color.new(#880e4f, 80), "color", group = GRP_F1, inline = "ifp1"))
+var ilnfpcol = attB(input.color( color.new(#880e4f, 20), "border", group = GRP_F1, inline = "ifp1"))
 
 // Wick Settings =============================================
 GRP_W = "Wick Settings"
 
 var nwicks = input.int(30, "Keep", group = GRP_W, inline = "w1",
     tooltip = "Wicks kept drawn.")
-var minwick = input.float(20, "Min size", group = GRP_W, inline = "w1",
+var minwickIn = input.float(20, "Min size", group = GRP_W, inline = "w1",
     tooltip = "Min wick size to draw its C.E.")
 var wickdx = input.int(0, "Segment width", group = GRP_W, inline = "w1",
     tooltip = "0 = auto, or number of candles.")
 var wicksty = getstyle(input.string("solid", "C.E. line style", options = ["solid", "dashed", "dotted"], group = GRP_W, inline = "wick"))
-var wickcol = input.color( color.black, "", group = GRP_W, inline = "wick")
+var wickcol = attB(input.color( color.black, "", group = GRP_W, inline = "wick"))
 var dowickalert = input.bool(false, "alerts on bounces", group = GRP_W, inline = "wick",
     tooltip = "Alert on wick C.E. bounces.")
 
@@ -197,7 +242,7 @@ showSignals = input.bool(false, "Show signals", group = G_IFVG, inline = "ial",
     tooltip = "Debug: show where alarms are triggered.")
 showIfvgLbl = input.bool(true, "Labels", group = G_IFVG, inline = "ial",
     tooltip = "Show the text labels (IFVG+ / IFVG- / OTE) on the IFVG boxes.")
-color ifvgTxtCol = showIfvgLbl ? color.black : color.new(color.black, 100)
+color ifvgTxtCol = showIfvgLbl ? attB(color.black) : color.new(color.black, 100)
 lblTf = input.bool(true, "Label parts: OTE TF", group = G_IFVG, inline = "lp",
     tooltip = "Parts of the IFVG labels: the timeframes of the OTE match (e.g. 5m+15m), the + / - of the IFVG "+
         "(IFVG+ / IFVG-), and the A+ tag of the Delivery Engine setups.")
@@ -210,13 +255,20 @@ keepIFVG = input.bool(true, "Keep confirmed IFVGs, max", group = G_IFVG, inline 
 keepMax = input.int(20, "", minval = 1, maxval = 100, group = G_IFVG, inline = "keep")
 deConf = input.string("Close", "IFVG confirmation", options = ["Close", "Full body"], group = G_IFVG,
     tooltip = "Close: the close is beyond the FVG. Full body: open and close are both beyond it.")
+ifvgTolT = input.int(4, "Invalidation margin (ticks), hold bars", minval = 0, group = G_IFVG, inline = "ho",
+    tooltip = "Inversion rules off. A close back through a confirmed IFVG by no more than this many ticks, with a "+
+        "wick beyond the close (a rejection), does not cancel it at once: the IFVG is on hold for up to the given "+
+        "bars. A close back inside (or beyond it in its direction) ends the hold and it stays an IFVG; a close "+
+        "beyond the margin, or the hold running out with the close still past it, cancels it. 0 ticks: cancel "+
+        "on the first close through, as before.")
+ifvgHold = input.int(3, "", minval = 1, maxval = 10, group = G_IFVG, inline = "ho")
 deInv = input.bool(false, "Inversion rules, max inversions", group = G_IFVG, inline = "di",
     tooltip = "Close mode (not swings). Off: a close back through a confirmed IFVG just cancels it and it can be "+
         "confirmed again.\nOn: each close through the zone inverts it again (IFVG, IFVG x2 in the other direction, "+
         "...) up to the max; the next close through invalidates it. Only the first inversion is tracked for OTE.")
 deMaxInv = input.int(1, "", minval = 1, maxval = 10, group = G_IFVG, inline = "di")
 deDead = input.string("Fade", "Invalidated IFVG", options = ["Fade", "Back to FVG"], group = G_IFVG, inline = "dv")
-deDeadCol = input.color(color.new(color.gray, 85), "", group = G_IFVG, inline = "dv")
+deDeadCol = attF(input.color(color.new(color.gray, 85), "", group = G_IFVG, inline = "dv"))
 
 ifvgswings = input.bool(false, "Swings (else closes)", group = G_IFVG, inline = "sw",
     tooltip = "On: keep a single IFVG under watch, located using swings.\n"+
@@ -232,10 +284,11 @@ atrLen = input.int(14, "ATR length / min swing (ATR)", minval = 1, group = G_IFV
     tooltip = "ATR length, and minimum swing displacement in ATRs.")
 minATR = input.float(4.0, "", minval = 0.0, step = 0.1, group = G_IFVG, inline = "atr")
 
-bullIFVGColor = input.color(color.orange, "Bullish / Bearish IFVG colors", group = G_IFVG, inline = "icol")
-bearIFVGColor = input.color(color.aqua, "", group = G_IFVG, inline = "icol")
-ifvgTrans = input.int(80, "Transparency: fill / border", minval = 0, maxval = 100, group = G_IFVG, inline = "itr")
-borderTrans = input.int(20, "", minval = 0, maxval = 100, group = G_IFVG, inline = "itr")
+bullIFVGColor = attB(input.color(color.orange, "Bullish / Bearish IFVG colors", group = G_IFVG, inline = "icol"))
+bearIFVGColor = attB(input.color(color.aqua, "", group = G_IFVG, inline = "icol"))
+ifvgTrans = attT(input.int(80, "Transparency: fill / border", minval = 0, maxval = 100, group = G_IFVG, inline = "itr"))
+borderTransIn = input.int(20, "", minval = 0, maxval = 100, group = G_IFVG, inline = "itr")
+borderTrans = attTB(borderTransIn)
 ifvgtsz = getsize(input.string("small", "Text size / align H, V", options = ["auto", "tiny", "small", "normal", "huge"], group = G_IFVG, inline = "itx"))
 ifvgha = gethalign(input.string("right", "", options = ["left", "center", "right"], group = G_IFVG, inline = "itx"))
 ifvgva = getvalign(input.string("center", "", options = ["top", "center", "bottom"], group = G_IFVG, inline = "itx"))
@@ -282,10 +335,10 @@ showOTEband = input.bool(true, "Band: draw / start / width", group = G_OTE, inli
          "Each timeframe gets its own column (chart timeframe first), one candle apart.")
 oteOffset = input.int(5, "", minval = 0, maxval = 200, group = G_OTE, inline = "pos")
 oteWidth = input.int(8, "", minval = 1, maxval = 100, group = G_OTE, inline = "pos")
-oteBandCol = input.color(color.new(color.yellow, 85), "Colors: band", group = G_OTE, inline = "oc",
-    tooltip = "Band fill (when matching), IFVG highlight / border, and band text.")
-oteHighlight = input.color(color.yellow, "border", group = G_OTE, inline = "oc")
-oteTextCol = input.color(color.black, "text", group = G_OTE, inline = "oc")
+oteBandCol = attF(input.color(color.new(color.yellow, 85), "Colors: band", group = G_OTE, inline = "oc",
+    tooltip = "Band fill (when matching), IFVG highlight / border, and band text."))
+oteHighlight = attB(input.color(color.yellow, "border", group = G_OTE, inline = "oc"))
+oteTextCol = attB(input.color(color.black, "text", group = G_OTE, inline = "oc"))
 
 // Breakers =========
 G_BRK = "Breakers"
@@ -303,7 +356,8 @@ brkOn = input.bool(true, "Breakers at FVG / IFVG pullbacks", group = G_BRK,
 brkMode = input.string("Last candle", "Zone", options = ["Last candle", "Whole sequence"], group = G_BRK,
     inline = "bm", tooltip = "Last candle: the last up-close candle making the high (bullish) / down-close "
     + "candle making the low (bearish). Whole sequence: that candle and the consecutive up-close / down-close "
-    + "candles before it.")
+    + "candles before it. Full candle / Body: the zone spans the high to the low of its candle(s), or their bodies.")
+brkPart = input.string("Full candle", "", options = ["Full candle", "Body"], group = G_BRK, inline = "bm")
 brkLen = input.int(2, "Swing length / keep", minval = 1, maxval = 20, group = G_BRK, inline = "bl",
     tooltip = "Pivot length (left and right) of the lows and highs, and breakers kept per direction.")
 brkKeep = input.int(3, "", minval = 1, maxval = 10, group = G_BRK, inline = "bl")
@@ -315,23 +369,25 @@ brkAge = input.int(60, "Max bars to the pullback", minval = 5, maxval = 1000, gr
 brkBox = input.bool(false, "Rectangle", group = G_BRK, inline = "bc",
     tooltip = "Draw the breaker rectangle and its mid line. The bold IFVG labels and the B↑ / B↓ labels are "
     + "set either way.")
-brkCol = input.color(color.orange, "↑", group = G_BRK, inline = "bc")
-brkColDn = input.color(color.fuchsia, "↓", group = G_BRK, inline = "bc")
+brkCol = attB(input.color(color.orange, "↑", group = G_BRK, inline = "bc"))
+brkColDn = attB(input.color(color.fuchsia, "↓", group = G_BRK, inline = "bc"))
 brkC(int d) => d == 1 ? brkCol : brkColDn  // color of a bullish / bearish block
 brkSty = getstyle(input.string("dashed", "", options = ["solid", "dashed", "dotted"], group = G_BRK, inline = "bc"))
-brkW = input.int(1, "width", minval = 1, maxval = 4, group = G_BRK, inline = "bc")
+brkW = attW(input.int(1, "width", minval = 1, maxval = 4, group = G_BRK, inline = "bc"))
 brkFlag = input.bool(false, "Flag candles", group = G_BRK, inline = "bf")
 brkShd = input.bool(false, "Shadow rectangle", group = G_BRK, inline = "bf",
     tooltip = "Flag candles: color the breaker candle(s) (the zone candles) with the rectangle color, once it is "
     + "tagged at the pullback (with or without the rectangle); removed together with the rectangle. Shadow "
     + "rectangle: draw the breaker as a grey transparent rectangle (no border) instead of the dashed one, also "
     + "when Rectangle is off; the mid line is kept.")
+brkCe = input.bool(true, "Mid line (C.E.)", group = G_BRK, inline = "bf",
+    tooltip = "Draw the C.E. (mid line) of the breaker rectangle.")
 
 // Mitigation blocks =========
 G_MB = "Mitigation blocks"
 mbOn = input.bool(true, "Mitigation blocks at FVG / IFVG pullbacks", group = G_MB,
     tooltip = "Bullish mitigation block: a low, a high and a higher low; after a close above that high, price "
-    + "pulls back to the zone (the body of its candle; long). Bearish: a high, a low and a lower high; after a "
+    + "pulls back to the zone (long). Bearish: a high, a low and a lower high; after a "
     + "close below that low, price pulls back to the zone (short). As for breakers, price has to make a swing beyond the "
     + "zone before the pullback. When, on the pullback, a live bullish FVG or confirmed IFVG+ (long) or bearish "
     + "FVG or IFVG- (short) overlaps the zone, the block is drawn as a rectangle with its mid line, the label of "
@@ -341,7 +397,8 @@ mbOn = input.bool(true, "Mitigation blocks at FVG / IFVG pullbacks", group = G_M
 mbMode = input.string("Last candle", "Zone", options = ["Last candle", "Whole sequence"], group = G_MB,
     inline = "mm", tooltip = "Last candle: the last up-close candle making the high (bullish) / down-close "
     + "candle making the low (bearish). Whole sequence: that candle and the consecutive up-close / down-close "
-    + "candles before it.")
+    + "candles before it. Full candle / Body: the zone spans the high to the low of its candle(s), or their bodies.")
+mbPart = input.string("Body", "", options = ["Full candle", "Body"], group = G_MB, inline = "mm")
 mbLen = input.int(2, "Swing length / keep", minval = 1, maxval = 20, group = G_MB, inline = "ml",
     tooltip = "Pivot length (left and right) of the lows and highs, and mitigation blocks kept per direction.")
 mbKeep = input.int(3, "", minval = 1, maxval = 10, group = G_MB, inline = "ml")
@@ -353,17 +410,19 @@ mbAge = input.int(60, "Max bars to the pullback", minval = 5, maxval = 1000, gro
 mbBox = input.bool(false, "Rectangle", group = G_MB, inline = "mc",
     tooltip = "Draw the mitigation block rectangle and its mid line. The IFVG labels and the M↑ / M↓ labels are "
     + "set either way.")
-mbCol = input.color(color.orange, "↑", group = G_MB, inline = "mc")
-mbColDn = input.color(color.fuchsia, "↓", group = G_MB, inline = "mc")
+mbCol = attB(input.color(color.orange, "↑", group = G_MB, inline = "mc"))
+mbColDn = attB(input.color(color.fuchsia, "↓", group = G_MB, inline = "mc"))
 mbC(int d) => d == 1 ? mbCol : mbColDn  // color of a bullish / bearish block
 mbSty = getstyle(input.string("dashed", "", options = ["solid", "dashed", "dotted"], group = G_MB, inline = "mc"))
-mbW = input.int(1, "width", minval = 1, maxval = 4, group = G_MB, inline = "mc")
+mbW = attW(input.int(1, "width", minval = 1, maxval = 4, group = G_MB, inline = "mc"))
 mbFlag = input.bool(false, "Flag candles", group = G_MB, inline = "mf")
 mbShd = input.bool(false, "Shadow rectangle", group = G_MB, inline = "mf",
     tooltip = "Flag candles: color the mitigation block candle(s) (the zone candles) with the rectangle color, once it is "
     + "tagged at the pullback (with or without the rectangle); removed together with the rectangle. Shadow "
     + "rectangle: draw the mitigation block as a grey transparent rectangle (no border) instead of the dashed one, also "
     + "when Rectangle is off; the mid line is kept.")
+mbCe = input.bool(true, "Mid line (C.E.)", group = G_MB, inline = "mf",
+    tooltip = "Draw the C.E. (mid line) of the mitigation block rectangle.")
 
 // Delivery Engine (from Nuno's Delivery Engine V20) =========
 G_DE = "Delivery Engine (Nuno)"
@@ -378,11 +437,11 @@ deStdX = input.float(4.0, "", minval = 0.0, step = 0.5, group = G_DE, inline = "
 deDispBar = input.bool(false, "Color displacement candles", group = G_DE, inline = "dc",
     tooltip = "The middle candle of each displacement FVG (length / strength above), with or without "+
         "'Displacement FVGs only'.")
-deDispCol = input.color(color.yellow, "", group = G_DE, inline = "dc")
+deDispCol = attB(input.color(color.yellow, "", group = G_DE, inline = "dc"))
 deFlag = input.bool(false, "Flag displacement FVGs, border width", group = G_DE, inline = "df",
     tooltip = "FVGs whose middle candle is a displacement candle are drawn with this border width, "+
         "with or without 'Displacement FVGs only'.")
-deFlagW = input.int(3, "", minval = 1, maxval = 4, group = G_DE, inline = "df")
+deFlagW = attW(input.int(3, "", minval = 1, maxval = 4, group = G_DE, inline = "df"))
 
 
 deAplus = input.bool(false, "A+ setups", group = G_DE, inline = "da",
@@ -419,6 +478,30 @@ plMode = input.string("auto", "Poor liquidity", options = ["auto", "yes", "no"],
         "auto: on for nano futures only (symbol or description with Nano / NNQ).")
 bool poorLiq = plMode == "yes" or (plMode == "auto" and (str.contains(str.lower(syminfo.description), "nano")
      or str.startswith(syminfo.root, "NNQ") or str.startswith(syminfo.ticker, "NNQ")))
+
+// [NQS] sizes in points are given for NQ; with nqscale they are scaled for the chart instrument by a hardwired
+// factor (its typical daily range relative to NQ's). Futures match by root, other symbols by ticker prefix;
+// instruments not in the table keep the sizes as given
+nqScale() =>
+    array<string> nms = array.from("NQ", "MNQ", "NNQ", "NAS100", "US100", "USTEC", "NDX", "NQ100",
+         "ES", "MES", "US500", "SPX", "SP500", "US30", "YM", "MYM", "DJI", "WS30", "DJ30",
+         "RTY", "M2K", "US2000", "RUT", "FDAX", "FDXM", "FDXS", "DAX", "GER40", "DE40", "GER30", "DE30", "DEU40")
+    array<float> ks = array.from(1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+         0.2, 0.2, 0.2, 0.2, 0.2, 1.3, 1.3, 1.3, 1.3, 1.3, 1.3,
+         0.1, 0.1, 0.1, 0.1, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7)
+    bool fut = syminfo.type == "futures"
+    string s = str.upper(fut ? syminfo.root : syminfo.ticker)
+    float r = 1.0
+    for [i, nm] in nms
+        if fut ? s == nm : str.startswith(s, nm)
+            r := ks.get(i)
+            break
+    r
+var float sizeK = nqscale ? nqScale() : 1.0
+float minfvg = minfvgIn * sizeK
+float maxfvg = maxfvgIn * sizeK
+float mince = minceIn * sizeK
+float minwick = minwickIn * sizeK
 
 bounces(p) =>
     (math.abs(p-low) < 2 and close > low+10) or (math.abs(p-high)<2 and close < high-10)
@@ -496,15 +579,18 @@ type FVG
     bool isfp = false // is first presented FVG
     bool iswfp = false // is week first presented FVG
     bool isffp = false // is Friday first presented FVG
+    bool fptmp = false // [1PF] shown only while it (or its 1PFVG) is the latest one
     bool isifp = false // is first presented FVG inverse
     int sbar = na // [OTE] bar index where the FVG starts
     line hiln = na // segments style: high line
     line loln = na // segments style: low line
     bool kept = false // kept confirmed IFVG (box shown as IFVG)
     int kdir = 0 // -1 bearish IFVG, 1 bullish IFVG
+    int khold = na // [HOLD] kept IFVG: bar of the first close back through
     FVG dup = na // older almost identical FVG that absorbed this one
     bool cand = false // current IFVG candidate (its box is shown as IFVG)
     bool own = false // the box exists only because of the IFVG (the FVG itself is not drawn)
+    bool ceOwn = false // [CE] the C.E. line exists only because of the IFVG (the FVG one is not drawn)
     bool shown = false // FVG is in the drawn arrays
     bool aplus = false // [DE] A+ FVG (born from an A+ MSS)
     bool disp = false // [DE] middle candle is a displacement candle
@@ -518,6 +604,7 @@ type FVG
     bool swp = false // [REL] last FVG before a sweep: shown once it becomes an IFVG
     bool ext = false // [REL] extended by a merged duplicate
     int dbar = na // [REL] bar index where it was filled
+    bool sb = false // [SB] first FVG of a silver bullet window
 
 // [PERF] bumped whenever an FVG gets a breaker / mitigation block tag, is widened by a merge or a tagged one is
 // drawn: ifvgInherit
@@ -530,7 +617,9 @@ bumpTags() =>
 // [DE] border width: thicker for flagged displacement FVGs
 method bw(FVG f) =>
     // 1PFVGs keep their own look: no displacement flag
-    deFlag and f.disp and not f.isfp and not f.isifp ? deFlagW : 1
+    int w = deFlag and f.disp and not f.isfp and not f.isifp ? deFlagW : 1
+    // [SB] silver bullet FVG: its own border width
+    f.sb and not f.isfp and not f.isifp ? math.max(w, sbWid) : w
 
 // label of a plain FVG box: A+, or the breaker / mitigation block tag (B↑, M↓, BM↑...), plus OTE
 fvgLbl(FVG f) =>
@@ -541,6 +630,8 @@ fvgLbl(FVG f) =>
         t := (f.brk and f.mbD != 0 ? "BM" : f.brk ? "B" : "M") + (f.lblD == 1 ? "↑" : "↓")
     if f.ote and not hideReg
         t += (t == "" ? "" : " ") + "OTE"
+    if f.sb and not hideReg
+        t += (t == "" ? "" : " ") + "SB"
     t
 
 // [OTEF] swings of the chart timeframe for the leg origin
@@ -614,6 +705,7 @@ method kill(FVG f) =>
             f.loln.delete()
         f.rect := na
         f.celine := na
+        f.ceOwn := false
         f.hiln := na
         f.loln := na
 method alerts(FVG f) =>
@@ -659,6 +751,19 @@ clearlastfp(array<FVG> fpfvgs) =>
             f.isfp := false
             f.kill()
 
+// [1PF] a new 1PFVG forms: drop the 1PFVGs (and their inverse ones) shown only as the latest
+fpDropTmp(array<FVG> fpfvgs) =>
+    int n = fpfvgs.size()
+    if n > 0
+        for i = n - 1 to 0
+            FVG f = fpfvgs.get(i)
+            if f.fptmp
+                fpfvgs.remove(i)
+                f.isfp := false
+                f.isifp := false
+                f.kill()
+    true
+
 isLongFVG(l1,h3) =>
     l1 > h3
 longFVGHL(o1,c1,l1,o2,c2,o3,c3,h3) =>
@@ -695,9 +800,10 @@ shortFVGHL(o1,c1,h1,o2,c2,o3,c3,l3) =>
         lo := bhi1
     [hi, lo, fhi, flo]
 
-// 1PFVG from the 1m candles (charts above 1m and below 15m)
+// 1PFVG from the 1m candles (minute charts above 1m up to fpMaxTf; always above 5m, else with fp1m)
 // (simple: also selects the timeframe of request.security_lower_tf)
-bool fpLowTf = fp1m and timeframe.isminutes and timeframe.in_seconds() > 60 and timeframe.in_seconds() < 900
+bool fpLowTf = timeframe.isminutes and timeframe.in_seconds() > 60 and
+     timeframe.in_seconds() <= timeframe.in_seconds(fpMaxTf) and (fp1m or timeframe.in_seconds() > 300)
 bool fpLow = dofp and fpLowTf
 
 isFPFVG() =>
@@ -743,7 +849,7 @@ method bgColor(FVG f) =>
     styNoFill ? color(na) : (hid ? color.new(c, 100) : c)
     
 
-method lnColor(FVG f) =>
+method lnColor(FVG f, bool ce = false) =>
     c = f.islong ? lnlcol : lnscol
     if f.isfp
         c := lnfpcol
@@ -755,15 +861,45 @@ method lnColor(FVG f) =>
         c := ilnfpcol
     bool hid = hideReg and (ifvgOnly or (not f.isfp and not f.isifp))
     // [REL] too small for a C.E.: no border (boxes only; segments are the lines themselves)
-    hid or (f.relSmall() and not stySeg) ? color.new(c, 100) : c
+    // [SB] silver bullet FVG: silver border (not its C.E.), whatever the attenuation or size
+    bool sbB = f.sb and not ce and not hid and not f.isfp and not f.isifp
+    sbB ? sbCol : hid or (f.relSmall() and not stySeg) or (attLvl >= (ce ? 4 : 3) and not stySeg) ? color.new(c, 100) : ce ? attCE(c) : c
 
 // IFVG boxes: the FVG box itself is turned into the IFVG box (no second box on the same place) ====
 var array<FVG> keptIf = array.new<FVG>()   // FVGs whose box is currently shown as IFVG
+
+// [CE] the C.E. line of a zone shown as IFVG (candidate or kept): as configured for the FVGs (min height,
+// style, width, attenuation), also when the FVG itself is not drawn (filtered, hidden or dropped). In the IFVG
+// color (fp: a 1PFVG, which keeps its own C.E. color c); it follows the IFVG box
+method ifCe(FVG f, color c, bool fp) =>
+    if f.hi - f.lo > mince
+        if na(f.celine)
+            f.celine := line.new(f.start, f.ce, time, f.ce, xloc = xloc.bar_time, style = cesty, width = attWc(celnwid))
+            f.ceOwn := true
+        color cc = fp ? attCE(c) : color.new(c, int(math.round(borderTransIn + (100 - borderTransIn) * attEc * 0.18)))
+        f.celine.set_color(attLvl >= 4 ? color.new(c, 100) : cc)
+        f.celine.set_x2(time)
+        f.celine.set_extend(f.isfp ? extend.right : extend.none)
+    true
+
+// [CE] back to the FVG C.E. line (deleted if it was drawn only for the IFVG)
+method ceBack(FVG f) =>
+    if not na(f.celine)
+        if f.ceOwn
+            f.celine.delete()
+            f.celine := na
+            f.ceOwn := false
+        else
+            f.celine.set_color(f.lnColor(true))
+            f.celine.set_x2(f.endsAt())
+            f.celine.set_extend(f.isfp ? extend.right : extend.none)
+    true
 
 // back to the plain FVG, as it was before becoming an IFVG
 method restore(FVG f) =>
     f.kept := false
     f.cand := false
+    f.ceBack()
     if not na(f.rect)
         if f.own or stySeg
             f.rect.delete()
@@ -791,13 +927,13 @@ method adopt(FVG fv, int dir) =>
         color fc = f.isifp ? ifpcol : (f.iswfp ? wfpcol : f.isffp ? ffpcol : fpcol)
         color lc = f.isifp ? ilnfpcol : (f.iswfp ? lnwfpcol : f.isffp ? lnffpcol : lnfpcol)
         f.rect.set_bgcolor(styNoFill ? color(na) : fc)
-        f.rect.set_border_color(lc)
+        f.rect.set_border_color(attLvl >= 3 ? color.new(lc, 100) : lc)
         f.rect.set_border_width(1)
         f.rect.set_extend(extend.right)
     else
         f.rect.set_bgcolor(color.new(c, ifvgTrans))
         f.rect.set_border_color(color.new(c, borderTrans))
-        f.rect.set_border_width(2)
+        f.rect.set_border_width(attW(2))
         f.rect.set_extend(extend.none)
     f.rect.set_right(time)
     // an unconfirmed candidate keeps its B / M / BM label (confirming it sets the IFVG label)
@@ -806,6 +942,8 @@ method adopt(FVG fv, int dir) =>
     f.rect.set_text_size(ifvgtsz)
     f.rect.set_text_halign(ifvgha)
     f.rect.set_text_valign(ifvgva)
+    color cl = f.isifp ? ilnfpcol : (f.iswfp ? lnwfpcol : f.isffp ? lnffpcol : lnfpcol)
+    f.ifCe(f.isfp or f.isifp ? cl : c, f.isfp or f.isifp) // [CE]
 //#end
     if not f.kept
         keptIf.push(f)
@@ -833,6 +971,33 @@ method release(FVG fv, bool confirmed, int ctime) =>
     true
 
 // extend the IFVG boxes; restore kept ones when invalidated (close back through them)
+// [HOLD] closed bar check of a confirmed IFVG of direction d (zone lo..hi) with hold h (bar of the first close
+// through, na: none). Returns [cancel, new hold]: a close past the zone by at most ifvgTolT ticks with a wick
+// beyond it starts / keeps a hold of up to ifvgHold bars; back inside ends it; beyond the margin cancels.
+ifvgOut(int d, float lo, float hi, int h) =>
+    float tol = ifvgTolT * syminfo.mintick
+    bool past = d < 0 ? close > hi : close < lo
+    bool far = d < 0 ? close > hi + tol : close < lo - tol
+    bool cancel = false
+    int nh = na
+    if past
+        if far
+            cancel := true
+        else if not na(h)
+            cancel := bar_index - h >= ifvgHold
+            nh := cancel ? na : h
+        else if d < 0 ? high > close : low < close
+            nh := bar_index
+        else
+            cancel := true
+    [cancel, nh]
+
+// [HOLD] the same for a kept IFVG (no longer the candidate), with its own hold
+keptOut(FVG f) =>
+    [kc, kh] = ifvgOut(f.kdir, f.lo, f.hi, f.khold)
+    f.khold := kh
+    kc
+
 updKept() =>
     int n = keptIf.size()
     if n > 0
@@ -842,11 +1007,13 @@ updKept() =>
                 f.kept := false
                 f.cand := false
                 keptIf.remove(i)
-            else if not f.cand and barstate.isconfirmed and (f.kdir < 0 ? close > f.hi : close < f.lo)
+            else if not f.cand and barstate.isconfirmed and keptOut(f)
                 f.restore()
                 keptIf.remove(i)
             else
                 f.rect.set_right(time)
+                if not na(f.celine) // [CE]
+                    f.celine.set_x2(time)
     true
 
 // widen g (older FVG) with f (new almost identical one): max hi / min lo, for both, and extend g
@@ -901,7 +1068,9 @@ insertSorted(array<FVG> a, FVG f) =>
         bumpTags()
     true
 
-// older drawn FVG (any bias) that is almost exactly the same zone as f
+// older drawn FVG (any bias) that is almost exactly the same zone as f. Not a box shown as the IFVG of the other
+// direction (the candidate or kept IFVG f would not be): both would share one box, and releasing f (unconfirmed)
+// would restore it, wiping that IFVG (a bearish FVG at the zone of a confirmed IFVG- did).
 findDup(FVG f) =>
     FVG r = na
     float tol = (f.hi - f.lo) * dupTol / 100.0
@@ -913,7 +1082,8 @@ findDup(FVG f) =>
             if n > 0
                 for i = n - 1 to 0
                     FVG g = arr.get(i)
-                    if math.abs(g.hi - f.hi) <= tol and math.abs(g.lo - f.lo) <= tol and (na(r) or g.start > r.start)
+                    bool clash = g.kept and g.kdir != (f.islong ? -1 : 1)
+                    if not clash and math.abs(g.hi - f.hi) <= tol and math.abs(g.lo - f.lo) <= tol and (na(r) or g.start > r.start)
                         r := g
                         break
     r
@@ -1160,6 +1330,13 @@ if hour(time,tz) != fph
 timeat(int n) =>
     time[-n]
 FVG lastlongfvg = na
+// [SB] silver bullet windows in New York time: 3-4 AM, 10-11 AM, 2-3 PM, on 1m and 2m charts only. sbKey: day and window of the candle that
+// completes the FVG ([1]); sbLast: the window that already has its first FVG
+int sbH = hour(time[1], "America/New_York")
+int sbW = not (timeframe.isminutes and timeframe.in_seconds() <= 120) ? 0 : sbH == 3 ? 1 : sbH == 10 ? 2 : sbH == 14 ? 3 : 0
+int sbKey = ((year(time[1], "America/New_York") * 100 + month(time[1], "America/New_York")) * 100
+     + dayofmonth(time[1], "America/New_York")) * 10 + sbW
+var int sbLast = na
 FVG lastshortfvg = na
 if true
     [hi, lo, fhi, flo] = longFVGHL(open[1], close[1], low[1], open[2],
@@ -1179,10 +1356,14 @@ if true
         f.aplus := deAplus and not na(deMssUpBar) and bar_index - deMssUpBar <= 3 // [DE]
         f.disp := deDispOK // [DE]
         lastlongfvg := f
+        if sbOn and sbW > 0 and sbKey != nz(sbLast)
+            f.sb := true
+            sbLast := sbKey
         if not hasifp and hasfp and fpKept and doifp and not fpLow
             fp = fpfvgs.last()
             if fp.islong != f.islong
                 f.isifp := true
+                f.fptmp := fp.fptmp
                 hasifp := true
                 fpfvgs.push(f)
         bool fpNow = not hasfp and isFPFVG() and not f.isifp
@@ -1193,6 +1374,8 @@ if true
             f.iswfp := dayofweek == dayofweek.monday
             f.isffp := dayofweek == dayofweek.friday
             fpKept := true
+            fpDropTmp(fpfvgs)
+            f.fptmp := fpTemp(dayofweek)
             fpfvgs.push(f)
             clearlastfp(fpfvgs)
         else if not fponly and not f.isifp and (not deDisp or deDispOK)
@@ -1217,10 +1400,14 @@ if true
         f.aplus := deAplus and not na(deMssDnBar) and bar_index - deMssDnBar <= 3 // [DE]
         f.disp := deDispOK // [DE]
         lastshortfvg := f
+        if sbOn and sbW > 0 and sbKey != nz(sbLast)
+            f.sb := true
+            sbLast := sbKey
         if not hasifp and hasfp and fpKept and doifp and not fpLow
             fp = fpfvgs.last()
             if fp.islong != f.islong
                 f.isifp := true
+                f.fptmp := fp.fptmp
                 hasifp := true
                 fpfvgs.push(f)
         bool fpNow = not hasfp and isFPFVG() and not f.isifp
@@ -1231,6 +1418,8 @@ if true
             f.iswfp := dayofweek == dayofweek.monday
             f.isffp := dayofweek == dayofweek.friday
             fpKept := true
+            fpDropTmp(fpfvgs)
+            f.fptmp := fpTemp(dayofweek)
             fpfvgs.push(f)
             clearlastfp(fpfvgs)
         else if not fponly and not f.isifp and (not deDisp or deDispOK)
@@ -1287,6 +1476,7 @@ if fpLow and barstate.isconfirmed and not na(l1t) and l1t.size() > 0
                     f.sbar := bar_index
                     if ifpWin
                         f.isifp := true
+                        f.fptmp := fpfvgs.last().fptmp
                         hasifp := true
                         fpfvgs.push(f)
                     else
@@ -1295,6 +1485,8 @@ if fpLow and barstate.isconfirmed and not na(l1t) and l1t.size() > 0
                         f.isffp := dayofweek(t0, tz) == dayofweek.friday
                         hasfp := true
                         fpKept := true
+                        fpDropTmp(fpfvgs)
+                        f.fptmp := fpTemp(dayofweek(t0, tz))
                         fpfvgs.push(f)
                         clearlastfp(fpfvgs)
 
@@ -1353,10 +1545,10 @@ updfvgs(array<FVG> fvgs) =>
                     f.rect.set_text_valign(ifvgva)
             if na(f.celine) and f.hi-f.lo > mince
                 f.celine := line.new(f.start,f.ce,et,f.ce,
-                    color = f.lnColor(),
+                    color = f.lnColor(true),
                     style = cesty,
                     xloc = xloc.bar_time,
-                    width = celnwid)
+                    width = attWc(celnwid))
                 if f.isfp
                     f.celine.set_extend(extend.right)
             // always follow the end: an FVG extended by a merged duplicate (end reset) has to grow again.
@@ -1368,7 +1560,7 @@ updfvgs(array<FVG> fvgs) =>
                 if not na(f.hiln)
                     f.hiln.set_x2(et)
                     f.loln.set_x2(et)
-                if not na(f.celine)
+                if not na(f.celine) and not f.kept // [CE] a kept IFVG C.E. follows its box
                     f.celine.set_x2(et)
                 if not na(f.end)
                     f.updEnd := f.end
@@ -1778,8 +1970,8 @@ method oteStep(OteTrack t) =>
                 else
                     m := mid >= bLo and mid <= bHi
                 if showOTEband
-                    color bg = m ? oteBandCol : color.new(color.gray, 92)
-                    color bd = m ? oteHighlight : color.new(color.gray, 60)
+                    color bg = m ? oteBandCol : attF(color.new(color.gray, 92))
+                    color bd = m ? oteHighlight : attB(color.new(color.gray, 60))
                     if na(t.band)
                         t.band := box.new(oteX0(t), bHi, oteX0(t) + oteWidth, bLo,
                             xloc = xloc.bar_index,
@@ -1879,27 +2071,64 @@ var FVG bearifvg = na
 var int bullconfirm = na
 var int bearconfirm = na
 var int bullInv = 0       // [DE] inversions of the bull candidate (-1 invalidated)
+var int bullHold = na     // [HOLD] bar of the first close back through the confirmed candidate
+var int bearHold = na
 var int bearInv = 0
 var bool bullAp = false   // [DE] A+ IFVG
 var bool bearAp = false
 //#cut sw
 var bool swAp = false
 //#end
+// [IFO] replaced candidates not yet closed through (at most 3 per side). When the candidate of their side is
+// confirmed, the ones the same candle closed through are shown as confirmed IFVGs too (box and label only)
+var array<FVG> bearOld = array.new<FVG>()
+var array<FVG> bullOld = array.new<FVG>()
+ifoPush(array<FVG> old, FVG f) =>
+    old.push(f)
+    if old.size() > 3
+        old.shift()
+ifoConfirm(array<FVG> old, int d) =>
+    for f in old
+        if d < 0 ? dnBreak(f.lo) : upBreak(f.hi)
+            box b = f.adopt(d)
+            if not na(b)
+                b.set_text(ifvgTxt(d, 1, false, "", false, mbOf(f)))
+            f.release(true, time)
+    old.clear()
+ifoPurge(array<FVG> old, int d) =>
+    int n = old.size()
+    if n > 0
+        for i = n - 1 to 0
+            FVG f = old.get(i)
+            if d < 0 ? close < f.lo : close > f.hi
+                old.remove(i)
+    true
+
 if doifvg and not ifvgswings and not na(lastlongfvg)
     if not na(bearifvg)
+        if na(bearconfirm) and bearInv == 0
+            ifoPush(bearOld, bearifvg)
+        FVG bearRf = na(bearifvg.dup) ? bearifvg : bearifvg.dup
+        bearRf.khold := bearHold // a hold in progress goes on
         bearifvg.release(not na(bearconfirm), bearconfirm)
     bearifvg := lastlongfvg
     bearconfirm := na
     bearInv := 0
+    bearHold := na
     bearAp := false
     gBear.gStart(-1, bearifvg.lo, bearifvg.hi, h4, bearifvg.sbar) // [OTE]
     ifvgBoxb := bearifvg.adopt(-1)
 if doifvg and not ifvgswings and not na(lastshortfvg)
     if not na(bullifvg)
+        if na(bullconfirm) and bullInv == 0
+            ifoPush(bullOld, bullifvg)
+        FVG bullRf = na(bullifvg.dup) ? bullifvg : bullifvg.dup
+        bullRf.khold := bullHold // a hold in progress goes on
         bullifvg.release(not na(bullconfirm), bullconfirm)
     bullifvg := lastshortfvg
     bullconfirm := na
     bullInv := 0
+    bullHold := na
     bullAp := false
     gBull.gStart(1, bullifvg.lo, bullifvg.hi, l4, bullifvg.sbar) // [OTE]
     ifvgBox := bullifvg.adopt(1)
@@ -1969,6 +2198,7 @@ var float ifshi = na // fvg hi
 var float ifslo = na // fvg lo
 var int ifsdir = 0  // -1 IFVG in swing high to trade short; 1 IFVG in swing lo to trade long
 var int ifsconfirm = na // did close above/below the IFVG confirming it is an IFVG? If so, the time, else na
+var int ifsHold = na // [HOLD] bar of the first close back through it
 //#end
 
 //#cut sw
@@ -1994,6 +2224,7 @@ if newHi and doifvg and ifvgswings
             ifslo := ifvg.lo
             ifsdir := -1
             ifsconfirm := na
+            ifsHold := na
             gSw.gStart(-1, ifvg.lo, ifvg.hi, swingPrice, ifvg.sbar) // [OTE] leg origin = the swing high
             ifvgBox := ifvg.adopt(-1)
 
@@ -2021,6 +2252,7 @@ if newLo and doifvg and ifvgswings
             ifslo := ifvg.lo
             ifsdir := 1
             ifsconfirm := na
+            ifsHold := na
             gSw.gStart(1, ifvg.lo, ifvg.hi, swingPrice, ifvg.sbar) // [OTE] leg origin = the swing low
             ifvgBox := ifvg.adopt(1)
 
@@ -2041,11 +2273,12 @@ if not na(ifstime) and barstate.isconfirmed
         gSw.gConfirm() // [OTE]
         swAp := deAp(1)
         ifvgBox.set_text(ifvgTxt(1, 1, false, "", swAp, mbOf(swFvg)))
-    if ifsdir == -1 and not na(ifsconfirm) and close > ifshi
-        ifsconfirm := na
-        gSw.gCancel() // [OTE]
-        ifvgBox.set_text(na)
-    else if ifsdir == 1 and not na(ifsconfirm) and close < ifslo
+    bool swOut = false
+    if ifsdir != 0 and not na(ifsconfirm)
+        [ifC, ifH] = ifvgOut(ifsdir, ifslo, ifshi, ifsHold)
+        swOut := ifC
+        ifsHold := ifH
+    if swOut
         ifsconfirm := na
         gSw.gCancel() // [OTE]
         ifvgBox.set_text(na)
@@ -2081,6 +2314,9 @@ deKill(FVG fv) =>
             f.rect.set_border_width(1)
             f.rect.set_text("")
             f.rect.set_right(time)
+        if not na(f.celine) // [CE]
+            f.celine.set_color(deDeadCol)
+            f.celine.set_x2(time)
     true
 
 // [DE] the box of an inverted zone in direction d
@@ -2089,20 +2325,34 @@ deRecolor(box b, int d, FVG fv) =>
         color c = d < 0 ? bearIFVGColor : bullIFVGColor
         b.set_bgcolor(color.new(c, ifvgTrans))
         b.set_border_color(color.new(c, borderTrans))
+        FVG f = na(fv) ? na : (na(fv.dup) ? fv : fv.dup)
+        if not na(f) and not na(f.celine) // [CE]
+            f.ifCe(c, false)
     true
 
 if doifvg and not ifvgswings and not deInv
-    if not na(bullifvg) and not na(bullconfirm) and barstate.isconfirmed and close < bullifvg.lo
+    bool bullOut = false
+    if not na(bullifvg) and not na(bullconfirm) and barstate.isconfirmed
+        [ifC, ifH] = ifvgOut(1, bullifvg.lo, bullifvg.hi, bullHold)
+        bullOut := ifC
+        bullHold := ifH
+    if bullOut
         bullconfirm := na
         gBull.gCancel() // [OTE]
         ifvgBox.set_text(na)
     if not na(bullifvg) and barstate.isconfirmed and upBreak(bullifvg.hi) and na(bullconfirm)
         bullconfirm := time
         gBull.gConfirm() // [OTE]
+        ifoConfirm(bullOld, 1)
         bullAp := deAp(1)
         ifvgBox.set_text(ifvgTxt(1, 1, false, "", bullAp, mbOf(bullifvg)))
         sig := 1
-    if not na(bearifvg) and not na(bearconfirm) and barstate.isconfirmed and close > bearifvg.hi
+    bool bearOut = false
+    if not na(bearifvg) and not na(bearconfirm) and barstate.isconfirmed
+        [ifC, ifH] = ifvgOut(-1, bearifvg.lo, bearifvg.hi, bearHold)
+        bearOut := ifC
+        bearHold := ifH
+    if bearOut
         bearconfirm := na
         gBear.gCancel() // [OTE]
         ifvgBoxb.set_text(na)
@@ -2111,6 +2361,7 @@ if doifvg and not ifvgswings and not deInv
         ifvgBoxb.set_text(ifvgTxt(-1, 1, false, "", bearAp, mbOf(bearifvg)))
         bearconfirm := time
         gBear.gConfirm() // [OTE]
+        ifoConfirm(bearOld, -1)
         sig := -1
 
 // [DE] inversion rules: every close through the zone inverts it again, up to the max; then it is invalidated.
@@ -2131,6 +2382,7 @@ if doifvg and not ifvgswings and deInv and barstate.isconfirmed
                 if bullInv == 1
                     bullconfirm := time
                     gBull.gConfirm() // [OTE]
+                    ifoConfirm(bullOld, 1)
                 else
                     bullconfirm := na
                     gBull.gCancel() // [OTE] only the first inversion
@@ -2153,6 +2405,7 @@ if doifvg and not ifvgswings and deInv and barstate.isconfirmed
                 if bearInv == 1
                     bearconfirm := time
                     gBear.gConfirm() // [OTE]
+                    ifoConfirm(bearOld, -1)
                 else
                     bearconfirm := na
                     gBear.gCancel() // [OTE] only the first inversion
@@ -2161,6 +2414,9 @@ if doifvg and not ifvgswings and deInv and barstate.isconfirmed
                 ifvgBoxb.set_text(ifvgTxt(d, bearInv, false, "", bearAp, mbOf(bearifvg)))
                 sig := sig == 0 ? d : sig
 
+if doifvg and not ifvgswings and barstate.isconfirmed
+    ifoPurge(bearOld, -1)
+    ifoPurge(bullOld, 1)
 updKept()
 
 //#cut ote4
@@ -2186,7 +2442,7 @@ blkPivot(array<float> pr, array<int> br, array<int> ty, float price, int bar, in
     changed
 
 // block zone at the swing k0 bars back: the up-close (dir 1) / down-close (dir -1) candle there or among
-// the 3 before it, wick to wick (breaker) or its body (mitigation block), plus the consecutive ones before it in
+// the 3 before it, high to low or its body (brkPart / mbPart: breakers full candle, mitigation blocks body by default), plus the consecutive ones before it in
 // "Whole sequence" mode
 blkZone(int dir, int k0, bool body, bool whole) =>
     float zh = na
@@ -2251,8 +2507,8 @@ var int bDnDone = na
 //#blk             border_width = brkShd ? 0 : brkW, bgcolor = color.new(brkShd ? color.gray : brkC(b.dir), brkShd ? 88 : 93),
 //#blk             text = b.dir == 1 ? "B↑" : "B↓", text_color = brkC(b.dir), text_size = size.small,
 //#blk             text_halign = brkLblH, text_valign = brkLblV)
-//#blk         b.ml := line.new(b.t, (b.hi + b.lo) / 2, time, (b.hi + b.lo) / 2, xloc = xloc.bar_time, color = brkC(b.dir),
-//#blk             style = brkSty, width = brkW)
+//#blk         b.ml := brkCe ? line.new(b.t, (b.hi + b.lo) / 2, time, (b.hi + b.lo) / 2, xloc = xloc.bar_time, color = brkShd ? color.new(color.gray, 50) : brkC(b.dir),
+//#blk             style = brkSty, width = brkW) : na
 //#blk     true
 brkDrop(Breaker b) =>
     if not b.tagged and not na(b.bx)
@@ -2325,8 +2581,8 @@ brkTag(FVG f, Breaker b, box ib) =>
                 b.bx := box.new(b.t, b.hi, time, b.lo, xloc = xloc.bar_time,
                     border_color = brkShd ? color.new(color.gray, 100) : brkC(b.dir), border_style = brkSty,
                     border_width = brkShd ? 0 : brkW, bgcolor = color.new(brkShd ? color.gray : brkC(b.dir), brkShd ? 80 : 100))
-                b.ml := line.new(b.t, mid, time, mid, xloc = xloc.bar_time, color = brkC(b.dir), style = brkSty,
-                    width = brkW)
+                b.ml := brkCe ? line.new(b.t, mid, time, mid, xloc = xloc.bar_time, color = brkShd ? color.new(color.gray, 50) : brkC(b.dir), style = brkSty,
+                    width = brkW) : na
     true
 
 if brkOn and barstate.isconfirmed
@@ -2346,7 +2602,7 @@ if brkOn and barstate.isconfirmed
         bUpLvl := na
     // the block forms on the close through that swing; it is drawn from then on
     if not na(bDnLvl) and close < bDnLvl
-        [zh, zl, zt, zt1] = blkZone(-1, bar_index - bDnBar, false, brkMode == "Whole sequence")
+        [zh, zl, zt, zt1] = blkZone(-1, bar_index - bDnBar, brkPart == "Body", brkMode == "Whole sequence")
         if not na(zt)
             brkAdd(-1, zh, zl, zt, zt1)
             Breaker nb = brks.last()
@@ -2356,7 +2612,7 @@ if brkOn and barstate.isconfirmed
         bDnDone := bDnBar
         bDnLvl := na
     if not na(bUpLvl) and close > bUpLvl
-        [zh, zl, zt, zt1] = blkZone(1, bar_index - bUpBar, false, brkMode == "Whole sequence")
+        [zh, zl, zt, zt1] = blkZone(1, bar_index - bUpBar, brkPart == "Body", brkMode == "Whole sequence")
         if not na(zt)
             brkAdd(1, zh, zl, zt, zt1)
             Breaker nb = brks.last()
@@ -2480,8 +2736,8 @@ var int mDnDone = na
 //#blk             border_width = mbShd ? 0 : mbW, bgcolor = color.new(mbShd ? color.gray : mbC(b.dir), mbShd ? 88 : 93),
 //#blk             text = b.dir == 1 ? "M↑" : "M↓", text_color = mbC(b.dir), text_size = size.small,
 //#blk             text_halign = mbLblH, text_valign = mbLblV)
-//#blk         b.ml := line.new(b.t, (b.hi + b.lo) / 2, time, (b.hi + b.lo) / 2, xloc = xloc.bar_time, color = mbC(b.dir),
-//#blk             style = mbSty, width = mbW)
+//#blk         b.ml := mbCe ? line.new(b.t, (b.hi + b.lo) / 2, time, (b.hi + b.lo) / 2, xloc = xloc.bar_time, color = mbShd ? color.new(color.gray, 50) : mbC(b.dir),
+//#blk             style = mbSty, width = mbW) : na
 //#blk     true
 mbDrop(MBlock b) =>
     if not b.tagged and not na(b.bx)
@@ -2554,8 +2810,8 @@ mbTag(FVG f, MBlock b, box ib, int which) =>
                 b.bx := box.new(b.t, b.hi, time, b.lo, xloc = xloc.bar_time,
                     border_color = mbShd ? color.new(color.gray, 100) : mbC(b.dir), border_style = mbSty,
                     border_width = mbShd ? 0 : mbW, bgcolor = color.new(mbShd ? color.gray : mbC(b.dir), mbShd ? 80 : 100))
-                b.ml := line.new(b.t, mid, time, mid, xloc = xloc.bar_time, color = mbC(b.dir), style = mbSty,
-                    width = mbW)
+                b.ml := mbCe ? line.new(b.t, mid, time, mid, xloc = xloc.bar_time, color = mbShd ? color.new(color.gray, 50) : mbC(b.dir), style = mbSty,
+                    width = mbW) : na
     true
 
 if mbOn and barstate.isconfirmed
@@ -2575,7 +2831,7 @@ if mbOn and barstate.isconfirmed
         mUpLvl := na
     // the block forms on the close through that swing; it is drawn from then on
     if not na(mDnLvl) and close < mDnLvl
-        [zh, zl, zt, zt1] = blkZone(-1, bar_index - mDnBar, true, mbMode == "Whole sequence")
+        [zh, zl, zt, zt1] = blkZone(-1, bar_index - mDnBar, mbPart == "Body", mbMode == "Whole sequence")
         if not na(zt)
             mbAdd(-1, zh, zl, zt, zt1)
             MBlock nb = mbs.last()
@@ -2585,7 +2841,7 @@ if mbOn and barstate.isconfirmed
         mDnDone := mDnBar
         mDnLvl := na
     if not na(mUpLvl) and close > mUpLvl
-        [zh, zl, zt, zt1] = blkZone(1, bar_index - mUpBar, true, mbMode == "Whole sequence")
+        [zh, zl, zt, zt1] = blkZone(1, bar_index - mUpBar, mbPart == "Body", mbMode == "Whole sequence")
         if not na(zt)
             mbAdd(1, zh, zl, zt, zt1)
             MBlock nb = mbs.last()

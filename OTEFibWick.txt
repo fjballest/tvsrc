@@ -7,22 +7,49 @@ indicator("OTEFibWick", overlay=true, max_boxes_count=500, max_lines_count=500)
 // added stuff to draw the last wick CEs.
 
 GW = "Wicks"
-GS = "Settings"
+GS = "Settings / Enable"
 var visible = input.bool(false, "compute for historic data use", group=GS,
     tooltip="When disabled computes and keeps always the last objects for use in real time. " +
          " This permits scrolling back/forward and keeps them always as they are, but discards very old ones. "+
          "When enabled computes them up to the rightmost visible time. " +
          "Good for use in historic data but worse when scrolling forward as it takes time to recompute and redraw.")
+var dowick = input.bool(true, "draw wick CE", group=GS, inline="en")
+var dofib = input.bool(true, "mark fib retracements for OTE", group=GS, inline="en")
+var dohtf = input.bool(false, "HTF OTEs", group=GS, inline="en")
+var dovhi = input.bool(true, "high volume dots", group=GS, inline="en2")
+var dovdiv = input.bool(true, "volume divergences", group=GS, inline="en2")
+var dothick = input.bool(true, "draw wicks", group=GS, inline="en3")
+var docote = input.bool(true, "candle OTE", group=GS, inline="en3",
+     tooltip="Candle OTE: small segments (OTE color in the Wicks section) at the 0.62, 0.705 and 0.79 retracements of the last closed candle "
+     + "(its whole range, high to low), drawn while the next candle is live (only 0.62 and 0.79 when its range is not above the ATR). Up-close candle: measured down from "
+     + "its high, where the live candle may retrace to for an OTE on it; down-close candle: measured up from its low. A tiny body (30% of the range at most) near the high (long down wick) counts as up-close, near the low (long up wick) as down-close. "
+     + "If the last closed candle closed the same way as the one before and did not retrace to its 50%, the OTE of "
+     + "the one before is kept, only that once.")
+var badatr = input.float(6, "ignore wicks longer than (daily ATRs)", minval = 0, step = 0.5, group = GS,
+    tooltip = "Bad data: for the fib retracements and the HTF OTEs, a wick longer than this many daily ATRs is taken "+
+        "as a bad print and the candle's high or low is taken at its body. 0: off.")
+var bool nqscale = input.bool(true, "Scale sizes using NQ sizes as reference", group = GS,
+     tooltip = "Sizes in points (minimum sizes and the like) are set for NQ. On: they are scaled for the chart "
+     + "instrument by a fixed factor, its typical range relative to NQ: ES 0.2, YM 1.3, RTY 0.1, DAX 0.7 "
+     + "(and their micros and CFDs); other instruments keep them as given.")
 
 wick_width = input.int(2, "Wick Width", group = GW, minval=1, maxval=10, inline="w")
 wick_color = input.color(color.gray, "color", group = GW, inline = "w")
-var dowick = input.bool(true,"draw wick  CE", inline="wick", group = GW)
-var minwick = input.float(20, "sz", inline = "wick", group = GW)
+cote_color = input.color(color.green, "OTE", group = GW, inline = "w", tooltip = "color of the candle OTE segments")
+var minwickIn = input.float(15, "wick CE sz", inline = "wick", group = GW)
 var wickdx = input.int(1, "bars",  inline = "wick", group=GW, 
      tooltip="0 for auto or number of bars for segment width")
+var wswing = input.bool(true, "keep CEs of swing high/low wicks", group=GW,
+     tooltip="older candles keep only these. Uses the swing bars left/right from the Fib section")
+var wfvg = input.bool(true, "keep CEs of wicks starting an FVG", group=GW,
+     tooltip="the wick of the first candle of an FVG, on the side of the gap")
+var wrecent = input.int(10, "always show CEs of the last candles", group=GW, minval=0)
+var wnext = input.int(2, "extend", group=GW, minval=0, maxval=10, inline="wx")
+var wreach = input.float(1, "CEs per side within x ATR", group=GW, minval=0, inline="wx",
+     tooltip="above and below price, the CEs of the N longest wicks within this distance and not yet crossed by a body " +
+         "extend to the current bar. 0 to disable")
 
 GF = "Fib"
-var dofib = input.bool(true, "mark fib retracements for OTE", group=GF)
 var fibswing = input.bool(true, "use swings to locate 0/100", group=GF, tooltip="retrace in swing highs/lows")
 var oteswingleft=input.int(10, "bars left for swing", group=GF)
 var oteswingright=input.int(3, "bars right for swing", group=GF)
@@ -49,7 +76,7 @@ var textcol = input.color(color.blue, "text color", group=GF)
 GH="HTF OTE"
 var hotelvl0 = input.float(0.62, "from", group = GH, inline="otel")
 var hotelvl1 = input.float(0.79, "to", group=GH, inline="otel")
-var notes = input.int(2, "nb. of kept OTEs (0 to draw no boxes)", group=GH)
+var notes = input.int(2, "nb. of kept OTEs", group=GH)
 var domarginotes = input.bool(true, "draw margin box to reflect OTEs", group=GH)
 var moteoff = input.int(6, "margin box offset", group=GH, tooltip="added to last bar index to start it", inline="mfo")
 var motewid = input.int(12, "width", group=GH, tooltip="margix box width in bars", inline="mfo")
@@ -62,21 +89,93 @@ var hotetf2 = input.timeframe("240", "for", group=GH, inline = "h2")
 var hotecolu = input.color(color.new(#ffb300, 80), "rect color bull", group=GH, inline="ocol")
 var hotecold = input.color(color.new(#ff00aa, 81), "bear", group=GH, inline="ocol")
 
+GV = "Volume (experimental)"
+var vlen = input.int(30, "high volume: above the average of the last", group=GV, minval=1, inline="vh")
+var vk = input.float(2.0, "candles x", group=GV, minval=1, step=0.1, inline="vh",
+     tooltip="a dot below (up candle) or above (down candle) a candle whose volume is at least this many times " +
+         "the average volume of the candles before it. In real time it shows once the forming candle gets there")
+var vmaxn = input.int(10, "and the highest of the last N candles", group=GV, minval=0,
+     tooltip="the volume must also be above that of each of these N candles before it (0: no such check)")
+var vcol = input.color(color.new(color.orange, 20), "dot color", group=GV, inline="vc")
+var vsize = input.string("small circle", "size", options=["small circle", "circle", "big circle"],
+     group=GV, inline="vc")
+var dvleft = input.int(5, "divergences: swing bars left", group=GV, minval=1, inline="dvs")
+var dvright = input.int(2, "right", group=GV, minval=1, inline="dvs")
+var dvmeas = input.string("3 candles", "volume of a swing", options=["swing candle", "3 candles", "push"],
+     group=GV, tooltip="swing candle: the volume of the candle of the high (low); 3 candles: the average of it and " +
+         "the candles before and after; push: the total volume from the previous opposite swing to it")
+var dvshow = input.string("segment", "show", options=["segment", "v", "both"], group=GV,
+     tooltip="segment: a line joining the two swings; v: a v mark at the second swing (hover it for the volumes)")
+var dvmax = input.int(100, "at most bars between the two swings", group=GV, minval=2)
+var dvkeep = input.int(20, "keep the last", group=GV, minval=1, inline="dvk")
+var dvbear = input.color(color.new(color.red, 30), "bear", group=GV, inline="dvk")
+var dvbull = input.color(color.new(color.green, 30), "bull", group=GV, inline="dvk",
+     tooltip="a higher swing high with less volume than the previous swing high (bear), or a lower swing low with " +
+         "less volume than the previous swing low (bull): a line joins the two swings")
+
 GD = "Data symbol"
 dAlt = input.bool(false, "Data from another symbol", group = GD, inline = "dsym",
     tooltip = "Compute wicks, fibs and OTEs from the candles of this symbol, at the chart timeframe, and draw "+
         "them on this chart. E.g. MNQ data on an NNQ chart.")
 dSym = input.symbol("CME_MINI:MNQ1!", "", group = GD, inline = "dsym")
+// [NQS] sizes in points are given for NQ; with nqscale they are scaled for the chart instrument by a hardwired
+// factor (its typical daily range relative to NQ's). Futures match by root, other symbols by ticker prefix;
+// instruments not in the table keep the sizes as given
+nqScale() =>
+    array<string> nms = array.from("NQ", "MNQ", "NNQ", "NAS100", "US100", "USTEC", "NDX", "NQ100",
+         "ES", "MES", "US500", "SPX", "SP500", "US30", "YM", "MYM", "DJI", "WS30", "DJ30",
+         "RTY", "M2K", "US2000", "RUT", "FDAX", "FDXM", "FDXS", "DAX", "GER40", "DE40", "GER30", "DE30", "DEU40")
+    array<float> ks = array.from(1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+         0.2, 0.2, 0.2, 0.2, 0.2, 1.3, 1.3, 1.3, 1.3, 1.3, 1.3,
+         0.1, 0.1, 0.1, 0.1, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7)
+    bool fut = syminfo.type == "futures"
+    string s = str.upper(fut ? syminfo.root : syminfo.ticker)
+    float r = 1.0
+    for [i, nm] in nms
+        if fut ? s == nm : str.startswith(s, nm)
+            r := ks.get(i)
+            break
+    r
+var float sizeK = nqscale ? nqScale() : 1.0
+float minwick = minwickIn * sizeK
+
 string dataSym = dAlt ? dSym : syminfo.tickerid
 // one request per series (not a tuple) so that max_bars_back below applies to them
 float dO = request.security(dataSym, timeframe.period, open, gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_off)
 float dH = request.security(dataSym, timeframe.period, high, gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_off)
 float dL = request.security(dataSym, timeframe.period, low, gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_off)
 float dC = request.security(dataSym, timeframe.period, close, gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_off)
+float dV = request.security(dataSym, timeframe.period, volume, gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_off)
 max_bars_back(dO, 5000)
 max_bars_back(dH, 5000)
 max_bars_back(dL, 5000)
 max_bars_back(dC, 5000)
+max_bars_back(dV, 5000)
+
+// bad data: daily ATR(14) as an RMA of the true range of daily candles cleaned with it (so a bad print does not
+// inflate it), for the last completed day; a wick longer than badatr of it is a bad print, the body is used instead
+dAtrC() =>
+    var float a = na
+    float bt = math.max(open, close)
+    float bb = math.min(open, close)
+    float lim = badatr > 0 and not na(a) ? badatr * a : na
+    float h = not na(lim) and high - bt > lim ? bt : high
+    float l = not na(lim) and bb - low > lim ? bb : low
+    float tr = na(close[1]) ? h - l : math.max(h, close[1]) - math.min(l, close[1])
+    a := na(a) ? tr : (a * 13 + tr) / 14
+    a[1]
+float fAtr = request.security(dataSym, "D", dAtrC(), lookahead = barmerge.lookahead_on)
+clH(float o, float h, float c) =>
+    float b = math.max(o, c)
+    badatr > 0 and not na(fAtr) and h - b > badatr * fAtr ? b : h
+clL(float o, float l, float c) =>
+    float b = math.min(o, c)
+    badatr > 0 and not na(fAtr) and b - l > badatr * fAtr ? b : l
+// cleaned highs / lows for the fib retracements
+float fH = clH(dO, dH, dC)
+float fL = clL(dO, dL, dC)
+max_bars_back(fH, 5000)
+max_bars_back(fL, 5000)
 
 
 if autootetf
@@ -138,7 +237,6 @@ wdx() =>
     r
 
  
-var wickces = array.new<line>()
 var wicks = array.new<line>()
 var line ln5 = na
 var label lb5 = na
@@ -151,25 +249,145 @@ rng = dH - dL
 // Show whole range in the status line
 plot(rng, title="range", display=display.status_line)
 
-if dowick and compute and barstate.isconfirmed
-    bodyh = math.max(dO[1],dC[1])
-    bodyl = math.min(dO[1],dC[1])
-    wh = dH[1]-bodyh
-    wl = bodyl-dL[1]
-    
-    if wh > minwick
-        ce = math.avg(dH[1],bodyh)
-        ln = line.new(bar_index-1, ce, bar_index-1+wdx(), ce)
-        wickces.push(ln)
-    if wl > minwick
-        ce = math.avg(dL[1],bodyl)
-        ln = line.new(bar_index-1, ce, bar_index-1+wdx(), ce)
-        wickces.push(ln)
-    if wickces.size() > 250
-        w = wickces.shift()
-        w.delete()
+// Wick CEs.
+// The last few candles always show theirs. Older candles keep only those of swing highs/lows
+// and of the wick of the first candle of an FVG, on the gap side.
+// Above and below price, the CEs of the N longest wicks close to price and not yet crossed by a body extend.
+type WCE
+    int b
+    float ce
+    float len
+    bool up
+    line ln = na
+    bool swing = false
+    bool fvg = false
+    bool dead = false
+    bool extd = false
 
-if compute 
+method hide(WCE w) =>
+    if not na(w.ln)
+        w.ln.delete()
+        w.ln := na
+
+var wces = array.new<WCE>()
+
+wfind(int b, bool up) =>
+    WCE r = na
+    n = wces.size()
+    if n > 0
+        for k = n - 1 to 0
+            w = wces.get(k)
+            if w.b < b
+                break
+            if w.b == b and w.up == up
+                r := w
+                break
+    r
+
+wextend(array<WCE> ws, array<float> lens) =>
+    if ws.size() > 0
+        idx = lens.sort_indices(order.descending)
+        for j = 0 to math.min(wnext, idx.size()) - 1
+            w = ws.get(idx.get(j))
+            // one bar past the live candle, so the level stays visible while it moves through
+            w.ln.set_x2(bar_index + 2)
+            w.extd := true
+
+dtr = math.max(dH - dL, math.abs(dH - nz(dC[1], dO)), math.abs(dL - nz(dC[1], dO)))
+datr = ta.rma(dtr, 14)
+dwph = ta.pivothigh(dH, oteswingleft, oteswingright)
+dwpl = ta.pivotlow(dL, oteswingleft, oteswingright)
+
+if dowick and compute and barstate.isconfirmed and bar_index > 2
+    i = bar_index
+    bodyh = math.max(dO, dC)
+    bodyl = math.min(dO, dC)
+
+    // the closed candle body crosses older CEs
+    for w in wces
+        if not w.dead and w.b < i and bodyl < w.ce and bodyh > w.ce
+            w.dead := true
+
+    if wswing and not na(dwph)
+        wp = wfind(i - oteswingright, true)
+        if not na(wp)
+            wp.swing := true
+    if wswing and not na(dwpl)
+        wp = wfind(i - oteswingright, false)
+        if not na(wp)
+            wp.swing := true
+
+    if wfvg and dL[2] > dH
+        wp = wfind(i - 2, false)
+        if not na(wp)
+            wp.fvg := true
+    if wfvg and dH[2] < dL
+        wp = wfind(i - 2, true)
+        if not na(wp)
+            wp.fvg := true
+
+    // new CEs for the closed candle
+    if dH - bodyh > minwick
+        wces.push(WCE.new(i, math.avg(dH, bodyh), dH - bodyh, true))
+    if bodyl - dL > minwick
+        wces.push(WCE.new(i, math.avg(dL, bodyl), bodyl - dL, false))
+
+    // draw and forget; pick the longest live ones above and below price
+    hold = math.max(wrecent, oteswingright + 1)
+    reach = wreach * datr
+    xa = array.new<WCE>()
+    xal = array.new<float>()
+    xb = array.new<WCE>()
+    xbl = array.new<float>()
+    n = wces.size()
+    if n > 0
+        for k = n - 1 to 0
+            w = wces.get(k)
+            recent = w.b > i - wrecent
+            if w.b < i - 5000
+                // too old to touch its line again (bar index limits): deleted, it would only use line budget
+                w.hide()
+                wces.remove(k)
+            else if not w.swing and not w.fvg and not recent
+                w.hide()
+                if w.b <= i - hold
+                    wces.remove(k)
+            else
+                if na(w.ln)
+                    w.ln := line.new(w.b, w.ce, w.b + wdx(), w.ce)
+                if w.extd
+                    w.ln.set_x2(w.b + wdx())
+                    w.extd := false
+                if wnext > 0 and wreach > 0 and not w.dead and math.abs(w.ce - dC) <= reach
+                    if w.ce >= dC
+                        xa.push(w)
+                        xal.push(w.len)
+                    else
+                        xb.push(w)
+                        xbl.push(w.len)
+    wextend(xa, xal)
+    wextend(xb, xbl)
+    while wces.size() > 400
+        w = wces.shift()
+        w.hide()
+    // line budget (max_lines_count 500, the oldest lines are deleted beyond it): the thick wicks (250), the fibs
+    // and the volume divergences come first; the oldest CEs (never those of the last candles) are dropped
+    int ceMax = 500 - 250 - 10 - (dovdiv ? dvkeep + 2 : 0) - 10
+    int nd = 0
+    for wc in wces
+        if not na(wc.ln)
+            nd += 1
+    int kk = 0
+    while nd > ceMax and kk < wces.size()
+        wd = wces.get(kk)
+        if not na(wd.ln) and wd.b <= i - wrecent
+            wd.hide()
+            wces.remove(kk)
+            nd -= 1
+        else
+            kk += 1
+
+if compute and dothick
     body_top = math.max(dO, dC)
     body_bottom = math.min(dO, dC)
 
@@ -187,6 +405,39 @@ if compute
         ln = line.new(bar_index, dL, bar_index, body_bottom, color=wick_color, width=wick_width)
         wicks.push(ln)
     
+
+// candle OTE: the 0.62 / 0.705 / 0.79 retracements of the last closed candle (high to low), for the live candle
+// Special case: when the last closed candle closed the same way as the one before it and did not retrace to its 50%
+// (up-close: its low stays above the middle; down-close: its high stays below), the OTE of the one before is kept.
+// Only once: the next candle uses its own again.
+var array<line> coteLns = array.new<line>()
+// direction for the OTE: a tiny body (at most 30% of the range) counts by where it sits: near the high (long down
+// wick) as up-close, near the low (long up wick) as down-close, whatever its color
+coteDir(float o, float h, float l, float c) =>
+    float bt = math.max(o, c)
+    float bb = math.min(o, c)
+    float mid = (h + l) / 2
+    h > l and bt - bb <= 0.3 * (h - l) and bb > mid ? 1 : h > l and bt - bb <= 0.3 * (h - l) and bt < mid ? -1
+         : c > o ? 1 : c < o ? -1 : 0
+int cDir1 = coteDir(dO[1], dH[1], dL[1], dC[1])
+int cDir2 = coteDir(dO[2], dH[2], dL[2], dC[2])
+float cMid2 = (dH[2] + dL[2]) / 2
+bool coteKeep = false
+coteKeep := cDir1 != 0 and cDir1 == cDir2 and (cDir1 == 1 ? dL[1] > cMid2 : dH[1] < cMid2) and not coteKeep[1]
+if barstate.islast
+    for l in coteLns
+        l.delete()
+    coteLns.clear()
+    int ck = coteKeep ? 2 : 1
+    float cH1 = dH[ck]
+    float cL1 = dL[ck]
+    int cDir = coteKeep ? cDir2 : cDir1
+    if docote and cDir != 0 and cH1 > cL1
+        // a candle not above the average size (its range up to the chart ATR) gets only 0.62 and 0.79
+        bool big = cH1 - cL1 > datr[ck]
+        for r in (big ? array.from(0.62, 0.705, 0.79) : array.from(0.62, 0.79))
+            float p = cDir == 1 ? cH1 - r * (cH1 - cL1) : cL1 + r * (cH1 - cL1)
+            coteLns.push(line.new(bar_index - ck, p, bar_index + 1, p, color = cote_color, width = 1))
 
 mkfib(float lvl) =>
     f = Fib.new(lvl)
@@ -245,8 +496,8 @@ var debug = false
 var int swhit = na
 var int swlot = na
 if compute and dofib and fibswing
-    float xswlo  = ta.pivotlow(dL, oteswingleft, oteswingright)
-    float xswhi = ta.pivothigh(dH, oteswingleft, oteswingright)
+    float xswlo  = ta.pivotlow(fL, oteswingleft, oteswingright)
+    float xswhi = ta.pivothigh(fH, oteswingleft, oteswingright)
     chg = false
     if not  na(xswlo)
         swlo := xswlo
@@ -256,12 +507,12 @@ if compute and dofib and fibswing
         swhi := xswhi
         swhit := bar_index[oteswingright]
         chg := true
-    else if not na(swhi) and dH > swhi
-        swhi := dH
+    else if not na(swhi) and fH > swhi
+        swhi := fH
         swhit := bar_index
         chg := true
-    else if not na(swlo) and dL < swlo
-        swlo := dL
+    else if not na(swlo) and fL < swlo
+        swlo := fL
         swlot := bar_index
         chg := true
 
@@ -272,10 +523,10 @@ if compute and dofib and fibswing
         if debug
             line.new(swlot, swlo, swlot, swlo+1, extend = extend.both)
 else if compute and dofib and barstate.isnew and bar_index > lookival
-    hi = math.abs(ta.highestbars(dH, lookival))
-    hh = dH[hi]
-    li = math.abs(ta.lowestbars(dL, lookival))
-    ll = dL[li]
+    hi = math.abs(ta.highestbars(fH, lookival))
+    hh = fH[hi]
+    li = math.abs(ta.lowestbars(fL, lookival))
+    ll = fL[li]
     updatefibs(hh, ll, bar_index[hi], bar_index[li])
  
 type OTE
@@ -300,8 +551,10 @@ method started(OTE ote) =>
         ote.otes.push(ote.otebox)
         ote.otebox := na
     ote.start := time
-    [o, c, h, l] = request.security(dataSym, ote.tf,
+    [o, c, h0, l0] = request.security(dataSym, ote.tf,
         [open[1], close[1], high[1], low[1]], lookahead = barmerge.lookahead_on)
+    float h = clH(o, h0, c)
+    float l = clL(o, l0, c)
     oteh = 0.0
     otel = 0.0
     ote.isshort := c < o
@@ -354,12 +607,162 @@ method updateote(OTE ote) =>
 
 var OTE theote = OTE.new(hotetf)
 var OTE theote2 = OTE.new(hotetf2)
-if compute and dohote and theote.isok() and theote.starts()
+if compute and dohtf and dohote and theote.isok() and theote.starts()
     theote.started()
-if compute and dohote and theote.isok()
+if compute and dohtf and dohote and theote.isok()
     theote.updateote()
-if compute and dohote2 and theote2.isok() and theote2.starts()
+if compute and dohtf and dohote2 and theote2.isok() and theote2.starts()
     theote2.started()
-if compute and dohote2 and theote2.isok()
+if compute and dohtf and dohote2 and theote2.isok()
     theote2.updateote()
  
+
+// ============================================================ volume (experimental)
+// high volume: at least vk times the average volume of the vlen candles before
+float vavg = ta.sma(dV, vlen)[1]
+float vmx = vmaxn > 0 ? ta.highest(dV, vmaxn)[1] : na
+bool vhi = dovhi and not na(dV) and not na(vavg) and vavg > 0 and dV >= vk * vavg and (vmaxn == 0 or na(vmx)
+     or dV > vmx)
+bool vup = vhi and dC >= dO
+bool vdn = vhi and dC < dO
+// plot sizes must be constant: one pair of plots per size option
+plotshape(vup and vsize == "small circle", "high volume (up)", shape.circle, location.belowbar, vcol,
+     size = size.tiny, display = display.pane)
+plotshape(vdn and vsize == "small circle", "high volume (down)", shape.circle, location.abovebar, vcol,
+     size = size.tiny, display = display.pane)
+plotshape(vup and vsize == "circle", "high volume (up)", shape.circle, location.belowbar, vcol, size = size.small,
+     display = display.pane)
+plotshape(vdn and vsize == "circle", "high volume (down)", shape.circle, location.abovebar, vcol, size = size.small,
+     display = display.pane)
+plotshape(vup and vsize == "big circle", "high volume (up)", shape.circle, location.belowbar, vcol,
+     size = size.normal, display = display.pane)
+plotshape(vdn and vsize == "big circle", "high volume (down)", shape.circle, location.abovebar, vcol,
+     size = size.normal, display = display.pane)
+
+// divergences: a higher swing high with less volume than the previous swing high, or a lower swing low with less
+// volume than the previous swing low (bad prints cleaned, see badatr). Swings are known dvright bars later; with
+// dvright > 1 a dotted "v?" shows one candle after the swing and turns solid "v" when the swing is confirmed.
+float vph = ta.pivothigh(fH, dvleft, dvright)
+float vpl = ta.pivotlow(fL, dvleft, dvright)
+var int vhB = na      // last swing high: bar, price, volume
+var float vhP = na
+var float vhV = na
+var int vlB = na      // last swing low
+var float vlP = na
+var float vlV = na
+var array<line> vdLns = array.new<line>()
+var array<label> vdLbls = array.new<label>()
+
+// early swings: one candle after them (dotted until the swing is confirmed dvright bars later)
+float eph = ta.pivothigh(fH, dvleft, 1)
+float epl = ta.pivotlow(fL, dvleft, 1)
+var line tHl = na     // early (unconfirmed) divergence at a swing high: line, label, bar, price
+var label tHlb = na
+var int tHb = na
+var float tHp = na
+var line tLl = na     // and at a swing low
+var label tLlb = na
+var int tLb = na
+var float tLp = na
+
+// volume of the swing r bars ago; the push starts after the previous opposite swing (at most dvmax bars)
+swVol(int prevOpp, int r) =>
+    float v = na
+    if dvmeas == "swing candle"
+        v := dV[r]
+    else if dvmeas == "3 candles"
+        v := (dV[r - 1] + dV[r] + dV[r + 1]) / 3
+    else
+        int n = na(prevOpp) ? dvmax : math.min(dvmax, bar_index - r - prevOpp)
+        v := 0.0
+        for i = r to r + math.max(n, 1) - 1
+            v += nz(dV[i])
+    v
+
+vdNew(int b0, float p0, int b1, float p1, float v0, float v1, bool hi, bool early) =>
+    color c = hi ? dvbear : dvbull
+    line ln = line.new(b0, p0, b1, p1, color = dvshow == "v" ? color.new(c, 100) : c, width = 2,
+         style = early ? line.style_dotted : line.style_solid)
+    label lb = label.new(b1, p1, dvshow == "segment" ? "" : early ? "v?" : "v",
+         style = hi ? label.style_label_down : label.style_label_up,
+         color = color.new(c, 100), textcolor = c, size = size.small,
+         tooltip = "volume divergence: " + str.tostring(v0, format.volume) + " then " + str.tostring(v1,
+         format.volume) + (early ? " (not confirmed yet)" : ""))
+    [ln, lb]
+
+vdKeep(line ln, label lb) =>
+    ln.set_style(line.style_solid)
+    lb.set_text(dvshow == "segment" ? "" : "v")
+    vdLns.push(ln)
+    vdLbls.push(lb)
+    while vdLns.size() > dvkeep
+        vdLns.shift().delete()
+        vdLbls.shift().delete()
+
+vdDrop(line ln, label lb) =>
+    if not na(ln)
+        ln.delete()
+    if not na(lb)
+        lb.delete()
+
+if compute and dovdiv
+    int b = bar_index - dvright
+    bool early = dvright > 1
+    // swing highs: an early one is dropped once price goes above it, or when it is not confirmed
+    if not na(tHb) and fH > tHp
+        vdDrop(tHl, tHlb)
+        tHb := na
+    if not na(vph)
+        float v = swVol(vlB, dvright)
+        bool dv = not na(vhP) and not na(v) and not na(vhV) and b - vhB <= dvmax and vph > vhP and v < vhV
+        if dv and not na(tHb) and tHb == b
+            vdKeep(tHl, tHlb)
+            tHb := na
+        else if dv
+            [ln, lb] = vdNew(vhB, vhP, b, vph, vhV, v, true, false)
+            vdKeep(ln, lb)
+        vhB := b
+        vhP := vph
+        vhV := v
+    if not na(tHb) and bar_index - tHb >= dvright
+        vdDrop(tHl, tHlb)
+        tHb := na
+    if early and not na(eph)
+        int e = bar_index - 1
+        float v = swVol(vlB, 1)
+        if not na(vhP) and not na(v) and not na(vhV) and e - vhB <= dvmax and eph > vhP and v < vhV
+            vdDrop(tHl, tHlb)
+            [ln, lb] = vdNew(vhB, vhP, e, eph, vhV, v, true, true)
+            tHl := ln
+            tHlb := lb
+            tHb := e
+            tHp := eph
+    // swing lows, mirrored
+    if not na(tLb) and fL < tLp
+        vdDrop(tLl, tLlb)
+        tLb := na
+    if not na(vpl)
+        float v = swVol(vhB, dvright)
+        bool dv = not na(vlP) and not na(v) and not na(vlV) and b - vlB <= dvmax and vpl < vlP and v < vlV
+        if dv and not na(tLb) and tLb == b
+            vdKeep(tLl, tLlb)
+            tLb := na
+        else if dv
+            [ln, lb] = vdNew(vlB, vlP, b, vpl, vlV, v, false, false)
+            vdKeep(ln, lb)
+        vlB := b
+        vlP := vpl
+        vlV := v
+    if not na(tLb) and bar_index - tLb >= dvright
+        vdDrop(tLl, tLlb)
+        tLb := na
+    if early and not na(epl)
+        int e = bar_index - 1
+        float v = swVol(vhB, 1)
+        if not na(vlP) and not na(v) and not na(vlV) and e - vlB <= dvmax and epl < vlP and v < vlV
+            vdDrop(tLl, tLlb)
+            [ln, lb] = vdNew(vlB, vlP, e, epl, vlV, v, false, true)
+            tLl := ln
+            tLlb := lb
+            tLb := e
+            tLp := epl

@@ -1,0 +1,2365 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at
+// https://mozilla.org/MPL/2.0/
+// © franjballest
+// GENERATED from ICTlevels.txt by tools/mklevelsderiv.py: do not edit, change ICTlevels.txt and rerun
+// the script.
+// RTHOGs: the RTHOGs (with quadrants, octants and stddevs) and the premarket range of ICTlevels,
+// nothing else.
+
+//@version=6
+indicator("RTHOGs", overlay = true, max_lines_count = 500, max_boxes_count = 500,
+     max_labels_count = 500, max_bars_back = 5000)
+
+const color transparent = #ffffff00
+
+getstyle(string s) =>
+    switch s
+        "dashed" => line.style_dashed
+        "dotted" => line.style_dotted
+        => line.style_solid
+
+getsize(string s) =>
+    switch s
+        "tiny" => size.tiny
+        "small" => size.small
+        "large" => size.large
+        "huge" => size.huge
+        => size.normal
+
+// one label size up (important levels)
+sizeUp(string sz) =>
+    sz == size.tiny ? size.small : sz == size.small ? size.normal : sz == size.normal ? size.large : size.huge
+
+type Sty
+    string sty
+    int wid
+    color col
+
+// ============================================================ inputs
+const string G_EN = "Enable / Filter"
+int attLvl = input.int(2, "Attenuation", minval = 0, maxval = 4, group = G_EN,
+     tooltip = "Dims the drawings, 0: as configured, 4: the most dimmed (2 by default). Levels have three ranks: important "
+     + "(the last M.O., the untaken high / low of the previous day and of the last two ended sessions, the "
+     + "current and previous RTHOG, TGIF, NWOGs, the last NDOG), normal (months, other day and session max/min, "
+     + "week lines, current RTHOG quadrants and octants, PMKT high / low, EQH / EQL, macro background) and minor "
+     + "(day lines, eq, older M.O.s, older NDOGs, old RTHOGs, stddevs, PMKT quadrants). Each level dims minor drawings the "
+     + "most and important ones the least; widths go down by 1 when dimmed enough. Session rectangles: filled "
+     + "and lighter at 1, outline only from 2 on. Gap rectangles fade with the rank of their gap.")
+float badatr = input.float(6, "Ignore wicks longer than (daily ATRs)", minval = 0, step = 0.5, group = G_EN,
+     tooltip = "Bad data: a wick longer than this many daily ATRs (chart, daily and monthly candles) is taken as a "
+     + "bad print, and the candle's high or low is taken at its body: day, session, week and month highs / lows, "
+     + "swings, EQH / EQL and ranges leave it out. 0: off.")
+bool nqscale = input.bool(true, "Scale sizes using NQ sizes as reference", group = G_EN,
+     tooltip = "Sizes in points (minimum sizes and the like) are set for NQ. On: they are scaled for the chart "
+     + "instrument by a fixed factor, its typical range relative to NQ: ES 0.2, YM 1.3, RTY 0.1, DAX 0.7 "
+     + "(and their micros and CFDs); other instruments keep them as given.")
+// [ATT] dimming steps of a rank (0 important, 1 normal, 2 minor) at the attenuation level
+attE(int rank) =>
+    attLvl == 0 ? 0 : rank == 0 ? (attLvl >= 4 ? 2 : attLvl >= 2 ? 1 : 0) : rank == 1 ? attLvl : attLvl + 1
+// line / text color, width and fill transparency of a rank
+attL(color c, int rank) =>
+    int e = attE(rank)
+    e == 0 ? c : color.new(c, color.t(c) + (100 - color.t(c)) * math.min(e * 0.18, 0.9))
+attW(int w, int rank) =>
+    math.max(1, w - (attE(rank) >= 2 ? 1 : 0))
+attT(int t, int rank) =>
+    int(math.min(100, t + (100 - t) * attE(rank) * 0.2))
+bool domonth = false
+bool dotgif = false
+bool doses = false
+bool doeqhl = false
+bool dondog = false
+bool donwog = false
+bool dorthog = input.bool(true, "RTHOGs (up to 15m)", group = G_EN, inline = "xdog")
+bool dogaps = dondog or donwog or dorthog // some opening gap kind is on
+bool dopremarket = input.bool(true, "PMKT range (m5 or less)", group = G_EN, inline = "en3",
+     tooltip = "High and low of the premarket range, with its quadrants and "
+     + "stddevs. Needs a chart timeframe of 5m or lower.")
+bool domacrobg = false
+
+const string G_LOCATION = "Time & Settings"
+bool visible = input.bool(false, "compute for historic data use", group = G_LOCATION,
+     tooltip = "When disabled, objects are computed up to the last bar "
+     + "for real-time use. When enabled, objects are computed "
+     + "up to the rightmost visible bar (recomputes when you scroll).")
+string TZ = input.string("Auto", "Zone: US / EU / Auto", options = ["Auto", "US", "EU"],
+     group = G_LOCATION,
+     tooltip = "US = NQ (New York times), EU = DAX (Madrid times), Auto "
+     + "selects by symbol. Set the platform timezone to match.")
+int xoff = input.int(2, "offset for margin labels", group = G_LOCATION, minval = 1, inline = "loc")
+bool showcap = input.bool(true, "show object cap warning", group = G_LOCATION, inline = "loc",
+     tooltip = "Shows a small note in the top-right table when the "
+     + "day/session/gap counts were reduced to fit the 500 object limits.")
+
+const string G_M = "Month Settings"
+color monmaxcol = color.green
+color monmincol = color.red
+color monccol = color.black
+string monsty = getstyle("solid")
+int monwid = 3
+
+const string G_DAYS = "Day Settings"
+int ndays = 60
+bool dolines = false
+string daylnsty = getstyle("dotted")
+int daywid = 2
+color daycol = color.blue
+string wdaylnsty = getstyle("dashed")
+int wdaywid = 2
+
+bool dodmaxmin = false
+color daymmaxcol = color.green
+color daymmincol = color.red
+string daymlnsty = getstyle("solid")
+int daymwid = 2
+bool dodaylbl = false
+string dlblsize = "tiny"
+bool dobody = false
+bool doreh = false
+float reltol = float(0.05)
+
+bool doeq = false
+string eqlnsty = getstyle("dashed")
+int eqwid = 1
+color eqcolor = color.blue
+
+bool doopen = false
+string oplnsty = getstyle("dashed")
+int opwid = 1
+color opcolor = color.black
+
+const string G_TG = "TGIF"
+float tgp1 = float(0.2)
+float tgp2 = float(0.3)
+float tgnear = float(0.4)
+color tgupcol = color.green
+color tgdncol = color.red
+string tgsty = getstyle("dashed")
+int tgwid = 2
+string tglblsize = "normal"
+
+const string G_ZONES = "Session Settings"
+int nses = 20
+bool dorect = false
+int rtransp = 75
+bool rectbord = false
+bool nolowrects = true
+string rectmintf = "5"
+bool dosmaxmin = true
+color sesmmaxcol = color.green
+color sesmmincol = color.red
+string sesmlnsty = getstyle("solid")
+int sesmwid = 1
+bool doseslbl = true
+string slblsize = "tiny"
+color asiacolor = color.red
+color londoncolor = color.green
+color uscolor = color.blue
+
+const string GRP_DOG = "Gaps and Ranges"
+int ngaps = input.int(10, "Gaps to keep", group = GRP_DOG, inline = "gap", minval = 1)
+bool ndogmf = false
+bool dorthogq = input.bool(true, "RTHOG quadrants", group = GRP_DOG, inline = "rq")
+float rthogqminIn = input.float(50.0, "min size", group = GRP_DOG, inline = "rq",
+     tooltip = "min size between quadrants to draw them")
+bool dorthogoct = input.bool(true, "RTHOG octants", group = GRP_DOG, inline = "ro",
+     tooltip = "Midpoints between the quadrants (1/8, 3/8, 5/8 and 7/8 of the gap) of the latest RTHOG, drawn "
+     + "when an eighth of the gap is above the quadrant min size, from the open until noon.")
+bool dorthogpo3 = input.bool(true, "RTHOG stddevs", group = GRP_DOG, inline = "rp")
+float rthogpo3minIn = input.float(50.0, "min size", group = GRP_DOG, inline = "rp",
+     tooltip = "min size of the steps to draw them (selects octants, "
+     + "quadrants, half gap, whole gap, twice the gap or none)")
+int rthogpo3num = input.int(4, "number of stddevs to draw above/below", group = GRP_DOG, inline = "rn")
+bool rthogauto = input.bool(true, "auto", group = GRP_DOG, inline = "rn",
+     tooltip = "Latest RTHOG only, from the open until the market close: more stddevs are drawn when price "
+     + "goes beyond them, so there are always at least the number above and also the next stddev to be hit "
+     + "on each side (at most 40 per side).")
+bool dogrect = input.bool(true, "Draw gap rectangles", inline = "gtransp", group = GRP_DOG)
+int grtransp = input.int(90, "transp", inline = "gtransp", group = GRP_DOG,
+     tooltip = "transparency for the gap rectangles when drawn. RTHOGs get no rectangle from attenuation 2 on")
+bool combgaps = input.bool(true, "Combine gaps at similar levels", group = GRP_DOG,
+     inline = "cmb", tooltip = "Several NDOGs (NWOGs) at the same or nearby levels "
+     + "are drawn once, with the outer levels that include them, "
+     + "labeled NDOGx3 (NWOGx3). A NWOG with NDOGs at similar hi/lo "
+     + "levels is labeled NWOG+NDOG and those NDOG lines are not drawn.")
+float combtol = input.float(0.05, "tolerance x daily ATR", minval = 0.0, step = 0.01,
+     group = GRP_DOG, inline = "cmb", tooltip = "Max distance between levels to be "
+     + "considered similar, as a fraction of the daily ATR(14). It is also used to decide "
+     + "when the hi and lo of a gap are too close to need two labels: they then get a "
+     + "single label in the middle.")
+
+string gaplnsty = getstyle("solid")
+int gapwid = 1
+color gapcolor = color.rgb(195, 46, 125)
+string wgaplnsty = getstyle("solid")
+int wgapwid = 2
+color wgapcolor = color.maroon
+string rgaplnsty = getstyle(input.string("solid", "RTHOG", options = ["solid", "dashed", "dotted"],
+     group = GRP_DOG, inline = "rgln"))
+int rgapwid = input.int(2, "", options = [1, 2, 3], group = GRP_DOG, inline = "rgln")
+color rgapcolor = input.color(color.rgb(23, 225, 218), "old", group = GRP_DOG, inline = "rgln")
+color lrgapcolor = input.color(color.rgb(107, 23, 225), "this", group = GRP_DOG, inline = "rgln")
+string rgapqlnsty = getstyle(input.string("solid", "RTHOG quadrant line",
+     options = ["solid", "dashed", "dotted"], group = GRP_DOG, inline = "rgqln"))
+string rgappo3lnsty = getstyle(input.string("dotted", "PO3 line",
+     options = ["solid", "dashed", "dotted"], group = GRP_DOG, inline = "rgqln"))
+bool extendgaps = input.bool(false, "extend old RTHOG lines", group = GRP_DOG,
+     tooltip = "extend to the right the lines of old RTHOGs")
+
+const string G_PM = "Premarket Range"
+int pmkeep = input.int(1, "quadrants/stddevs for the last", minval = 1, maxval = 5,
+     group = G_PM, inline = "pm0", tooltip = "Number of most recent ranges that get quadrant "
+     + "and stddev lines (as with RTHOG, only the latest by default). Older ranges keep "
+     + "only their high and low.")
+string pmmode = input.string("Auto", "range", options = ["Auto", "Manual"], group = G_PM,
+     inline = "pm1", tooltip = "Auto uses 07:00-09:00 New York time for US (NQ) and "
+     + "06:30-08:30 Madrid time for EU (DAX). Manual uses the range on the right, in the "
+     + "timezone of the market open (New York for NQ, Madrid for DAX).")
+string pmsession = input.session("0700-0900", "manual range", group = G_PM, inline = "pm1")
+bool dopmq = input.bool(true, "PMKT quadrants", group = G_PM, inline = "pm2")
+float pmqminIn = input.float(50.0, "min size", group = G_PM, inline = "pm2",
+     tooltip = "min size between quadrants to draw them (the lines at 25%, 50% (CE) and 75% "
+     + "of the range)")
+bool dopmpo3 = input.bool(true, "PMKT stddevs", group = G_PM, inline = "pm3")
+float pmpo3minIn = input.float(50.0, "min size", group = G_PM, inline = "pm3",
+     tooltip = "min size of the steps to draw them (selects octants, quadrants, half range, "
+     + "whole range, twice the range or none)")
+int pmpo3num = input.int(4, "number of stddevs to draw above/below", minval = 1,
+     group = G_PM, inline = "pn")
+bool pmauto = input.bool(false, "auto", group = G_PM, inline = "pn",
+     tooltip = "Latest premarket range only, from its end until the market close: more stddevs are drawn when "
+     + "price goes beyond them, so there are always at least the number above and also the next stddev to "
+     + "be hit on each side (at most 40 per side).")
+color pmcolor = input.color(color.red, "line", group = G_PM, inline = "pm4")
+int pmwid = input.int(2, "", options = [1, 2, 3], group = G_PM, inline = "pm4")
+string pmqsty = getstyle(input.string("solid", "quadrant", options = ["solid", "dashed", "dotted"],
+     group = G_PM, inline = "pm4"))
+string pmcesty = getstyle(input.string("solid", "CE", options = ["solid", "dashed", "dotted"],
+     group = G_PM, inline = "pm4"))
+string pmpo3sty = getstyle(input.string("dotted", "stddev", options = ["solid", "dashed", "dotted"],
+     group = G_PM, inline = "pm4"))
+string pmlblsize = input.string("normal", "label size", options = ["tiny", "small", "normal",
+     "large", "huge"], group = G_PM, inline = "pm5")
+float pmctol = input.float(0.05, "combine RTHOG labels, tolerance x daily ATR", minval = 0.0,
+     step = 0.01, group = G_PM, inline = "pm5", tooltip = "When an RTHOG stddev line and a "
+     + "premarket stddev line are this close, one label is shown for both, "
+     + "like RTHOG +2 PMKT +3")
+
+const string G_EQ = "Equal Highs / Lows"
+bool doeqd = false
+int eqlen = 3
+int eqlenD = 3
+float eqtol = float(0.10)
+int eqkeep = 5
+bool doeq3 = true
+float eq3ptsIn = float(3.0)
+color eqhcol = color.green
+color eqlcol = color.red
+string eqhlsty = getstyle("solid")
+int eqhlwid = 2
+string eqlblsize = "normal"
+
+const string GRP_MAIN = "Macros and Events"
+bool dozones = false
+color zonecolor = color.blue
+bool domacros = false
+color macrocolor = color.orange
+color macrobgcolor = color.new(color.black, 90)
+bool dosilver = false
+color silvercolor = color.red
+
+// [NQS] sizes in points are given for NQ; with nqscale they are scaled for the chart instrument by a hardwired
+// factor (its typical daily range relative to NQ's). Futures match by root, other symbols by ticker prefix;
+// instruments not in the table keep the sizes as given
+nqScale() =>
+    array<string> nms = array.from("NQ", "MNQ", "NNQ", "NAS100", "US100", "USTEC", "NDX", "NQ100",
+         "ES", "MES", "US500", "SPX", "SP500", "US30", "YM", "MYM", "DJI", "WS30", "DJ30",
+         "RTY", "M2K", "US2000", "RUT", "FDAX", "FDXM", "FDXS", "DAX", "GER40", "DE40", "GER30", "DE30", "DEU40")
+    array<float> ks = array.from(1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+         0.2, 0.2, 0.2, 0.2, 0.2, 1.3, 1.3, 1.3, 1.3, 1.3, 1.3,
+         0.1, 0.1, 0.1, 0.1, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7)
+    bool fut = syminfo.type == "futures"
+    string s = str.upper(fut ? syminfo.root : syminfo.ticker)
+    float r = 1.0
+    for [i, nm] in nms
+        if fut ? s == nm : str.startswith(s, nm)
+            r := ks.get(i)
+            break
+    r
+var float sizeK = nqscale ? nqScale() : 1.0
+float rthogqmin = rthogqminIn * sizeK
+float rthogpo3min = rthogpo3minIn * sizeK
+float pmqmin = pmqminIn * sizeK
+float pmpo3min = pmpo3minIn * sizeK
+float eq3pts = eq3ptsIn * sizeK
+
+// ============================================================ timeframe, timezone, definitions
+int tfsecs = timeframe.in_seconds()
+int tfms = tfsecs * 1000
+bool tfok = tfsecs <= 3600
+// [SES] no session rectangles on 1H and above
+bool rectOn = dorect and tfsecs < 3600 and not (nolowrects and tfsecs < 900
+     and tfsecs <= timeframe.in_seconds(rectmintf))
+bool preOn = dopremarket and tfsecs <= 300
+int rdx = tfsecs <= 60 ? 4 : 2
+
+string lblsz = getsize(eqlblsize)
+string dlblsz = getsize(dlblsize)
+string tglsz = getsize(tglblsize)
+string pmlsz = getsize(pmlblsize)
+string slblsz = getsize(slblsize)
+string tkr = str.upper(syminfo.ticker)
+string dsc = str.upper(syminfo.description)
+bool autoEU = str.contains(dsc, "DAX") or str.contains(tkr, "DAX") or str.contains(dsc, "GERMANY")
+     or str.contains(tkr, "FDX")
+bool useUS = TZ == "US" or (TZ == "Auto" and not autoEU)
+string tz = useUS ? "America/New_York" : "Europe/Madrid"
+string mktstr = useUS ? "0930-1615" : "0900-1730"
+string gapstr = useUS ? "1700-1800" : "2300-0000"
+string premarketstr = pmmode == "Manual" ? pmsession
+     : (useUS ? "0700-0900" : "0630-0830")
+
+
+// time of day in seconds in the script timezone (bar open) and a few derived series
+int tsec = hour(time, tz) * 3600 + minute(time, tz) * 60 + second(time, tz)
+int tsecPrev = nz(tsec[1], tsec)
+int dow = dayofweek(time, tz)
+int dowPrev = nz(dow[1], dow)
+bool newDay = dow != dowPrev
+bool newWeek = (dow == dayofweek.sunday and dowPrev != dayofweek.sunday)
+     or (dow == dayofweek.monday and dowPrev == dayofweek.friday)
+
+// ============================================================ object budget (500 lines / labels /
+// boxes)
+int nsesEff = math.min(nses, 40)
+int ngapsEff = math.min(ngaps, 15)
+int gapKinds = (dondog ? 1 : 0) + (donwog ? 1 : 0)
+int lnMonths = domonth ? 9 : 0
+int lnGaps = dogaps ? gapKinds * 2 * ngapsEff : 0
+int lnRth = dogaps and dorthog ? 4 * ngapsEff + 2 * rthogpo3num + 8 + (rthogauto ? 12 : 0)
+     + (dorthogoct ? 4 : 0) : 0
+int lnSes = doses ? 2 * nsesEff : 0
+int lnPre = preOn ? 4 * nsesEff : 0
+int lnPmx = preOn ? pmkeep * ((dopmq ? 3 : 0) + (dopmpo3 ? 2 * pmpo3num : 0) + (dopmq or dopmpo3 ? 2 : 0))
+     + (pmauto and dopmpo3 ? 12 : 0) : 0
+int lnEq = doeqhl ? (doeqd ? 4 : 2) * eqkeep : 0
+int lbSes = doses and doseslbl ? 2 * nsesEff : 0
+int lbPre = preOn and doseslbl ? 2 * nsesEff : 0
+int lnTg = dotgif ? 2 : 0
+const int BODYMAX = 6   // body levels drawn per side
+int lnBody = dobody and (dodmaxmin or (doses and dosmaxmin)) ? 2 * BODYMAX : 0
+int lnReserve = lnMonths + lnGaps + lnRth + lnSes + lnPre + lnPmx + lnEq + lnTg + lnBody + 10
+int lbReserve = lnMonths + lnGaps + lnRth + lbSes + lbPre + lnPmx + lnEq + lnTg + lnBody + 10
+int lnPerDay = (dolines ? 1 : 0) + (dodmaxmin ? 2 : 0) + (doeq ? 1 : 0) + (doopen ? 1 : 0)
+int lbPerDay = (doeq ? 1 : 0) + (doopen ? 1 : 0) + (dodaylbl and dodmaxmin ? 2 : 0)
+int daysByLn = lnPerDay > 0 ? math.floor((500 - lnReserve) / lnPerDay) : ndays
+int daysByLb = lbPerDay > 0 ? math.floor((500 - lbReserve) / lbPerDay) : ndays
+int ndaysEff = math.max(1, math.min(ndays, math.min(daysByLn, daysByLb)))
+// the day cap is expected on 5m and lower charts (46 days with the defaults): no warning for it there
+bool capped = (ndaysEff < ndays and tfsecs > 300) or nses > nsesEff or ngaps > ngapsEff
+
+// ============================================================ processing window (history is
+// limited for speed)
+int spanMs = int((math.max(ndaysEff, ngapsEff) + 5) * 1.5 * 86400000)
+int winEnd = visible ? chart.right_visible_bar_time : timenow
+bool inWin = time <= winEnd and time >= winEnd - spanMs
+bool finalBar = inWin and (barstate.islast or (visible and time_close > winEnd))
+
+// ============================================================ types
+type ZoneInfo
+    string name
+    int ss      // start, seconds of day
+    int es      // end, seconds of day
+    Sty sty = na
+
+type Zone
+    string name
+    int tstart
+    float op
+    float hi
+    float lo
+    int hit
+    int lot
+    int tend = na
+    int hidonet = na
+    int lodonet = na
+    float bhi = na      // [LVL] highest / lowest candle body and its time
+    int bht = na
+    float blo = na
+    int blt = na
+    bool bhtk = false   // [LVL] body level taken after it was decided (outside the candles around the extreme)
+    bool bltk = false
+    int hbk = na        // [LVL] candle (bucket) number of the high / low, see bkN
+    int lbk = na
+    int hsw = 0         // [LVL] the high / low is a swing: 1 yes, -1 no, 0 not known yet
+    int lsw = 0
+    bool hrel = false   // [LVL] flat top / bottom: two 15m candles at about the same high / low with almost no wick
+    bool lrel = false
+    bool hrelc = false  // [LVL] the same with chart candles (lower timeframes): labeled reh / rel
+    bool lrelc = false
+    bool hx = false     // [LVL] untaken high / low (and body level) close to another day / session one: REH / REL
+    bool lx = false
+    bool bhx = false
+    bool blx = false
+    bool hc = false     // [LVL] the same level as the high / low (body level) of other zones (Asia low is the week low):
+    bool lc = false     // one level, not a REH / REL; combined label text in hxt / lxt / bhxt / blxt
+    bool bhc = false
+    bool blc = false
+    int hcg = -1        // [LVL] group of such a high / low (the most important rank applies to all of it)
+    int lcg = -1
+    int hrk = 1         // [LVL] rank of the high / low from zSide
+    int lrk = 1
+    string hxt = ""     // [LVL] label text of a REH / REL between levels: the combined label, or "" (shown by another)
+    string lxt = ""
+    string bhxt = ""
+    string blxt = ""
+    int extendt = na
+    int tclose = na     // premarket range: market close, the lines never go past it
+    float pwhi = na   // highest high of the earlier days of the same week
+    float pwlo = na   // lowest low of the earlier days of the same week
+    int hmode = 0     // 0 normal label, 1 REHs label, 2 no label (close to a higher high)
+    int lmode = 0     // 0 normal label, 1 RELs label, 2 no label (close to a lower low)
+    bool isday = false
+    bool isweek = false
+    bool dead = false
+    bool drawmaxmin = true
+    bool drawrect = false
+    bool drawvlines = false
+    bool drawlbl = false
+    ZoneInfo zi = na
+    Sty lnsty = na
+    Sty maxsty = na
+    Sty minsty = na
+    box rect = na
+    line vline = na
+    line vline2 = na
+    line maxln = na
+    line minln = na
+    line eqln = na
+    line opln = na
+    label maxlbl = na
+    label minlbl = na
+    label eqlabel = na
+    label oplabel = na
+    line bhln = na      // [LVL] body level lines and labels
+    line blln = na
+    label bhlbl = na
+    label bllbl = na
+    array<line> qlines = na     // premarket quadrant lines
+    array<label> qlabels = na
+    array<line> sdlines = na    // premarket stddev lines, in the order +1, -1, +2, -2...
+    array<label> sdlabels = na
+    array<string> sdnames = na  // their names: "+1", "-1"...
+    float xhi = na    // premarket range: highest high / lowest low from its end to the market close (auto)
+    float xlo = na
+
+type Gap
+    string name
+    int tstart
+    float hi
+    float lo
+    bool isw = false
+    int n = 1          // gaps grouped into this one (combine gaps)
+    int nd = 0         // NDOGs merged into this NWOG (combine gaps)
+    bool show = true
+    bool imp = false   // [ATT] last NDOG (or the gap that shows it when combined)
+    bool mf = true     // NDOG after a Monday or Thursday session (ndogmf keeps only these, and the last one)
+    float uhi = na
+    float ulo = na
+    int ut = na
+    line hiln = na
+    line loln = na
+    label hilbl = na
+    label lolbl = na
+    box rect = na
+
+type RTHOG
+    int tstart = na
+    float cl = na
+    int tend = na
+    float op = na
+    line cline = na
+    line mline = na
+    line cline2 = na
+    line opline = na
+    label clabel = na
+    label mlabel = na
+    label clabel2 = na
+    label oplabel = na
+    box rect = na
+    line uqline = na
+    line dqline = na
+    label uqlabel = na
+    label dqlabel = na
+    array<line> po3lines = na
+    array<label> po3labels = na
+    array<string> po3names = na // names of the stddev lines: "+1", "-1"...
+    float xhi = na    // highest high / lowest low from the open to the market close (auto)
+    float xlo = na
+    bool isold = false
+    array<line> oclines = na    // octant lines (latest RTHOG, until noon)
+    array<label> oclabels = na
+    int noon = na               // noon of the RTHOG day
+
+type Piv
+    float p
+    int t
+    bool eq = false
+    float pl = na   // price of the left (earlier) swing of the EQH / EQL
+    float pr = na   // price of the right (later) swing
+    line ln = na
+    label lb = na
+
+type MonLn
+    line ln = na
+    label lbl = na
+
+// ============================================================ helpers
+rmLine(line l) =>
+    if not na(l)
+        l.delete()
+
+rmLabel(label l) =>
+    if not na(l)
+        l.delete()
+
+rmBox(box b) =>
+    if not na(b)
+        b.delete()
+
+tright(int n) =>
+    time + n * tfms
+
+// short date of t for labels: day of the month and the month, one letter when no other month starts with it
+// (F, S, O, N, D), else three letters (Jan, Mar, Apr, May, Jun, Jul, Aug): 23O, 23Jul
+sdate(int t) =>
+    int m = month(t, tz)
+    string mm = m == 2 ? "F" : m == 9 ? "S" : m == 10 ? "O" : m == 11 ? "N" : m == 12 ? "D"
+         : str.format_time(t, "MMM", tz)
+    str.tostring(dayofmonth(t, tz)) + mm
+
+timestr() =>
+    sdate(time)
+
+mkLL(int x1, int x2, float p, color c, string sty, int w, string txt, color tc,
+     string sz = size.normal) =>
+    line l = line.new(x1, p, x2, p, xloc = xloc.bar_time, color = c, style = sty, width = w)
+    label b = label.new(x2, p, txt, xloc = xloc.bar_time, style = label.style_label_left,
+         color = transparent, textcolor = tc, size = sz)
+    [l, b]
+
+setR(line l, label b, int x, color c, int w = na) =>
+    if not na(l)
+        l.set_x2(x)
+        l.set_color(c)
+        if not na(w)
+            l.set_width(w)
+    if not na(b)
+        b.set_x(x)
+        b.set_textcolor(c)
+
+tinyLbl(label cur, bool show, int x, float y, string txt, color c, string sz) =>
+    label r = cur
+    if show
+        if na(r)
+            r := label.new(x, y, txt, xloc = xloc.bar_time, style = label.style_label_left,
+                 color = transparent, textcolor = c, size = sz)
+        else
+            r.set_xy(x, y)
+            r.set_text(txt)
+    else if not na(r)
+        r.delete()
+        r := na
+    r
+
+parseSecs(string s) =>
+    60 * (60 * int(str.tonumber(str.substring(s, 0, 2))) + int(str.tonumber(str.substring(s, 2,
+         4))))
+
+mkZoneInfo(string name, string ival, Sty sty = na) =>
+    ZoneInfo zi = na
+    if name != "" and str.length(ival) >= 9
+        zi := ZoneInfo.new(name, parseSecs(str.substring(ival, 0, 4)),
+             parseSecs(str.substring(ival, 5, 9)), sty)
+    zi
+
+method inside(ZoneInfo z, int t) =>
+    z.ss < z.es ? (t >= z.ss and t < z.es) : (t >= z.ss or t < z.es)
+
+// the bar contains the start instant
+method starts(ZoneInfo z) =>
+    (z.ss - tsec + 86400) % 86400 < tfsecs
+
+// the bar contains the end instant, or the session was left (data gaps)
+method ends(ZoneInfo z) =>
+    (z.es - tsec + 86400) % 86400 < tfsecs or (z.inside(tsecPrev) and not z.inside(tsec))
+
+// ============================================================ styles and definitions
+var Sty daysty = Sty.new(daylnsty, attW(daywid, 2), attL(daycol, 2))
+var Sty daymaxsty = Sty.new(daymlnsty, attW(daymwid, 1), attL(daymmaxcol, 1))
+var Sty dayminsty = Sty.new(daymlnsty, attW(daymwid, 1), attL(daymmincol, 1))
+var Sty sesmaxsty = Sty.new(sesmlnsty, attW(sesmwid, 1), attL(sesmmaxcol, 1))
+var Sty sesminsty = Sty.new(sesmlnsty, attW(sesmwid, 1), attL(sesmmincol, 1))
+var Sty gapsty = Sty.new(gaplnsty, gapwid, gapcolor)
+var Sty wgapsty = Sty.new(wgaplnsty, wgapwid, wgapcolor)
+// [ATT] session rectangles: filled and lighter at attenuation 1, outline only from 2 on (fainter each level)
+int rtrF = attLvl == 1 ? attT(rtransp, 1) : rtransp
+bool rbord = rectbord or attLvl >= 2
+int rtrB = attLvl >= 2 ? int(math.min(100, rtransp / 2 + (100 - rtransp / 2) * (attLvl - 1) * 0.2)) : int(rtransp / 2)
+var Sty nysty = Sty.new(daylnsty, 1, color.new(uscolor, rtrF))
+
+var ZoneInfo market = mkZoneInfo("market", mktstr)
+var ZoneInfo premarket = mkZoneInfo("Pre-mkt", premarketstr, nysty)
+
+if barstate.isfirst
+    if capped
+        log.info("object budget: days {0}->{1}, sessions {2}->{3}, gaps {4}->{5}", ndays, ndaysEff,
+             nses, nsesEff, ngaps, ngapsEff)
+
+int gapStartSec = parseSecs(str.substring(gapstr, 0, 4))
+int gapEndSec = parseSecs(str.substring(gapstr, 5, 9))
+
+var array<Zone> days = array.new<Zone>()
+var array<Zone> zones = array.new<Zone>()
+var array<Zone> premarkets = array.new<Zone>()
+var array<Zone> actz = array.new<Zone>()   // zones still growing
+var array<Zone> monz = array.new<Zone>()   // ended zones with unbroken max/min
+var array<Gap> dgaps = array.new<Gap>()
+var array<Gap> wgaps = array.new<Gap>()
+var array<RTHOG> rthogs = array.new<RTHOG>()
+var array<Piv> hpv = array.new<Piv>()
+var array<Piv> lpv = array.new<Piv>()
+var array<Piv> hpvD = array.new<Piv>()
+var array<Piv> lpvD = array.new<Piv>()
+var array<MonLn> mls = array.new<MonLn>()
+var Gap ndog = na
+
+if barstate.isfirst
+    for i = 0 to 8
+        mls.push(MonLn.new())
+
+// ============================================================ automatic stddevs
+// stddevs to draw on one side of a range: at least n; with auto, also every stddev reached by the extreme
+// ext (base: the range edge on that side, u: the step, sgn 1 above, -1 below) plus the next one
+sdCount(int n, bool auto, float base, float u, float ext, int sgn) =>
+    int r = n
+    if auto and not na(ext) and u > 0
+        int reached = math.max(0, int(math.floor((ext - base) * sgn / u)))
+        r := math.max(n, math.min(reached + 1, 40))
+    r
+
+// stddev name: distance from the range edge in whole ranges (step i of u, range r), for example "+0.25", "-1.5"
+sdName(int i, float u, float r, int sgn) =>
+    (sgn > 0 ? "+" : "-") + str.tostring(i * u / r, "#.###")
+
+// ============================================================ bad data
+// a wick longer than badatr daily ATRs is a bad print, not price: the high / low is taken at the body. clD cleans
+// the candles of the context it runs in (daily requests) with an RMA(14) of their cleaned true range, so a bad
+// print does not inflate it either
+clD() =>
+    var float a = na
+    float bt = math.max(open, close)
+    float bb = math.min(open, close)
+    float lim = badatr > 0 and not na(a) ? badatr * a : na
+    float h = not na(lim) and high - bt > lim ? bt : high
+    float l = not na(lim) and bb - low > lim ? bb : low
+    float tr = na(close[1]) ? h - l : math.max(h, close[1]) - math.min(l, close[1])
+    a := na(a) ? tr : (a * 13 + tr) / 14
+    [h, l, a]
+// daily swings and ATR (both from cleaned daily candles): previous completed daily bar only (lookahead_on with
+// [1]), so nothing repaints
+dSw() =>
+    [h, l, a] = clD()
+    [ta.pivothigh(h, eqlenD, eqlenD)[1], ta.pivotlow(l, eqlenD, eqlenD)[1], time[eqlenD + 1], a[1], time]
+[dph, dpl, dpt, datr, dtm] = request.security(syminfo.tickerid, "D", dSw(), lookahead = barmerge.lookahead_on)
+// other candles (chart, months) against the daily ATR
+clH(float o, float h, float c) =>
+    float b = math.max(o, c)
+    badatr > 0 and not na(datr) and h - b > badatr * datr ? b : h
+clL(float o, float l, float c) =>
+    float b = math.min(o, c)
+    badatr > 0 and not na(datr) and b - l > badatr * datr ? b : l
+// the chart candle, cleaned: used everywhere instead of high / low; and its ATR(14) from the cleaned true range
+float cH = clH(open, high, close)
+float cL = clL(open, low, close)
+float cAtr = ta.rma(na(close[1]) ? cH - cL : math.max(cH, close[1]) - math.min(cL, close[1]), 14)
+
+// ============================================================ zones
+// [LVL] candles of max(15m, chart timeframe) for the swing test of day / session highs and lows: number of the
+// current candle and the last six (high, low, open, close, start)
+int bkMs = math.max(900, tfsecs) * 1000
+var int bkN = 0
+var int bkId = na
+var array<float> bkH = array.new<float>()
+var array<float> bkL = array.new<float>()
+var array<float> bkO = array.new<float>()
+var array<float> bkC = array.new<float>()
+var array<int> bkT = array.new<int>()
+var float bkRng = na    // average range of the completed candles (EMA)
+bool bkNew = false
+int bkCur = int(math.floor(time / bkMs))
+if na(bkId) or bkCur != bkId
+    if bkH.size() > 0
+        float r = bkH.last() - bkL.last()
+        bkRng := na(bkRng) ? r : bkRng * 0.9 + r * 0.1
+    bkId := bkCur
+    bkN += 1
+    bkNew := true
+    bkH.push(cH)
+    bkL.push(cL)
+    bkO.push(open)
+    bkC.push(close)
+    bkT.push(time)
+    if bkH.size() > 6
+        bkH.shift()
+        bkL.shift()
+        bkO.shift()
+        bkC.shift()
+        bkT.shift()
+else
+    bkH.set(bkH.size() - 1, math.max(bkH.last(), cH))
+    bkL.set(bkL.size() - 1, math.min(bkL.last(), cL))
+    bkC.set(bkC.size() - 1, close)
+
+// [LVL] flat top / bottom of this chart candle and the previous one: highs (lows) within tolerance (2 ticks or a
+// tenth of the chart ATR) and both upper (lower) wicks within that tolerance or a fifth of the candle range
+float flTol = math.max(2 * syminfo.mintick, 0.1 * nz(cAtr, 0.0))
+float flWmax = math.max(flTol, 0.2 * (cH - cL))
+float flUw = cH - math.max(open, close)
+float flLw = math.min(open, close) - cL
+bool flatHi = math.abs(cH - cH[1]) <= flTol and flUw <= flWmax and flUw[1] <= flWmax[1]
+bool flatLo = math.abs(cL - cL[1]) <= flTol and flLw <= flWmax and flLw[1] <= flWmax[1]
+
+// [LVL] candles i and j (indexes in the bucket arrays) make a flat top (bottom): highs (lows) within tolerance
+// (2 ticks or a tenth of the average candle range) and both upper (lower) wicks within that tolerance or a fifth
+// of the candle range
+bkFlat(int i, int j, bool hi) =>
+    float tol = math.max(2 * syminfo.mintick, 0.1 * nz(bkRng, 0.0))
+    float wi = hi ? bkH.get(i) - math.max(bkO.get(i), bkC.get(i)) : math.min(bkO.get(i), bkC.get(i)) - bkL.get(i)
+    float wj = hi ? bkH.get(j) - math.max(bkO.get(j), bkC.get(j)) : math.min(bkO.get(j), bkC.get(j)) - bkL.get(j)
+    float d = hi ? math.abs(bkH.get(i) - bkH.get(j)) : math.abs(bkL.get(i) - bkL.get(j))
+    d <= tol and wi <= math.max(tol, 0.2 * (bkH.get(i) - bkL.get(i))) and wj <= math.max(tol, 0.2 * (bkH.get(j) - bkL.get(j)))
+
+// a high (low) is a swing when the candles before and after it have lower highs (higher lows); decided when the
+// candle after it completes (a new candle starts two candles after the one of the high)
+// Same time: the high (low) is flat (REH / REL) with the candle before or after it. The body level is the highest
+// (lowest) body around the high (low): its candle and two candles before and after it,
+// decided when the last of those completes.
+method swTest(Zone z) =>
+    int n = bkH.size()
+    if z.hsw == 0 and z.hbk == bkN - 2
+        z.hsw := n >= 4 and bkH.get(n - 4) < z.hi and bkH.get(n - 2) < z.hi ? 1 : -1
+        z.hrel := n >= 4 and (bkFlat(n - 4, n - 3, true) or bkFlat(n - 3, n - 2, true))
+    if z.lsw == 0 and z.lbk == bkN - 2
+        z.lsw := n >= 4 and bkL.get(n - 4) > z.lo and bkL.get(n - 2) > z.lo ? 1 : -1
+        z.lrel := n >= 4 and (bkFlat(n - 4, n - 3, false) or bkFlat(n - 3, n - 2, false))
+    int k = 2
+    if z.hbk == bkN - 1 - k and n >= 2
+        z.bhi := na
+        z.bhtk := false
+        for i = math.max(n - 2 - 2 * k, 0) to n - 2
+            float bt = math.max(bkO.get(i), bkC.get(i))
+            if na(z.bhi) or bt > z.bhi
+                z.bhi := bt
+                z.bht := bkT.get(i)
+    if z.lbk == bkN - 1 - k and n >= 2
+        z.blo := na
+        z.bltk := false
+        for i = math.max(n - 2 - 2 * k, 0) to n - 2
+            float bb = math.min(bkO.get(i), bkC.get(i))
+            if na(z.blo) or bb < z.blo
+                z.blo := bb
+                z.blt := bkT.get(i)
+    true
+
+mkZone(string name, ZoneInfo zi = na) =>
+    Zone z = Zone.new(name, time, open, cH, cL, time, time)
+    z.zi := zi
+    z
+
+// premarket quadrant and stddev objects
+method pmclear(Zone z) =>
+    if not na(z.qlines)
+        for l in z.qlines
+            rmLine(l)
+        z.qlines.clear()
+    if not na(z.qlabels)
+        for b in z.qlabels
+            rmLabel(b)
+        z.qlabels.clear()
+    if not na(z.sdlines)
+        for l in z.sdlines
+            rmLine(l)
+        z.sdlines.clear()
+    if not na(z.sdlabels)
+        for b in z.sdlabels
+            rmLabel(b)
+        z.sdlabels.clear()
+    true
+
+// quadrants (25%, CE, 75%) and stddevs of the range, like the RTHOG ones. Drawn from a
+// couple of bars before the end of the range (or the last bar while it is forming)
+method pmdraw(Zone z, bool auto = false) =>
+    z.pmclear()
+    float r = z.hi - z.lo
+    int x1 = na(z.tclose) ? tright(xoff) : math.min(tright(xoff), z.tclose)
+    int x0 = (na(z.tend) ? time : z.tend) - tfms * rdx
+    string nm = sdate(z.tstart)
+    if r > 0
+        if dopmq and r / 4.0 > pmqmin
+            if na(z.qlines)
+                z.qlines := array.new<line>()
+                z.qlabels := array.new<label>()
+            for k = 1 to 3
+                string pt = k == 1 ? "dq" : k == 2 ? "ce" : "uq"
+                [l1, b1] = mkLL(x0, x1, z.lo + k * r / 4.0, attL(pmcolor, 2), k == 2 ? pmcesty : pmqsty,
+                     attW(pmwid, 2), "PMKT " + pt + " " + nm, attL(pmcolor, 2), pmlsz)
+                z.qlines.push(l1)
+                z.qlabels.push(b1)
+        if dopmpo3
+            float u = 0.0
+            if r / 8 > pmpo3min
+                u := r / 8
+            else if r / 4 > pmpo3min
+                u := r / 4
+            else if r / 2 > pmpo3min
+                u := r / 2
+            else if r > pmpo3min
+                u := r
+            else if 2 * r > pmpo3min
+                u := 2 * r
+            if u > 0
+                if na(z.sdlines)
+                    z.sdlines := array.new<line>()
+                    z.sdlabels := array.new<label>()
+                    z.sdnames := array.new<string>()
+                z.sdnames.clear()
+                int nu = sdCount(pmpo3num, auto, z.hi, u, z.xhi, 1)
+                int nd = sdCount(pmpo3num, auto, z.lo, u, z.xlo, -1)
+                for i = 1 to math.max(nu, nd)
+                    if i <= nu
+                        [l2, b2] = mkLL(x0, x1, z.hi + i * u, attL(pmcolor, 2), pmpo3sty, attW(pmwid, 2),
+                             "PMKT" + sdName(i, u, r, 1), attL(pmcolor, 2), pmlsz)
+                        z.sdlines.push(l2)
+                        z.sdlabels.push(b2)
+                        z.sdnames.push(sdName(i, u, r, 1))
+                    if i <= nd
+                        [l3, b3] = mkLL(x0, x1, z.lo - i * u, attL(pmcolor, 2), pmpo3sty, attW(pmwid, 2),
+                             "PMKT" + sdName(i, u, r, -1), attL(pmcolor, 2), pmlsz)
+                        z.sdlines.push(l3)
+                        z.sdlabels.push(b3)
+                        z.sdnames.push(sdName(i, u, r, -1))
+        // high and low of the range, red solid lines, whenever quadrants or stddevs are drawn
+        bool anyq = not na(z.qlines) and z.qlines.size() > 0
+        bool anysd = not na(z.sdlines) and z.sdlines.size() > 0
+        if anyq or anysd
+            if na(z.qlines)
+                z.qlines := array.new<line>()
+                z.qlabels := array.new<label>()
+            [lh, bh] = mkLL(x0, x1, z.hi, attL(pmcolor, 1), line.style_solid, attW(pmwid, 1), "PMKT hi " + nm, attL(pmcolor, 1),
+                 pmlsz)
+            z.qlines.push(lh)
+            z.qlabels.push(bh)
+            [ll, bl] = mkLL(x0, x1, z.lo, attL(pmcolor, 1), line.style_solid, attW(pmwid, 1), "PMKT lo " + nm, attL(pmcolor, 1),
+                 pmlsz)
+            z.qlines.push(ll)
+            z.qlabels.push(bl)
+    true
+
+method kill(Zone z) =>
+    z.dead := true
+    z.pmclear()
+    rmBox(z.rect)
+    rmLine(z.vline)
+    rmLine(z.vline2)
+    rmLine(z.maxln)
+    rmLine(z.minln)
+    rmLine(z.eqln)
+    rmLine(z.opln)
+    rmLabel(z.maxlbl)
+    rmLabel(z.minlbl)
+    rmLabel(z.eqlabel)
+    rmLabel(z.oplabel)
+    rmLine(z.bhln)
+    rmLine(z.blln)
+    rmLabel(z.bhlbl)
+    rmLabel(z.bllbl)
+
+// [LVL] name of a day / session level for its label: Asia, London, ..., day or week
+method zName(Zone z, bool hi) =>
+    z.isday ? ((hi ? na(z.pwhi) or z.hi >= z.pwhi : na(z.pwlo) or z.lo <= z.pwlo) ? "week" : "day") : z.name
+
+// create or update every object of the zone from its current state
+method refresh(Zone z) =>
+    int re = tright(2)
+    if not na(z.tclose)
+        re := math.min(re, z.tclose)
+    int xe = na(z.tend) ? re : z.tend
+    if z.drawvlines or (z.isday and dolines)
+        if na(z.vline)
+            z.vline := line.new(z.tstart, z.lo, z.tstart, z.hi + syminfo.mintick,
+                 extend = extend.both, xloc = xloc.bar_time,
+                 color = z.isweek ? attL(daycol, 1) : z.lnsty.col, style = z.isweek ? wdaylnsty : z.lnsty.sty,
+                 width = z.isweek ? attW(wdaywid, 1) : z.lnsty.wid)
+        if z.drawvlines and not na(z.tend) and na(z.vline2)
+            int x2 = z.tend + tfms
+            z.vline2 := line.new(x2, z.lo, x2, z.hi + syminfo.mintick, extend = extend.both,
+                 xloc = xloc.bar_time,
+                 color = z.lnsty.col, style = z.lnsty.sty, width = z.lnsty.wid)
+    if z.drawmaxmin
+        int hx = na(z.hidonet) ? re : math.min(z.hidonet, re)
+        int lx = na(z.lodonet) ? re : math.min(z.lodonet, re)
+        if na(z.maxln)
+            z.maxln := line.new(z.hit, z.hi, hx, z.hi, xloc = xloc.bar_time, color = z.maxsty.col,
+                 width = z.maxsty.wid, style = z.maxsty.sty)
+        else
+            z.maxln.set_xy1(z.hit, z.hi)
+            z.maxln.set_xy2(hx, z.hi)
+        if na(z.minln)
+            z.minln := line.new(z.lot, z.lo, lx, z.lo, xloc = xloc.bar_time, color = z.minsty.col,
+                 width = z.minsty.wid, style = z.minsty.sty)
+        else
+            z.minln.set_xy1(z.lot, z.lo)
+            z.minln.set_xy2(lx, z.lo)
+        if z.drawlbl
+            string lsz = z.isday ? dlblsz : slblsz
+            // REH / REL first: "REH Asia", "reh day"; between levels, one combined label ("REH Asia body + day")
+            string hb = z.zName(true)
+            string lb0 = z.zName(false)
+            string hn = z.hrel ? "REH " + hb : z.hrelc ? "reh " + hb : hb + (z.isday ? " high" : " hi")
+            string ln = z.lrel ? "REL " + lb0 : z.lrelc ? "rel " + lb0 : lb0 + (z.isday ? " low" : " lo")
+            if z.hx or z.hc
+                hn := z.hxt
+            if z.lx or z.lc
+                ln := z.lxt
+            if z.isday
+                if z.hmode == 1 and not (z.hx or z.hc)
+                    hn := "day REHs"
+                if z.lmode == 1 and not (z.lx or z.lc)
+                    ln := "day RELs"
+            z.maxlbl := tinyLbl(z.maxlbl, na(z.hidonet) and (z.hmode != 2 or z.hx or z.hc), re, z.hi, hn,
+                 z.maxsty.col, lsz)
+            z.minlbl := tinyLbl(z.minlbl, na(z.lodonet) and (z.lmode != 2 or z.lx or z.lc), re, z.lo, ln,
+                 z.minsty.col, lsz)
+    if z.isday and doeq
+        float eq = math.avg(z.hi, z.lo)
+        int ex = na(z.extendt) ? re : z.extendt
+        int x0 = math.min(z.hit, z.lot)
+        if na(z.eqln)
+            z.eqln := line.new(x0, eq, ex, eq, xloc = xloc.bar_time, color = attL(eqcolor, 2), width = attW(eqwid, 2),
+                 style = eqlnsty)
+            z.eqlabel := label.new(ex, eq, "eq", xloc = xloc.bar_time,
+                 style = label.style_label_left, color = transparent, textcolor = attL(eqcolor, 2))
+        else
+            z.eqln.set_xy1(x0, eq)
+            z.eqln.set_xy2(ex, eq)
+            z.eqlabel.set_xy(ex, eq)
+    if z.isday and doopen
+        if na(z.opln)
+            z.opln := line.new(z.tstart, z.op, xe, z.op, xloc = xloc.bar_time, color = attL(opcolor, 2),
+                 width = attW(opwid, 2), style = oplnsty)
+            z.oplabel := label.new(xe, z.op, "M.O.", xloc = xloc.bar_time,
+                 style = label.style_label_left, color = transparent, textcolor = attL(opcolor, 2))
+        else
+            z.opln.set_x2(xe)
+            z.oplabel.set_x(xe)
+    if z.drawrect
+        if na(z.rect)
+            z.rect := box.new(z.tstart, z.hi, xe, z.lo, xloc = xloc.bar_time,
+                 border_color = rbord ? color.new(z.lnsty.col, rtrB) : transparent,
+                 border_width = rbord and attLvl < 3 ? 2 : 1, bgcolor = rbord ? transparent : z.lnsty.col)
+        else
+            z.rect.set_right(xe)
+            z.rect.set_top(z.hi)
+            z.rect.set_bottom(z.lo)
+    z
+
+// needs right-edge updates on the last bar
+method live(Zone z) =>
+    na(z.tend) or (z.drawmaxmin and (na(z.hidonet) or na(z.lodonet))) or (z.isday and na(z.extendt))
+
+// only state, no drawing: cheap per bar
+method upd(Zone z) =>
+    if cH >= z.hi
+        z.hit := time
+        z.hi := cH
+        z.hbk := bkN
+        z.hsw := 0
+        z.hrel := false
+        z.bhi := na
+        z.hrelc := flatHi and time[1] >= z.tstart
+    else if z.hit == time[1] and flatHi
+        z.hrelc := true
+    if cL <= z.lo
+        z.lot := time
+        z.lo := cL
+        z.lbk := bkN
+        z.lsw := 0
+        z.lrel := false
+        z.blo := na
+        z.lrelc := flatLo and time[1] >= z.tstart
+    else if z.lot == time[1] and flatLo
+        z.lrelc := true
+    if not na(z.bhi) and cH > z.bhi
+        z.bhtk := true
+    if not na(z.blo) and cL < z.blo
+        z.bltk := true
+
+endZone(Zone z) =>
+    if na(z.tend)
+        z.tend := time[1]
+        z.refresh()
+        if z.drawmaxmin
+            monz.push(z)
+
+runActive() =>
+    int i = actz.size() - 1
+    while i >= 0
+        Zone z = actz.get(i)
+        if z.dead or not na(z.tend)
+            actz.remove(i)
+        else if not na(z.zi) and z.zi.ends()
+            endZone(z)
+            actz.remove(i)
+        else
+            z.upd()
+        i -= 1
+
+// unbroken day highs (lows) close to each other: the lines stay, but only the higher high
+// (lower low) keeps a label, which reads REHs (RELs)
+markRel(array<Zone> arr, float tol) =>
+    int n = arr.size()
+    if n > 0
+        for i = 0 to n - 1
+            Zone a = arr.get(i)
+            a.hmode := 0
+            a.lmode := 0
+            for j = 0 to n - 1
+                if j != i
+                    Zone b = arr.get(j)
+                    if na(a.hidonet) and na(b.hidonet) and math.abs(a.hi - b.hi) <= tol
+                        if b.hi > a.hi or (b.hi == a.hi and j > i)
+                            a.hmode := 2
+                        else if a.hmode == 0
+                            a.hmode := 1
+                    if na(a.lodonet) and na(b.lodonet) and math.abs(a.lo - b.lo) <= tol
+                        if b.lo < a.lo or (b.lo == a.lo and j > i)
+                            a.lmode := 2
+                        else if a.lmode == 0
+                            a.lmode := 1
+
+    true
+
+// ended zones: only watch for the max/min being taken
+runMon() =>
+    int i = monz.size() - 1
+    while i >= 0
+        Zone z = monz.get(i)
+        if z.dead
+            monz.remove(i)
+        else
+            bool ch = false
+            if na(z.hidonet) and cH > z.hi
+                z.hidonet := time
+                ch := true
+            if not na(z.bhi) and cH > z.bhi
+                z.bhtk := true
+            if not na(z.blo) and cL < z.blo
+                z.bltk := true
+            if na(z.lodonet) and cL < z.lo
+                z.lodonet := time
+                ch := true
+            if ch
+                z.refresh()
+            if not na(z.hidonet) and not na(z.lodonet)
+                monz.remove(i)
+        i -= 1
+
+if inWin and tfok
+    if newDay
+        Zone d = mkZone("D")
+        d.isday := true
+        d.isweek := newWeek
+        d.lnsty := daysty
+        d.maxsty := daymaxsty
+        d.minsty := dayminsty
+        d.drawmaxmin := dodmaxmin
+        d.drawlbl := dodaylbl
+        if days.size() > 0
+            Zone ld = days.last()
+            if not d.isweek
+                d.pwhi := na(ld.pwhi) ? ld.hi : math.max(ld.pwhi, ld.hi)
+                d.pwlo := na(ld.pwlo) ? ld.lo : math.min(ld.pwlo, ld.lo)
+            endZone(ld)
+            if days.size() > 1
+                Zone pd = days.get(days.size() - 2)
+                pd.extendt := ld.tend
+                pd.refresh()
+        days.push(d)
+        actz.push(d)
+        if days.size() > ndaysEff
+            days.shift().kill()
+    if preOn and premarket.starts()
+        Zone p = mkZone(premarket.name, premarket)
+        p.drawmaxmin := dosmaxmin
+        p.drawvlines := true
+        // lines stop at the market close (end of the market window, in tz seconds of day)
+        p.tclose := time + ((market.es - tsec + 86400) % 86400) * 1000
+        p.drawlbl := doseslbl
+        p.lnsty := daysty
+        p.maxsty := sesmaxsty
+        p.minsty := sesminsty
+        premarkets.push(p)
+        actz.push(p)
+        if premarkets.size() > nsesEff
+            premarkets.shift().kill()
+    if bkNew
+        for z in days
+            z.swTest()
+        for z in zones
+            z.swTest()
+    runActive()
+    runMon()
+
+// ============================================================ TGIF
+// Week candle (from newWeek) tracked here. On the first bar of Friday the week so far is tested: a
+// displacement (price within tgnear x range of the week high / low, whatever the body) arms the
+// levels, measured from the week high (bullish, retracement down) or low
+// (bearish, retracement up). On Friday they follow new week extremes until price reaches the first
+// level, then stay fixed. When the week closes displaced and the retracement did not happen on Friday,
+// the levels of the final week apply on Monday (until Tuesday starts). Otherwise they are removed when
+// the day ends.
+tgEval(float h, float l, float c) =>
+    float r = h - l
+    int d = 0
+    if r > 0
+        if h - c <= tgnear * r
+            d := 1
+        else if c - l <= tgnear * r
+            d := -1
+    d
+
+var float twO = na      // week open, high, low
+var float twH = na
+var float twL = na
+var int tgDir = 0       // 1: bullish week, retracement down; -1: bearish week, retracement up; 0: none
+var bool tgMon = false  // levels carried to Monday
+var bool tgHit = false  // the first level was reached (the levels stay fixed)
+var float tgX = na      // extreme and range the levels are measured from
+var float tgR = na
+var int tgT0 = na       // start of the lines
+var line tgL1 = na
+var line tgL2 = na
+var label tgB1 = na
+var label tgB2 = na
+
+if inWin and tfok and dotgif
+    bool clr = false
+    if newWeek
+        int d = na(twO) ? 0 : tgEval(twH, twL, close[1])
+        bool carry = d != 0 and not (tgDir == d and tgHit)
+        clr := true
+        tgDir := 0
+        tgMon := false
+        tgHit := false
+        if carry
+            tgDir := d
+            tgMon := true
+            tgX := d == 1 ? twH : twL
+            tgR := twH - twL
+            tgT0 := time
+        twO := open
+        twH := cH
+        twL := cL
+    else if not na(twO)
+        if newDay and dow == dayofweek.friday
+            clr := true
+            tgDir := tgEval(twH, twL, close[1])
+            tgMon := false
+            tgHit := false
+            tgT0 := time
+        else if newDay and tgDir != 0 and not (tgMon and dow == dayofweek.monday)
+            // Friday or Monday is over (Monday levels start with the week, before Monday's midnight)
+            clr := true
+            tgDir := 0
+            tgMon := false
+        twH := math.max(twH, cH)
+        twL := math.min(twL, cL)
+    if clr
+        rmLine(tgL1)
+        rmLine(tgL2)
+        rmLabel(tgB1)
+        rmLabel(tgB2)
+        tgL1 := na
+        tgL2 := na
+        tgB1 := na
+        tgB2 := na
+    if tgDir != 0
+        if not tgMon and not tgHit
+            tgX := tgDir == 1 ? twH : twL
+            tgR := twH - twL
+        float v1 = tgX - tgDir * tgp1 * tgR
+        float v2 = tgX - tgDir * tgp2 * tgR
+        color c = attL(tgDir == 1 ? tgdncol : tgupcol, 0)
+        int x1 = tright(xoff)
+        if na(tgL1)
+            [l1, b1] = mkLL(tgT0, x1, v1, c, tgsty, attW(tgwid, 0), "TGIF" + str.tostring(tgp1 * 100, "#.#"), c,
+                 tglsz)
+            [l2, b2] = mkLL(tgT0, x1, v2, c, tgsty, attW(tgwid, 0), "TGIF" + str.tostring(tgp2 * 100, "#.#"), c,
+                 tglsz)
+            tgL1 := l1
+            tgB1 := b1
+            tgL2 := l2
+            tgB2 := b2
+        else
+            tgL1.set_y1(v1)
+            tgL1.set_y2(v1)
+            tgL1.set_x2(x1)
+            tgB1.set_xy(x1, v1)
+            tgL2.set_y1(v2)
+            tgL2.set_y2(v2)
+            tgL2.set_x2(x1)
+            tgB2.set_xy(x1, v2)
+        if not tgHit and (tgDir == 1 ? cL <= v1 : cH >= v1)
+            tgHit := true
+
+// ============================================================ NDOG / NWOG
+// create the lines, labels and rectangle of a gap
+method gmake(Gap g) =>
+    Sty st = g.isw ? wgapsty : gapsty
+    int x = tright(xoff)
+    g.hiln := line.new(g.tstart, g.hi, x, g.hi, xloc = xloc.bar_time, color = st.col,
+         style = st.sty, width = st.wid)
+    g.loln := line.new(g.tstart, g.lo, x, g.lo, xloc = xloc.bar_time, color = st.col,
+         style = st.sty, width = st.wid)
+    g.hilbl := label.new(x, g.hi, g.name, xloc = xloc.bar_time, style = label.style_label_left,
+         color = transparent, textcolor = st.col)
+    g.lolbl := label.new(x, g.lo, g.name, xloc = xloc.bar_time, style = label.style_label_left,
+         color = transparent, textcolor = st.col)
+    if dogrect
+        g.rect := box.new(g.tstart, g.hi, x, g.lo, xloc = xloc.bar_time, border_color = transparent,
+             bgcolor = color.new(st.col, grtransp))
+    true
+
+// [ATT] colors and widths of the gap by its rank (last bar)
+method gsty(Gap g) =>
+    int rk = g.isw or g.imp ? 0 : 2
+    Sty st = g.isw ? wgapsty : gapsty
+    int rkw = g.isw and attLvl >= 3 ? 1 : rk   // NWOG: thinner lines and lighter fill at 3 and 4
+    color c = attL(st.col, rk)
+    int w = attW(st.wid, rkw)
+    if not na(g.hiln)
+        g.hiln.set_color(c)
+        g.hiln.set_width(w)
+        g.loln.set_color(c)
+        g.loln.set_width(w)
+    if not na(g.hilbl)
+        g.hilbl.set_textcolor(c)
+    if not na(g.lolbl)
+        g.lolbl.set_textcolor(c)
+    if not na(g.rect)
+        g.rect.set_bgcolor(color.new(st.col, attT(grtransp, rkw)))
+    true
+
+method gend(Gap g, float xe) =>
+    float s = g.hi
+    g.hi := math.max(s, xe)
+    g.lo := math.min(s, xe)
+    g.name := (g.isw ? "NWOG " : "NDOG ") + timestr()
+    g.gmake()
+
+// text of the gap without the date: plain, or combined (NDOGx3, NWOGx2, NWOG+NDOG)
+method gname(Gap g) =>
+    string b = str.substring(g.name, 0, 4)
+    if g.isw and g.nd > 0
+        b := (g.n > 1 ? "NWOGx" + str.tostring(g.n) : "NWOG") + "+NDOG"
+             + (g.nd > 1 ? "x" + str.tostring(g.nd) : "")
+    else if g.n > 1
+        b := (g.isw ? "NWOGx" : "NDOGx") + str.tostring(g.n)
+    b
+
+// labels of the levels h and l: two labels "NDOGx3 hi 23O" / "NDOGx3 lo 23O", or a single one in the middle
+// ("NDOGx3 23O") when the levels are within tol of each other. The date is the one of the gap that draws them.
+method glabels(Gap g, float h, float l, float tol, int x) =>
+    bool small = math.abs(h - l) <= tol
+    string b = g.gname()
+    string dt = " " + str.substring(g.name, 5)
+    Sty gs = g.isw ? wgapsty : gapsty
+    g.hilbl.set_xy(x, small ? math.avg(h, l) : h)
+    g.hilbl.set_text(small ? b + dt : b + " hi" + dt)
+    if small
+        rmLabel(g.lolbl)
+        g.lolbl := na
+    else
+        if na(g.lolbl)
+            g.lolbl := label.new(x, l, b + " lo" + dt, xloc = xloc.bar_time,
+                 style = label.style_label_left, color = transparent, textcolor = gs.col)
+        g.lolbl.set_xy(x, l)
+        g.lolbl.set_text(b + " lo" + dt)
+    true
+
+method gright(Gap g, float tol) =>
+    int x = tright(xoff)
+    if not na(g.hiln)
+        g.hiln.set_x2(x)
+        g.loln.set_x2(x)
+        g.glabels(g.hi, g.lo, tol, x)
+    if not na(g.rect)
+        g.rect.set_right(x)
+    g.gsty()
+
+method kill(Gap g) =>
+    rmLine(g.hiln)
+    rmLine(g.loln)
+    rmLabel(g.hilbl)
+    rmLabel(g.lolbl)
+    rmBox(g.rect)
+    g.hiln := na
+    g.loln := na
+    g.hilbl := na
+    g.lolbl := na
+    g.rect := na
+
+// ---- combining gaps at similar levels (derived state, recomputed on the last bar)
+method gcomb(Gap g, float tol) =>
+    if not g.show
+        g.kill()
+    else
+        if na(g.hiln)
+            g.gmake()
+        int x = tright(xoff)
+        g.hiln.set_xy1(g.ut, g.uhi)
+        g.hiln.set_xy2(x, g.uhi)
+        g.loln.set_xy1(g.ut, g.ulo)
+        g.loln.set_xy2(x, g.ulo)
+        g.glabels(g.uhi, g.ulo, tol, x)
+        if not na(g.rect)
+            g.rect.set_lefttop(g.ut, g.uhi)
+            g.rect.set_rightbottom(x, g.ulo)
+        g.gsty()
+    true
+
+// gaps whose ranges overlap or are within tol are one group: the oldest draws the
+// outer levels of the group, the others are hidden
+gcluster(array<Gap> arr, float tol) =>
+    int n = arr.size()
+    // a for loop from 0 to n - 1 runs backwards when n = 0, so an empty list is skipped
+    if n > 0
+        array<int> cid = array.new<int>()
+        for i = 0 to n - 1
+            Gap g = arr.get(i)
+            g.n := 1
+            g.nd := 0
+            g.show := true
+            g.uhi := g.hi
+            g.ulo := g.lo
+            g.ut := g.tstart
+            cid.push(i)
+        bool ch = n > 1
+        while ch
+            ch := false
+            for i = 0 to n - 2
+                for j = i + 1 to n - 1
+                    if cid.get(i) != cid.get(j)
+                        Gap a = arr.get(i)
+                        Gap b = arr.get(j)
+                        if a.hi + tol >= b.lo and b.hi + tol >= a.lo
+                            int from = cid.get(j)
+                            int xto = cid.get(i)
+                            for k = 0 to n - 1
+                                if cid.get(k) == from
+                                    cid.set(k, xto)
+                            ch := true
+        array<int> first = array.new<int>(n, -1)
+        for i = 0 to n - 1
+            int c = cid.get(i)
+            int r = first.get(c)
+            if r < 0
+                first.set(c, i)
+            else
+                Gap rep = arr.get(r)
+                Gap g = arr.get(i)
+                rep.n += 1
+                rep.uhi := math.max(rep.uhi, g.hi)
+                rep.ulo := math.min(rep.ulo, g.lo)
+                rep.imp := rep.imp or g.imp
+                g.show := false
+
+    true
+
+combineGaps(array<Gap> dg, array<Gap> wg, float tol) =>
+    gcluster(dg, tol)
+    gcluster(wg, tol)
+    for w in wg
+        if w.show
+            for d in dg
+                if d.show and math.abs(d.uhi - w.uhi) <= tol and math.abs(d.ulo - w.ulo) <= tol
+                    w.nd += d.n
+                    w.imp := w.imp or d.imp
+                    d.show := false
+    for g in dg
+        g.gcomb(tol)
+    for g in wg
+        g.gcomb(tol)
+    true
+
+bool gapOpenBar = tsec == gapStartSec
+bool gapCloseBar = (tsec + tfsecs) % 86400 == gapStartSec
+bool gapEndBar = tsec == gapEndSec
+bool isWeekGap = dow == dayofweek.friday or dow == dayofweek.sunday
+
+if inWin and dogaps and tfok and bar_index > 0
+    if gapOpenBar or gapCloseBar
+        int si = gapOpenBar ? 1 : 0
+        if (isWeekGap and donwog) or (not isWeekGap and dondog)
+            ndog := Gap.new((isWeekGap ? "NWOG " : "NDOG ") + timestr(), time[si], close[si], na,
+                 isWeekGap)
+            ndog.mf := dow == dayofweek.monday or dow == dayofweek.thursday
+    else if dow == dayofweek.sunday and dowPrev == dayofweek.friday and donwog
+        ndog := Gap.new("NWOG " + timestr(), time[1], close[1], na, true)
+    if not na(ndog) and gapEndBar
+        ndog.gend(open)
+        array<Gap> lst = ndog.isw ? wgaps : dgaps
+        // Monday / Friday only: the previous NDOG goes when it is not one of those (the last one always stays)
+        if ndogmf and not ndog.isw and lst.size() > 0 and not lst.last().mf
+            lst.pop().kill()
+        lst.push(ndog)
+        if lst.size() > ngapsEff
+            lst.shift().kill()
+        ndog := na
+
+// ============================================================ RTHOG
+method killq(RTHOG g) =>
+    rmLine(g.uqline)
+    rmLine(g.dqline)
+    rmLabel(g.uqlabel)
+    rmLabel(g.dqlabel)
+    g.uqline := na
+    g.dqline := na
+    g.uqlabel := na
+    g.dqlabel := na
+
+method killpo3(RTHOG g) =>
+    if not na(g.po3lines)
+        for l in g.po3lines
+            rmLine(l)
+        g.po3lines.clear()
+    if not na(g.po3labels)
+        for b in g.po3labels
+            rmLabel(b)
+        g.po3labels.clear()
+
+method killoct(RTHOG g) =>
+    if not na(g.oclines)
+        for l in g.oclines
+            rmLine(l)
+        g.oclines.clear()
+    if not na(g.oclabels)
+        for b in g.oclabels
+            rmLabel(b)
+        g.oclabels.clear()
+
+method kill(RTHOG g) =>
+    g.killoct()
+    rmLine(g.cline)
+    rmLine(g.mline)
+    rmLine(g.cline2)
+    rmLine(g.opline)
+    rmLabel(g.clabel)
+    rmLabel(g.mlabel)
+    rmLabel(g.clabel2)
+    rmLabel(g.oplabel)
+    rmBox(g.rect)
+    g.cline := na
+    g.mline := na
+    g.cline2 := na
+    g.opline := na
+    g.clabel := na
+    g.mlabel := na
+    g.clabel2 := na
+    g.oplabel := na
+    g.rect := na
+    g.killq()
+    g.killpo3()
+
+// market close: settlement price line (value and bar time of the last bar of the session)
+method rstarts(RTHOG g, float c, int t) =>
+    g.cl := c
+    g.tstart := t
+    int x = tright(xoff)
+    g.cline := line.new(t, c, x, c, xloc = xloc.bar_time, color = attL(lrgapcolor, 0), width = attW(rgapwid, 0),
+         style = rgaplnsty)
+    g.clabel := label.new(x, c, "new RTHOG settlement", xloc = xloc.bar_time,
+         style = label.style_label_left, color = transparent, textcolor = attL(lrgapcolor, 0))
+
+method rquads(RTHOG g) =>
+    g.killq()
+    float qdy = math.abs(g.op - g.cl) / 4.0
+    if qdy > rthogqmin
+        float p = math.min(g.cl, g.op)
+        int x0 = g.tend - tfms * rdx
+        int x1 = tright(xoff)
+        string nm = timestr()
+        [l1, b1] = mkLL(x0, x1, p + qdy, attL(lrgapcolor, 1), rgapqlnsty, attW(rgapwid, 1), "RTHOG dq " + nm,
+             attL(lrgapcolor, 1))
+        g.dqline := l1
+        g.dqlabel := b1
+        [l2, b2] = mkLL(x0, x1, p + 3 * qdy, attL(lrgapcolor, 1), rgapqlnsty, attW(rgapwid, 1), "RTHOG uq " + nm,
+             attL(lrgapcolor, 1))
+        g.uqline := l2
+        g.uqlabel := b2
+
+// octants: 1/8, 3/8, 5/8, 7/8 of the gap, from the open to noon (or the right edge before noon)
+method roct(RTHOG g) =>
+    g.killoct()
+    float ody = math.abs(g.op - g.cl) / 8.0
+    g.noon := timestamp(tz, year(g.tend, tz), month(g.tend, tz), dayofmonth(g.tend, tz), 12, 0)
+    int x0 = g.tend - tfms * rdx
+    int x1 = math.min(tright(xoff), g.noon)
+    if ody > rthogqmin and x1 > x0
+        if na(g.oclines)
+            g.oclines := array.new<line>()
+            g.oclabels := array.new<label>()
+        float p = math.min(g.cl, g.op)
+        string nm = timestr()
+        for k in array.from(1, 3, 5, 7)
+            [l, b] = mkLL(x0, x1, p + k * ody, attL(lrgapcolor, 1), rgapqlnsty, 1, "RTHOG " + str.tostring(k)
+                 + "/8 " + nm, attL(lrgapcolor, 1))
+            g.oclines.push(l)
+            g.oclabels.push(b)
+
+// last bar: the octants follow the right edge until noon
+method octRight(RTHOG g, color c) =>
+    if not na(g.oclines) and not na(g.noon)
+        int x = math.min(tright(xoff), g.noon)
+        for l in g.oclines
+            l.set_x2(x)
+            l.set_color(c)
+        for b in g.oclabels
+            b.set_x(x)
+            b.set_textcolor(c)
+
+method rpo3(RTHOG g) =>
+    g.killpo3()
+    float gap = math.abs(g.op - g.cl)
+    float u = 0.0
+    if gap / 8 > rthogpo3min
+        u := gap / 8
+    else if gap / 4 > rthogpo3min
+        u := gap / 4
+    else if gap / 2 > rthogpo3min
+        u := gap / 2
+    else if gap > rthogpo3min
+        u := gap
+    else if 2 * gap > rthogpo3min
+        u := 2 * gap
+    if u > 0
+        if na(g.po3lines)
+            g.po3lines := array.new<line>()
+            g.po3labels := array.new<label>()
+            g.po3names := array.new<string>()
+        g.po3names.clear()
+        int x0 = g.tend - tfms * rdx
+        int x1 = tright(xoff)
+        float pu0 = math.max(g.cl, g.op)
+        float pd0 = math.min(g.cl, g.op)
+        int nu = sdCount(rthogpo3num, rthogauto, pu0, u, g.xhi, 1)
+        int nd = sdCount(rthogpo3num, rthogauto, pd0, u, g.xlo, -1)
+        for i = 1 to math.max(nu, nd)
+            if i <= nu
+                [l1, b1] = mkLL(x0, x1, pu0 + i * u, attL(lrgapcolor, 2), rgappo3lnsty, attW(rgapwid, 2),
+                     "RTHOG" + sdName(i, u, gap, 1), attL(lrgapcolor, 2))
+                g.po3lines.push(l1)
+                g.po3labels.push(b1)
+                g.po3names.push(sdName(i, u, gap, 1))
+            if i <= nd
+                [l2, b2] = mkLL(x0, x1, pd0 - i * u, attL(lrgapcolor, 2), rgappo3lnsty, attW(rgapwid, 2),
+                     "RTHOG" + sdName(i, u, gap, -1), attL(lrgapcolor, 2))
+                g.po3lines.push(l2)
+                g.po3labels.push(b2)
+                g.po3names.push(sdName(i, u, gap, -1))
+
+// opening gap: called from 15 minutes before the open (hint, price = current close)
+// and on the open bar (final, price = open)
+method rends(RTHOG g, float opv) =>
+    g.op := opv
+    g.tend := time
+    g.xhi := cH
+    g.xlo := cL
+    int x1 = tright(xoff)
+    int x0 = g.tend - tfms * rdx
+    string nm = timestr()
+    float mid = math.avg(g.cl, g.op)
+    bool up = g.op > g.cl
+    rmLine(g.mline)
+    rmLabel(g.mlabel)
+    rmLine(g.opline)
+    rmLabel(g.oplabel)
+    rmBox(g.rect)
+    g.rect := na
+    [l1, b1] = mkLL(x0, x1, mid, attL(lrgapcolor, 0), rgaplnsty, attW(rgapwid, 0), "RTHOG ce " + nm,
+         attL(lrgapcolor, 0))
+    g.mline := l1
+    g.mlabel := b1
+    [l2, b2] = mkLL(g.tend, x1, g.op, attL(lrgapcolor, 0), rgaplnsty, attW(rgapwid, 0),
+         (up ? "RTHOG hi " : "RTHOG lo ") + nm, attL(lrgapcolor, 0))
+    g.opline := l2
+    g.oplabel := b2
+    if not na(g.clabel)
+        g.clabel.set_text((up ? "RTHOG lo " : "RTHOG hi ") + nm)
+    // [ATT] no RTHOG rectangle from attenuation 2 on
+    if dogrect and attLvl < 2
+        g.rect := box.new(x0, g.op, x1, g.cl, xloc = xloc.bar_time, border_color = transparent,
+             bgcolor = color.new(lrgapcolor, attT(grtransp, 0)))
+    g.killq()
+    g.killpo3()
+    g.killoct()
+    if dorthogq
+        g.rquads()
+    if dorthogoct
+        g.roct()
+    if dorthogpo3
+        g.rpo3()
+
+// compact version for gaps older than the previous one
+method setOld(RTHOG g) =>
+    g.isold := true
+    bool complete = not na(g.tend) and not na(g.op) and not na(g.cl)
+    g.kill()
+    if complete
+        int d = tfms * rdx
+        float mid = math.avg(g.cl, g.op)
+        [l1, b1] = mkLL(g.tstart - d, g.tstart + d, g.cl, attL(rgapcolor, 2), rgaplnsty, attW(rgapwid, 2), "rthog.cl",
+             attL(color.black, 2))
+        g.cline := l1
+        g.clabel := b1
+        [l2, b2] = mkLL(g.tend - d, g.tend + d, g.cl, attL(rgapcolor, 2), rgaplnsty, attW(rgapwid, 2), "rthog.cl",
+             attL(color.black, 2))
+        g.cline2 := l2
+        g.clabel2 := b2
+        [l3, b3] = mkLL(g.tend - d, g.tend + d, mid, attL(rgapcolor, 2), rgaplnsty, attW(rgapwid, 2), "rthog.ce",
+             attL(color.black, 2))
+        g.mline := l3
+        g.mlabel := b3
+        [l4, b4] = mkLL(g.tend - d, g.tend + d, g.op, attL(rgapcolor, 2), rgaplnsty, attW(rgapwid, 2), "rthog.op",
+             attL(color.black, 2))
+        g.opline := l4
+        g.oplabel := b4
+        if extendgaps
+            g.cline2.set_extend(extend.right)
+            g.mline.set_extend(extend.right)
+            g.opline.set_extend(extend.right)
+
+// right-edge update, last bar only
+// [ATT] rk: rank of the gap (current and previous: 0); quadrants and octants are normal, stddevs minor
+method right(RTHOG g, color c0, int rk) =>
+    if not g.isold
+        int x = tright(xoff)
+        color c = attL(c0, rk)
+        color cm = attL(c0, 1)
+        color cs = attL(c0, 2)
+        int w = attW(rgapwid, rk)
+        setR(g.cline, g.clabel, x, c, w)
+        setR(g.mline, g.mlabel, x, c, w)
+        setR(g.opline, g.oplabel, x, c, w)
+        setR(g.uqline, g.uqlabel, x, cm)
+        setR(g.dqline, g.dqlabel, x, cm)
+        if not na(g.rect)
+            g.rect.set_right(x)
+            g.rect.set_bgcolor(color.new(lrgapcolor, attT(grtransp, rk)))
+        if not na(g.po3lines)
+            for l in g.po3lines
+                l.set_x2(x)
+                l.set_color(cs)
+            for b in g.po3labels
+                b.set_x(x)
+                b.set_textcolor(cs)
+
+bool mktEnds = market.ends()
+bool mktClose = mktEnds and not mktEnds[1]
+int dOpen = (market.ss - tsec + 86400) % 86400
+bool rthStarting = dOpen < tfsecs + 900     // bars from 15 min before the open up to the open bar
+bool rthOpenBar = dOpen < tfsecs            // bar containing the open
+bool rthOk = inWin and dogaps and dorthog and tfsecs <= 900 and bar_index > 0
+     and last_bar_index - bar_index <= 5000 and dow != dayofweek.sunday
+
+// The settlement is the price at the market close (16:15 US), the open the price at the RTH open. When that
+// instant falls inside a bar (charts like 2m, 4m or 10m: their bars are aligned to the 18:00 session start, not to
+// 16:15 or 09:30), the chart bars do not have it: it comes from the 1m candles of that bar (the close of the one
+// ending at the close instant, the open of the one starting at the open instant).
+int dClose = (market.es - tsec + 86400) % 86400
+bool rthLtfOn = dogaps and dorthog and tfsecs > 60 and tfsecs <= 900
+[ltT, ltO, ltC] = request.security_lower_tf(syminfo.tickerid, rthLtfOn ? "1" : timeframe.period, [time, open, close])
+// close of the last 1m candle ending at or before t (na: none)
+ltCloseBefore(int t) =>
+    float r = na
+    int n = ltT.size()
+    if n > 0
+        for i = 0 to n - 1
+            if ltT.get(i) + 60000 <= t
+                r := ltC.get(i)
+    r
+// open of the first 1m candle starting at or after t (na: none)
+ltOpenAt(int t) =>
+    float r = na
+    int n = ltT.size()
+    if n > 0
+        for i = n - 1 to 0
+            if ltT.get(i) >= t
+                r := ltO.get(i)
+    r
+bool rthMidClose = rthLtfOn and dClose > 0 and dClose < tfsecs
+bool rthMidOpen = rthLtfOn and dOpen > 0 and dOpen < tfsecs
+
+if rthOk
+    if mktClose
+        RTHOG rt = RTHOG.new()
+        float stl = rthMidClose ? ltCloseBefore(time + dClose * 1000) : na
+        if na(stl)
+            rt.rstarts(close[1], time[1])
+        else
+            rt.rstarts(stl, time)
+        if rthogs.size() > 0
+            RTHOG pv = rthogs.last()
+            pv.killq()
+            pv.killpo3()
+            pv.killoct()
+        if rthogs.size() > 1
+            rthogs.get(rthogs.size() - 2).setOld()
+        rthogs.push(rt)
+        if rthogs.size() > ngapsEff
+            rthogs.shift().kill()
+    else if rthStarting and rthogs.size() > 0
+        RTHOG cg = rthogs.last()
+        if not na(cg.cl) and (finalBar or rthOpenBar)
+            float rop = rthMidOpen ? ltOpenAt(time + dOpen * 1000) : na
+            cg.rends(rthOpenBar ? nz(rop, open) : close)
+    // automatic stddevs: extremes of the day from the open (open bar included) until the close
+    if rthogauto and not mktClose and rthogs.size() > 0
+        RTHOG ag = rthogs.last()
+        if not na(ag.tend) and time > ag.tend
+            ag.xhi := math.max(ag.xhi, cH)
+            ag.xlo := math.min(ag.xlo, cL)
+// automatic stddevs: extremes of the latest premarket range from its end until the market close
+if preOn and pmauto and premarkets.size() > 0
+    Zone az = premarkets.last()
+    if not na(az.tend) and time > az.tend and (na(az.tclose) or time < az.tclose)
+        az.xhi := na(az.xhi) ? cH : math.max(az.xhi, cH)
+        az.xlo := na(az.xlo) ? cL : math.min(az.xlo, cL)
+
+// ============================================================ EQH / EQL
+float atrv = cAtr
+float ph = ta.pivothigh(cH, eqlen, eqlen)
+float pl = ta.pivotlow(cL, eqlen, eqlen)
+int pivT = time[eqlen]
+
+dropFirst(array<Piv> arr, bool wantEq) =>
+    for i = 0 to arr.size() - 1
+        Piv v = arr.get(i)
+        if v.eq == wantEq
+            rmLine(v.ln)
+            rmLabel(v.lb)
+            arr.remove(i)
+            break
+
+trimPivs(array<Piv> arr) =>
+    int ne = 0
+    for v in arr
+        if v.eq
+            ne += 1
+    while ne > eqkeep
+        dropFirst(arr, true)
+        ne -= 1
+    while arr.size() - ne > 30
+        dropFirst(arr, false)
+
+sweepPivs(array<Piv> arr, bool isHigh, float tol) =>
+    int i = arr.size() - 1
+    while i >= 0
+        Piv v = arr.get(i)
+        float slack = v.eq ? 0.0 : tol
+        bool swept = isHigh ? cH > v.p + slack : cL < v.p - slack
+        if swept
+            rmLine(v.ln)
+            rmLabel(v.lb)
+            arr.remove(i)
+        i -= 1
+
+addPiv(array<Piv> arr, float p, int t, bool isHigh, float tol) =>
+    Piv m = na
+    for v in arr
+        if math.abs(v.p - p) <= tol
+            m := v
+            break
+    if not na(m)
+        if not m.eq
+            m.pl := m.p
+        m.eq := true
+        m.pr := p
+        if isHigh ? p > m.p : p < m.p
+            m.p := p
+    else
+        arr.push(Piv.new(p, t))
+    trimPivs(arr)
+
+// label: EQH, or eqH when the right swing is higher than the left one (EQL / eqL: lower, for lows)
+drawEq(array<Piv> arr, bool isHigh, string sfx, color c) =>
+    int x = tright(xoff)
+    for v in arr
+        if v.eq
+            bool up = not na(v.pl) and not na(v.pr) and (isHigh ? v.pr > v.pl : v.pr < v.pl)
+            string txt = (up ? (isHigh ? "eqH" : "eqL") : (isHigh ? "EQH" : "EQL")) + sfx
+            if na(v.ln)
+                v.ln := line.new(v.t, v.p, x, v.p, xloc = xloc.bar_time, color = c, style = eqhlsty,
+                     width = attW(eqhlwid, 1))
+                v.lb := label.new(x, v.p, txt, xloc = xloc.bar_time, style = label.style_label_left,
+                     color = transparent, textcolor = c, size = lblsz,
+                     text_formatting = text.format_bold)
+            else
+                v.ln.set_xy1(v.t, v.p)
+                v.ln.set_xy2(x, v.p)
+                v.lb.set_xy(x, v.p)
+                v.lb.set_text(txt)
+    true
+// 3-candle swings (one candle on each side), kept until price takes them
+float ph3 = ta.pivothigh(cH, 1, 1)
+float pl3 = ta.pivotlow(cL, 1, 1)
+var array<float> sh3p = array.new<float>()
+var array<int> sh3t = array.new<int>()
+var array<float> sl3p = array.new<float>()
+var array<int> sl3t = array.new<int>()
+
+sweep3(array<float> ps, array<int> ts, bool isHigh) =>
+    int i = ps.size() - 1
+    while i >= 0
+        if isHigh ? cH > ps.get(i) : cL < ps.get(i)
+            ps.remove(i)
+            ts.remove(i)
+        i -= 1
+    true
+
+add3(array<float> ps, array<int> ts, float p, int t) =>
+    ps.push(p)
+    ts.push(t)
+    if ps.size() > 60
+        ps.shift()
+        ts.shift()
+    true
+
+// the pivot just added at time t (price p) becomes an EQH / EQL when an earlier unswept 3-candle swing
+// has the same price or is at most eq3pts beyond it (above for highs, below for lows). The level is the
+// swing price, drawn from the swing.
+eq3(array<Piv> arr, array<float> ps, array<int> ts, float p, int t, bool isHigh) =>
+    if arr.size() > 0
+        Piv v = arr.last()
+        if v.t == t and not v.eq
+            int n = ps.size()
+            if n > 0
+                for i = n - 1 to 0
+                    float q = ps.get(i)
+                    int qt = ts.get(i)
+                    float d = isHigh ? q - p : p - q
+                    if qt < t and d >= 0 and d <= eq3pts
+                        v.eq := true
+                        v.pl := q
+                        v.pr := v.p
+                        v.p := q
+                        v.t := qt
+                        trimPivs(arr)
+                        break
+    true
+
+if inWin and tfok and doeqhl
+    float tol = eqtol * nz(atrv, 0.0)
+    sweepPivs(hpv, true, tol)
+    sweepPivs(lpv, false, tol)
+    sweep3(sh3p, sh3t, true)
+    sweep3(sl3p, sl3t, false)
+    if not na(ph)
+        addPiv(hpv, ph, pivT, true, tol)
+        if doeq3
+            eq3(hpv, sh3p, sh3t, ph, pivT, true)
+    if not na(pl)
+        addPiv(lpv, pl, pivT, false, tol)
+        if doeq3
+            eq3(lpv, sl3p, sl3t, pl, pivT, false)
+    if not na(ph3)
+        add3(sh3p, sh3t, ph3, time[1])
+    if not na(pl3)
+        add3(sl3p, sl3t, pl3, time[1])
+
+bool newDBar = dtm != nz(dtm[1], dtm)
+
+if inWin and tfok and doeqhl and doeqd
+    float tolD = eqtol * nz(datr, 0.0)
+    sweepPivs(hpvD, true, tolD)
+    sweepPivs(lpvD, false, tolD)
+    if newDBar
+        if not na(dph)
+            addPiv(hpvD, dph, dpt, true, tolD)
+        if not na(dpl)
+            addPiv(lpvD, dpl, dpt, false, tolD)
+
+// ============================================================ months
+// [MON] a previous month high (low) is taken once a completed day after that month closes above (below) it and
+// at least one of its 15m candles opens above (below) it. Evaluated on the daily bars (their whole history, the
+// 15m opens of each day from a nested request.security_lower_tf), the day before each bar ([1] with
+// lookahead_on): month keys (year * 12 + month of the day close) of the last three completed months, newest
+// first, and their taken flags
+monKey(int t) =>
+    year(t) * 12 + month(t)
+monTaken() =>
+    var array<int> mk = array.new<int>()
+    var array<float> mh = array.new<float>()
+    var array<float> ml = array.new<float>()
+    var array<bool> th = array.new<bool>()
+    var array<bool> tl = array.new<bool>()
+    var int ck = na
+    var float ch = na
+    var float cl = na
+    [dh, dl, da] = clD()
+    array<float> o15 = request.security_lower_tf(syminfo.tickerid, "15", open)
+    float mo = o15.size() > 0 ? o15.min() : open   // lowest / highest 15m open of the day
+    float xo = o15.size() > 0 ? o15.max() : open
+    int k = monKey(time_close[1])
+    if not na(time_close[1])
+        if na(ck) or k != ck
+            if not na(ck)
+                mk.push(ck)
+                mh.push(ch)
+                ml.push(cl)
+                th.push(false)
+                tl.push(false)
+                if mk.size() > 3
+                    mk.shift()
+                    mh.shift()
+                    ml.shift()
+                    th.shift()
+                    tl.shift()
+            ck := k
+            ch := dh[1]
+            cl := dl[1]
+        else
+            ch := math.max(ch, dh[1])
+            cl := math.min(cl, dl[1])
+        int nm = mk.size()
+        if nm > 0
+            for i = 0 to nm - 1
+                if close[1] > mh.get(i) and xo[1] > mh.get(i)
+                    th.set(i, true)
+                if close[1] < ml.get(i) and mo[1] < ml.get(i)
+                    tl.set(i, true)
+    int n = mk.size()
+    [n > 0 ? mk.get(n - 1) : na, n > 0 ? th.get(n - 1) : false, n > 0 ? tl.get(n - 1) : false,
+         n > 1 ? mk.get(n - 2) : na, n > 1 ? th.get(n - 2) : false, n > 1 ? tl.get(n - 2) : false,
+         n > 2 ? mk.get(n - 3) : na, n > 2 ? th.get(n - 3) : false, n > 2 ? tl.get(n - 3) : false]
+
+[mk1, mth1, mtl1, mk2, mth2, mtl2, mk3, mth3, mtl3] = request.security(syminfo.tickerid, "D", monTaken(),
+     lookahead = barmerge.lookahead_on)
+
+// taken flags of the month that starts at t (month bar time; a week later is safely inside the month)
+monTk(int t, bool hi) =>
+    int k = monKey(t + 7 * 86400000)
+    k == mk1 ? (hi ? mth1 : mtl1) : k == mk2 ? (hi ? mth2 : mtl2) : k == mk3 ? (hi ? mth3 : mtl3) : false
+
+// month line and label, normal rank; a taken high / low is drawn in the close color and minor
+getm(MonLn m, int t, float p, color c, string txt, bool tk = false) =>
+    color cc = tk ? attL(monccol, 2) : attL(c, 1)
+    int w = tk ? attW(monwid, 2) : attW(monwid, 1)
+    if na(m.ln)
+        m.ln := line.new(t, p, t + tfms, p, xloc = xloc.bar_time, extend = extend.right, color = cc,
+             width = w, style = monsty)
+        m.lbl := label.new(tright(xoff), p, txt, xloc = xloc.bar_time,
+             style = label.style_label_left, color = transparent, textcolor = cc)
+    else
+        m.ln.set_xy1(t, p)
+        m.ln.set_xy2(t + tfms, p)
+        m.ln.set_color(cc)
+        m.ln.set_width(w)
+        m.lbl.set_xy(tright(xoff), p)
+        m.lbl.set_text(txt)
+        m.lbl.set_textcolor(cc)
+    true
+drawMonth(int idx, float h, float l, float c, int t, int tc) =>
+    if not na(h) and not na(t)
+        string suf = " " + str.format_time(t + 7 * 86400000, "MMM") + "\n"
+        getm(mls.get(idx * 3), t, h, monmaxcol, "max" + suf, monTk(t, true))
+        getm(mls.get(idx * 3 + 1), t, l, monmincol, "min" + suf, monTk(t, false))
+        getm(mls.get(idx * 3 + 2), tc, c, monccol, "close" + suf)
+
+[mh1, ml1, mc1, mt1, mtc1, mo1,
+     mh2, ml2, mc2, mt2, mtc2, mo2,
+     mh3, ml3, mc3, mt3, mtc3, mo3] = request.security(syminfo.tickerid, "M",
+     [high[1], low[1], close[1], time[1], time, open[1],
+     high[2], low[2], close[2], time[2], time[1], open[2],
+     high[3], low[3], close[3], time[3], time[2], open[3]],
+     lookahead = barmerge.lookahead_on)
+// bad prints out of the month highs / lows
+mh1 := clH(mo1, mh1, mc1)
+ml1 := clL(mo1, ml1, mc1)
+mh2 := clH(mo2, mh2, mc2)
+ml2 := clL(mo2, ml2, mc2)
+mh3 := clH(mo3, mh3, mc3)
+ml3 := clL(mo3, ml3, mc3)
+
+// ============================================================ RTHOG / premarket stddev labels
+// stddev lines of the RTHOG and the premarket range at almost the same price share one
+// label: "RTHOG+0.5 PMKT+1". The other label is emptied.
+combinePo3(RTHOG g, Zone z, float tol) =>
+    if not na(g.po3labels) and not na(z.sdlabels) and not na(g.po3names) and not na(z.sdnames)
+        for [k, l] in g.po3labels
+            l.set_text("RTHOG" + g.po3names.get(k))
+        for [k, l] in z.sdlabels
+            l.set_text("PMKT" + z.sdnames.get(k))
+        array<bool> used = array.new<bool>(z.sdlabels.size(), false)
+        for [k, l] in g.po3labels
+            for [m, q] in z.sdlabels
+                if not used.get(m) and math.abs(l.get_y() - q.get_y()) <= tol
+                    l.set_text("RTHOG" + g.po3names.get(k) + " PMKT" + z.sdnames.get(m))
+                    q.set_text("")
+                    used.set(m, true)
+                    break
+    true
+
+// ============================================================ [LVL] high / low importance and body levels
+// rank of an untaken high / low: swing or flat (REH / REL) 0 (important: line 1 wider, label 1 size up), not known yet 1, not a swing
+// 1 (sessions) or 2 (days); a taken one is 1
+lvlRank(Zone z, int sw, bool rel, bool taken) =>
+    taken ? 1 : sw > 0 or rel ? 0 : sw == 0 ? 1 : z.isday ? 2 : 1
+
+// frk: rank to use instead (the most important one of a level shared with other zones)
+method zSide(Zone z, bool hi, int frk = -1) =>
+    line ln = hi ? z.maxln : z.minln
+    label lb = hi ? z.maxlbl : z.minlbl
+    bool isrel = hi ? z.hrel or z.hrelc or z.hx : z.lrel or z.lrelc or z.lx
+    int rk = lvlRank(z, hi ? z.hsw : z.lsw, isrel, not na(hi ? z.hidonet : z.lodonet))
+    // an untaken body level drawn below (above) it takes the importance: the high (low) is dotted meanwhile
+    bool bodyOn = not na(hi ? z.bhln : z.blln)
+    if bodyOn
+        rk := math.max(rk, 1)
+    if frk >= 0
+        rk := frk
+    if hi
+        z.hrk := rk
+    else
+        z.lrk := rk
+    color c0 = z.isday ? (hi ? daymmaxcol : daymmincol) : (hi ? sesmmaxcol : sesmmincol)
+    int w0 = z.isday ? daymwid : sesmwid
+    string sz0 = z.isday ? dlblsz : slblsz
+    // an important REH / REL (15m or chart candles) stands out one more step than a plain swing
+    bool rel = rk == 0 and isrel
+    if not na(ln)
+        ln.set_style(bodyOn ? line.style_dotted : (hi ? z.maxsty.sty : z.minsty.sty))
+        ln.set_color(attL(c0, rk))
+        ln.set_width(rk == 0 ? math.min(4, attW(w0, 0) + (rel ? 2 : 1)) : attW(w0, rk))
+    if not na(lb)
+        lb.set_textcolor(attL(c0, rk))
+        lb.set_size(rk == 0 ? (rel ? sizeUp(sizeUp(sz0)) : sizeUp(sz0)) : sz0)
+    true
+
+// the body level of side hi is shown: high (low) untaken and beyond the body, body not taken later (also for the
+// current day / session, once its body level is decided)
+// (the dobody input is tested by the callers: with it a constant false, as in ICTgaps, z and hi would be unused)
+method bodyOk(Zone z, bool hi) =>
+    hi ? z.drawmaxmin and na(z.hidonet) and z.bhi < z.hi and not z.bhtk
+         : z.drawmaxmin and na(z.lodonet) and z.blo > z.lo and not z.bltk
+
+// [LVL] untaken highs (lows) of days and sessions, and their body levels, that are within tol of another one are
+// REHs (RELs): hx / lx, bhx / blx. Levels of different zones from the same candle (the Asia low that is also the
+// week low) are one level: not a REH / REL by themselves (hc / lc, bhc / blc, one label "Asia / week low").
+xCollect(array<Zone> arr, array<float> v, array<Zone> zs, array<bool> isb, array<int> ids, array<int> ot, bool hi) =>
+    for z in arr
+        int id = z.tstart * 2 + (z.isday ? 1 : 0)
+        if z.drawmaxmin and na(hi ? z.hidonet : z.lodonet)
+            v.push(hi ? z.hi : z.lo)
+            zs.push(z)
+            isb.push(false)
+            ids.push(id)
+            ot.push(hi ? z.hit : z.lot)
+        if dobody and z.bodyOk(hi)
+            v.push(hi ? z.bhi : z.blo)
+            zs.push(z)
+            isb.push(true)
+            ids.push(id)
+            ot.push(hi ? z.bht : z.blt)
+    true
+
+xMark(bool hi, float tol) =>
+    array<float> v = array.new<float>()
+    array<Zone> zs = array.new<Zone>()
+    array<bool> isb = array.new<bool>()
+    array<int> ids = array.new<int>()
+    array<int> ot = array.new<int>()    // time of the candle of the level: same time and price, same level
+    xCollect(zones, v, zs, isb, ids, ot, hi)
+    xCollect(days, v, zs, isb, ids, ot, hi)
+    int n = v.size()
+    if n > 1
+        // groups of levels within tol of each other (chains join); a group with two zones or more is a REH / REL
+        array<int> cid = array.new<int>()
+        for i = 0 to n - 1
+            cid.push(i)
+        for i = 0 to n - 2
+            for j = i + 1 to n - 1
+                if cid.get(i) != cid.get(j) and math.abs(v.get(i) - v.get(j)) <= tol
+                    int from = cid.get(j)
+                    int xto = cid.get(i)
+                    for k = 0 to n - 1
+                        if cid.get(k) == from
+                            cid.set(k, xto)
+        // origin of each level: the first one of its group from the same candle at the same price
+        array<int> org = array.new<int>()
+        for k = 0 to n - 1
+            int o = k
+            for j = 0 to k
+                if j < k and o == k and cid.get(j) == cid.get(k) and isb.get(j) == isb.get(k) and ot.get(j) == ot.get(k)
+                     and v.get(j) == v.get(k)
+                    o := j
+            org.push(o)
+        for c = 0 to n - 1
+            // members of group c: the outermost one (highest high, lowest low) carries the combined label
+            int lead = -1
+            bool multi = false
+            int id0 = na
+            int no = 0
+            bool anyday = false
+            bool grel = false
+            bool grelc = false
+            for k = 0 to n - 1
+                if cid.get(k) == c
+                    if na(id0)
+                        id0 := ids.get(k)
+                    else if ids.get(k) != id0
+                        multi := true
+                    if org.get(k) == k
+                        no += 1
+                    if lead < 0 or (hi ? v.get(k) > v.get(lead) : v.get(k) < v.get(lead))
+                        lead := k
+                    Zone zk = zs.get(k)
+                    anyday := anyday or zk.isday
+                    if not isb.get(k)
+                        grel := grel or (hi ? zk.hrel : zk.lrel)
+                        grelc := grelc or (hi ? zk.hrelc : zk.lrelc)
+            if multi
+                // names of each origin joined with " / ", origins with " + "
+                string parts = ""
+                for o = 0 to n - 1
+                    if cid.get(o) == c and org.get(o) == o
+                        string nms = ""
+                        for k = 0 to n - 1
+                            if cid.get(k) == c and org.get(k) == o
+                                nms += (nms == "" ? "" : " / ") + zs.get(k).zName(hi)
+                        parts += (parts == "" ? "" : " + ") + nms + (isb.get(o) ? " body" : "")
+                bool rel = no > 1
+                string txt = ""
+                if rel
+                    txt := (hi ? "REH " : "REL ") + parts
+                else if isb.get(lead)
+                    txt := parts + (hi ? " hi" : " lo")
+                else
+                    string pfx = grel ? (hi ? "REH " : "REL ") : grelc ? (hi ? "reh " : "rel ") : ""
+                    txt := pfx + parts + (pfx != "" ? "" : anyday ? (hi ? " high" : " low") : (hi ? " hi" : " lo"))
+                for k = 0 to n - 1
+                    if cid.get(k) == c
+                        Zone z = zs.get(k)
+                        string t = k == lead ? txt : ""
+                        if isb.get(k)
+                            if hi
+                                z.bhx := rel
+                                z.bhc := not rel
+                                z.bhxt := t
+                            else
+                                z.blx := rel
+                                z.blc := not rel
+                                z.blxt := t
+                        else
+                            if hi
+                                z.hx := rel
+                                z.hc := not rel
+                                z.hcg := rel ? -1 : c
+                                z.hxt := t
+                            else
+                                z.lx := rel
+                                z.lc := not rel
+                                z.lcg := rel ? -1 : c
+                                z.lxt := t
+    true
+
+xReset(array<Zone> arr) =>
+    for z in arr
+        z.hx := false
+        z.lx := false
+        z.bhx := false
+        z.blx := false
+        z.hc := false
+        z.lc := false
+        z.bhc := false
+        z.blc := false
+        z.hcg := -1
+        z.lcg := -1
+    true
+
+// [LVL] a high / low shared with other zones takes the most important rank of them: best rank per group (map),
+// then restyle
+xBest(array<Zone> arr, map<int, int> m, bool hi) =>
+    for z in arr
+        int g = hi ? z.hcg : z.lcg
+        if g >= 0
+            int rk = hi ? z.hrk : z.lrk
+            m.put(g, m.contains(g) ? math.min(m.get(g), rk) : rk)
+    true
+xApply(array<Zone> arr, map<int, int> m, bool hi) =>
+    for z in arr
+        int g = hi ? z.hcg : z.lcg
+        if g >= 0 and m.contains(g) and z.drawmaxmin
+            z.zSide(hi, m.get(g))
+    true
+xRank(bool hi) =>
+    map<int, int> m = map.new<int, int>()
+    xBest(zones, m, hi)
+    xBest(days, m, hi)
+    xApply(zones, m, hi)
+    xApply(days, m, hi)
+    true
+
+// body level of side hi of z (want: draw it), returns whether it is drawn
+method zBody(Zone z, bool hi, bool want) =>
+    line ln = hi ? z.bhln : z.blln
+    label lb = hi ? z.bhlbl : z.bllbl
+    if want
+        int x = tright(2)
+        float p = hi ? z.bhi : z.blo
+        // important, solid (wider, label 1 size up; 2 and 2 when it is a REH / REL with another level)
+        bool bx = hi ? z.bhx : z.blx
+        color c = attL(z.isday ? (hi ? daymmaxcol : daymmincol) : (hi ? sesmmaxcol : sesmmincol), 0)
+        int w = math.min(4, attW(2, 0) + (bx ? 1 : 0))
+        string bsz = sizeUp(z.isday ? dlblsz : slblsz)
+        bsz := bx ? sizeUp(bsz) : bsz
+        bool bc = hi ? z.bhc : z.blc
+        string txt = bx or bc ? (hi ? z.bhxt : z.blxt) : (z.isday ? "day" : z.name) + (hi ? " body hi" : " body lo")
+        if na(ln)
+            ln := line.new(hi ? z.bht : z.blt, p, x, p, xloc = xloc.bar_time, color = c, style = line.style_solid,
+                 width = w)
+            lb := label.new(x, p, txt, xloc = xloc.bar_time, style = label.style_label_left, color = transparent,
+                 textcolor = c, size = bsz)
+        else
+            ln.set_x2(x)
+            ln.set_color(c)
+            ln.set_width(w)
+            lb.set_x(x)
+            lb.set_text(txt)
+            lb.set_textcolor(c)
+            lb.set_size(bsz)
+    else
+        rmLine(ln)
+        rmLabel(lb)
+        ln := na
+        lb := na
+    if hi
+        z.bhln := ln
+        z.bhlbl := lb
+    else
+        z.blln := ln
+        z.bllbl := lb
+    want
+
+// newest first; nbh / nbl: body levels already drawn per side
+zLevels(array<Zone> arr, int nbh0, int nbl0) =>
+    int nbh = nbh0
+    int nbl = nbl0
+    int n = arr.size()
+    if n > 0
+        for k = 0 to n - 1
+            Zone z = arr.get(n - 1 - k)
+            if z.zBody(true, dobody and z.bodyOk(true) and nbh < BODYMAX)
+                nbh += 1
+            if z.zBody(false, dobody and z.bodyOk(false) and nbl < BODYMAX)
+                nbl += 1
+            if z.drawmaxmin
+                z.zSide(true)
+                z.zSide(false)
+    [nbh, nbl]
+
+// ============================================================ last-bar work: right edges, months,
+// table
+var table tbl = table.new(position.top_right, 1, 4, bgcolor = transparent)
+
+
+if finalBar and tfok
+    if doreh and dodaylbl and dodmaxmin
+        markRel(days, reltol * nz(datr, 0.0))
+    // [LVL] REH / REL between day and session levels (same tolerance as the flat tops / bottoms)
+    xReset(zones)
+    xReset(days)
+    float xtol = math.max(2 * syminfo.mintick, 0.1 * nz(bkRng, 0.0))
+    xMark(true, xtol)
+    xMark(false, xtol)
+    for z in days
+        if z.live()
+            z.refresh()
+    for z in zones
+        if z.live()
+            z.refresh()
+    for z in premarkets
+        if z.live()
+            z.refresh()
+    // [ATT] the last midnight open is important
+    if attLvl > 0
+        for [i, z] in days
+            if not na(z.opln)
+                int rk = i == days.size() - 1 ? 0 : 2
+                z.opln.set_color(attL(opcolor, rk))
+                z.opln.set_width(attW(opwid, rk))
+                z.oplabel.set_textcolor(attL(opcolor, rk))
+    // [LVL] day / session highs and lows by importance, and the body levels
+    [nbh, nbl] = zLevels(zones, 0, 0)
+    [nbh2, nbl2] = zLevels(days, nbh, nbl)
+    xRank(true)
+    xRank(false)
+    if preOn
+        int npm = premarkets.size()
+        for [i, z] in premarkets
+            if i >= npm - pmkeep
+                z.pmdraw(pmauto and i == npm - 1)
+            else
+                z.pmclear()
+    float gtol = combtol * nz(datr, 0.0)
+    for [i, g] in dgaps
+        g.imp := i == dgaps.size() - 1
+    if combgaps
+        combineGaps(dgaps, wgaps, gtol)
+    else
+        for g in dgaps
+            g.gright(gtol)
+        for g in wgaps
+            g.gright(gtol)
+    if rthogauto and dorthogpo3 and rthogs.size() > 0
+        RTHOG lg = rthogs.last()
+        if not na(lg.tend) and not na(lg.op) and not na(lg.cl) and not lg.isold
+            lg.rpo3()
+    for [i, g] in rthogs
+        if i == rthogs.size() - 1
+            g.right(lrgapcolor, 0)
+            g.octRight(attL(lrgapcolor, 1))    // octants: latest RTHOG only (removed at the close, like the quadrants)
+        else if i == rthogs.size() - 2
+            g.right(rgapcolor, 0)
+    if preOn and rthogs.size() > 0 and premarkets.size() > 0
+        combinePo3(rthogs.last(), premarkets.last(), pmctol * nz(datr, 0.0))
+    if doeqhl
+        drawEq(hpv, true, "", attL(eqhcol, 1))
+        drawEq(lpv, false, "", attL(eqlcol, 1))
+        if doeqd
+            drawEq(hpvD, true, " D", attL(eqhcol, 1))
+            drawEq(lpvD, false, " D", attL(eqlcol, 1))
+    if domonth
+        drawMonth(0, mh1, ml1, mc1, mt1, mtc1)
+        drawMonth(1, mh2, ml2, mc2, mt2, mtc2)
+        drawMonth(2, mh3, ml3, mc3, mt3, mtc3)
+
+    string sname = ""
+    string mname = ""
+    string bname = ""
+    table.cell(tbl, 0, 0, sname, text_color = zonecolor, text_size = size.large)
+    table.cell(tbl, 0, 1, mname, text_color = macrocolor, text_size = size.large)
+    table.cell(tbl, 0, 2, bname, text_color = silvercolor, text_size = size.large)
+    table.cell(tbl, 0, 3, showcap and capped ? "object cap: " + str.tostring(ndaysEff) + " days"
+         : "", text_color = color.orange, text_size = size.tiny)

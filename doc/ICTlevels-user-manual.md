@@ -29,6 +29,8 @@ ICTlevels is also available split in two, generated from it and always in sync w
 
 Both together draw what ICTlevels draws (each with its own 500 object budget). Use one of the two pairs: ICTlevels alone, or ICTgaps with ICTday.
 
+ICTgaps is also split in three, one kind of gap each, each with its own 500 object budget: **NWOGs** (`NWOGs.txt`, only the NWOGs), **NDOGs** (`NDOGs.txt`, only the NDOGs, with the Monday and Friday only option) and **RTHOGs** (`RTHOGs.txt`, the RTHOGs with their quadrants, octants and stddevs, and the premarket range, each with its switch). Each keeps the shared gap settings (gaps to keep, rectangles, combining) and Time & Settings. Use them instead of ICTgaps, next to ICTday.
+
 ## 2. Quick start
 
 1. Add **ICTlevels** to the chart.
@@ -62,7 +64,7 @@ All times below are in the script's time zone: New York for US, Madrid for EU. W
 | NY AM session | 07:00-11:30 | 13:30-18:00 |
 | NY PM session | 13:30-16:00 | 19:00-22:00 |
 | Premarket range (Auto) | 07:00-09:00 | 06:30-08:30 |
-| Silver bullet | 10:00-11:00 and 14:00-15:00 | 10:00-11:00 |
+| Silver bullet | 03:00-04:00, 10:00-11:00 and 14:00-15:00 | 10:00-11:00 |
 
 Macros are ten fixed windows per market:
 
@@ -95,6 +97,10 @@ None of these windows can be changed in the settings, except the premarket range
 - **Day labels** on untaken highs and lows: "day high" / "day low", or "week high" / "week low" when the level is at or beyond the extremes of the earlier days of the same week. The label disappears when the level is taken.
 - **Equilibrium** ("eq", dashed blue): the midpoint of the day's high and low. The current day's eq moves with the day. A completed day's eq extends through the following day and stops at its end.
 - **Midnight open** ("M.O.", dashed black): the open of the first bar of the day, drawn across the day.
+- **Swing highs and lows are emphasized**: an untaken day or session high (low) that is a swing high (low) is drawn 1 px wider with its label one size larger. It is a swing when the candle before and the candle after it have lower highs (higher lows), using 15m candles (or chart candles above 15m); this is decided when the candle after it completes. A day high or low that is not a swing (made at the edge of the day, or level with a neighbor candle) ranks as minor for attenuation.
+- **Flat tops and bottoms** ("REL Asia", "REH day", "REL week", ...): when the 15m candle (chart candle above 15m) that makes a day or session high (low) and the one before or after it have about the same high (low), within 2 ticks or a tenth of the average 15m range, with almost no upper (lower) wick (within that tolerance or a fifth of the candle range), the label starts with REH (REL) instead of ending in hi (lo) and is emphasized like a swing: equal highs and lows like these are likely to be taken later. The same test on chart candles (on charts below 15m: 2 ticks or a tenth of the chart ATR) labels it reh (rel), lowercase ("rel Asia"), when the 15m candles do not already make it a REH (REL); it is emphasized too, as it marks an important point of the lower timeframe. REH / REL levels (either kind) stand out one more step than a plain swing: 2 px wider and two label sizes up.
+- **REH / REL between levels**: untaken day and session highs (lows), and their body levels, that are within the same tolerance of another one (2 ticks or a tenth of the average 15m range) are REHs (RELs) too, with the same emphasis. Their labels are combined into one at the outermost of them, naming every level of the group, e.g. "REH London + Asia body"; the other labels are hidden. Once a level is taken it is a plain taken level again. A level that is the high (low) of several zones at once, made by the same candle (the Asia low that is also the week low), is one level, not a REL: it gets one label naming them all, "Asia / week low" ("Asia / week body lo" for body levels), and the importance of the most important of them. Such a level can still be part of a REH / REL with other levels: "REL Asia / week + London".
+- **Body levels** (same color, "day body hi", "Asia body lo", ...): while the high (low) of a day or session is untaken (the current one included, once the candles after it have closed), a line marks the highest (lowest) body around it: the 15m candle of the high (low) and two candles before and after it (chart candles above 15m), when that is below (above) the wick. Price often takes the body level and not the wick, so the body level is a reaction level of its own. The body level is the important one: a solid 2 px line with its label one size larger, while the high (low) itself is shown dotted, as a normal level. Price trading through it within the candles around the extreme only moves the body level; once price trades through it later, the body line is removed and the high (low) is solid and gets its importance back. It is removed once the high (low) is taken. The 6 most recent per side are drawn.
 
 **How to use it**
 
@@ -117,6 +123,8 @@ REH/REL labels need "label unbroken day max/min" and the day max/min lines to be
 **What you see**
 
 Three lines for each of the last three completed months: **max**, **min** and **close** (green, red, black, solid, width 3), labelled for example "max Sep", "min Sep", "close Sep". The high and low lines start at the start of their month, the close line at the start of the following month, and all extend to the right. The current month is not drawn. The lines roll over automatically when a new month starts.
+
+A month max (min) is **taken** once a completed day after that month closes above it (below it) and at least one 15m candle of that same day opens above it (below it): price spent time beyond the level, it did not just poke through near the close. A taken max or min is then drawn in the close color (black) and dimmed one rank (minor instead of normal attenuation, so also 1 px thinner from attenuation 1 on). In TradingView the test uses the full daily history (with the 15m candles of each day); in NinjaTrader it uses the loaded 15m bars, and in Tradovate the loaded chart bars (chart candles instead of 15m ones on charts above 15m).
 
 **How to use it**
 
@@ -151,7 +159,7 @@ For each Asia, London, NY AM and NY PM session (times in section 3):
 
 - **Session high and low lines** (green and red, solid, width 1) from the bar that made the extreme, extending right until price takes the level. Taken levels keep their line up to the bar that took them.
 - **Labels** on untaken levels: "Asia hi", "Asia lo", "London hi", "London lo", "NY AM hi", "NY AM lo", "NY PM hi", "NY PM lo". The label disappears when the level is taken.
-- **Session rectangles** (optional): a shaded box from the session start to its end, between its high and low, in the session color (Asia red, London green, NY blue) at 75% transparency. With **border only**, just its outline is drawn, 2 px wide and with half the transparency. By default rectangles are hidden on 5m and lower charts.
+- **Session rectangles** (optional): a shaded box from the session start to its end, between its high and low, in the session color (Asia red, London green, NY blue) at 75% transparency. With **border only**, just its outline is drawn, 2 px wide and with half the transparency. By default rectangles are hidden on 5m and lower charts, and they are never drawn on 1H and higher charts.
 
 The current session's lines and rectangle grow while it is in progress.
 
@@ -170,8 +178,8 @@ Needs a chart timeframe of 5 minutes or lower.
 - **Start and end vertical lines** of the range, in the day line style (dotted blue).
 - **Pre-mkt hi / Pre-mkt lo** lines and labels, in the session max/min style, from the extreme to the bar that takes it, stopping at the market close (16:15 New York, 17:30 Madrid).
 - For the most recent range (or the last N ranges, setting "quadrants/stddevs for the last"):
-  - **Quadrants**: lines at 25%, 50% and 75% of the range, labelled "PMKT dq", "PMKT ce" and "PMKT uq" with the date (for example "PMKT ce 20O"). Drawn only when a quarter of the range is larger than the minimum size (default 20 points, so the range must be over 80 points).
-  - **Standard deviations**: lines above the high and below the low, 4 per side by default. The step is the range divided by 8, 4, 2 or 1: the first of these that is larger than the minimum size (default 20 points). Each label gives the distance from the range edge in whole ranges: "PMKT+1" is one full range above the high, "PMKT-0.5" half a range below the low, "PMKT+0.25" a quarter of a range above, and so on (with a step of 1/8: "PMKT+0.125", "PMKT+0.25", "PMKT+0.375"...). If even the whole range is not larger than the minimum, no deviations are drawn.
+  - **Quadrants**: lines at 25%, 50% and 75% of the range, labelled "PMKT dq", "PMKT ce" and "PMKT uq" with the date (for example "PMKT ce 20O"). Drawn only when a quarter of the range is larger than the minimum size (default 50 points, so the range must be over 200 points).
+  - **Standard deviations**: lines above the high and below the low, 4 per side by default. The step is the range divided by 8, 4, 2 or 1: the first of these that is larger than the minimum size (default 50 points). Each label gives the distance from the range edge in whole ranges: "PMKT+1" is one full range above the high, "PMKT-0.5" half a range below the low, "PMKT+0.25" a quarter of a range above, and so on (with a step of 1/8: "PMKT+0.125", "PMKT+0.25", "PMKT+0.375"...). If even the whole range is not larger than the minimum, twice the range is used when that is larger (labels "PMKT+2", "PMKT+4"...); otherwise no deviations are drawn.
   - **PMKT hi / PMKT lo**: whenever any quadrant or deviation line is drawn, the range high and low are also drawn as solid lines in the premarket color (red by default), labelled for example "PMKT hi 20O".
   - These lines start a couple of bars before the end of the range (4 bars on 1m or lower, 2 bars otherwise) and extend to the right margin, but never past the market close of that day.
 
@@ -205,7 +213,7 @@ Opening gaps are price ranges the market jumped over. ICT treats their high, low
 
 ### 4.8 RTHOG
 
-The regular trading hours opening gap is the range between the settlement of the regular session (the close of the last bar before 16:15 New York / 17:30 Madrid) and the next regular open (09:30 New York / 09:00 Madrid). Needs a chart timeframe of 15 minutes or lower.
+The regular trading hours opening gap is the range between the settlement of the regular session (the price at 16:15 New York / 17:30 Madrid: the close of the last bar before it) and the next regular open (09:30 New York / 09:00 Madrid). On charts whose bars do not end at the close or start at the open (2m, 4m, 10m...: their bars are aligned to the session start), the settlement and the open are taken from the 1m candles inside that bar, so they are the same as on 1m or 5m. Tradovate has no 1m data there and uses the chart bars. Needs a chart timeframe of 15 minutes or lower.
 
 **What you see**
 
@@ -214,9 +222,9 @@ The regular trading hours opening gap is the range between the settlement of the
 - **On the open bar**: the gap is fixed with the real open price:
   - The open line is labelled "RTHOG hi" (gap up) or "RTHOG lo" (gap down) with the date; the settlement line is relabelled with the other one.
   - **CE**: the midpoint of the gap, "RTHOG ce 20O".
-  - **Quadrants**: 25% and 75% of the gap, "RTHOG dq" and "RTHOG uq", only when a quarter of the gap is larger than the minimum size (default 25 points, so the gap must be over 100 points).
-  - **Octants** (on by default): 1/8, 3/8, 5/8 and 7/8 of the gap, the midpoints between the quadrants, labelled "RTHOG 1/8 20O" and so on, thin lines in the quadrant style. Only on the latest RTHOG, only when an eighth of the gap is larger than the quadrant minimum size (so the gap must be over 200 points with the default 25), and they stop at noon: until noon they follow the right edge, after noon they end there.
-  - **Standard deviations**: above the higher edge and below the lower edge, 4 per side by default, dotted. The step is the gap divided by 8, 4, 2 or 1, the first that is larger than the minimum size (default 25 points). As for the premarket range, the label is the distance from the gap edge in whole gaps: "RTHOG+1" one full gap above, "RTHOG-0.5" half a gap below, "RTHOG+1.25" and so on.
+  - **Quadrants**: 25% and 75% of the gap, "RTHOG dq" and "RTHOG uq", only when a quarter of the gap is larger than the minimum size (default 50 points, so the gap must be over 200 points).
+  - **Octants** (on by default): 1/8, 3/8, 5/8 and 7/8 of the gap, the midpoints between the quadrants, labelled "RTHOG 1/8 20O" and so on, thin lines in the quadrant style. Only on the latest RTHOG, only when an eighth of the gap is larger than the quadrant minimum size (so the gap must be over 400 points with the default 50), and they stop at noon: until noon they follow the right edge, after noon they end there.
+  - **Standard deviations**: above the higher edge and below the lower edge, 4 per side by default, dotted. The step is the gap divided by 8, 4, 2 or 1, the first that is larger than the minimum size (default 50 points), or else twice the gap when that is larger; otherwise none are drawn. With auto (on by default) more deviations are added as price reaches them. As for the premarket range, the label is the distance from the gap edge in whole gaps: "RTHOG+1" one full gap above, "RTHOG-0.5" half a gap below, "RTHOG+1.25" and so on.
   - Optional rectangle between settlement and open.
 - **After the next close**: the gap becomes the previous one. It is redrawn in the "old" color (cyan #17E1DA) and loses its quadrants, octants and deviations, keeping settlement, CE and open.
 - **Older gaps** are reduced to short ticks around the settlement and the open, labelled "rthog.cl", "rthog.ce" and "rthog.op" in black text. With "extend old RTHOG lines" the ticks at the open are extended to the right.
@@ -268,7 +276,7 @@ A small table at the top right of the chart, updated on the last bar:
 
 Rows are empty when nothing is active. The premarket range is not shown in the table.
 
-Optionally ("flag macros with background color", off by default) the chart background is tinted during every macro window, on all bars, so you can see past macros on the chart. The tint is only drawn on charts below 15m; on 15m and above the macros are shorter than a bar.
+Optionally ("Flag macros" in Enable / Filter, on by default) the chart background is tinted during every macro window, on all bars, so you can see past macros on the chart. The tint is only drawn on charts below 15m; on 15m and above the macros are shorter than a bar.
 
 **How to use it**
 
@@ -309,27 +317,61 @@ Dates in labels are the day of the month followed by the month: one letter when 
 
 Settings are listed in the order they appear in the settings dialog. Several settings share a row; a setting with no label of its own is shown as "(no label)" and sits on the same row as the setting above it. Line styles are solid, dashed or dotted; widths are 1, 2 or 3; text sizes are tiny, small, normal, large or huge.
 
-### 5.1 Time & Settings
+### 5.1 Enable / Filter
+
+The first group: one switch per feature, so you can turn features on and off without opening their own groups. TGIF levels, Sessions and EQH / EQL share a row, and so do NDOGs, NWOGs and RTHOGs; there is no master switch for the gaps, turn the three off to hide them all.
 
 | Label in dialog | Default | What it does |
 | --- | --- | --- |
-| Zone: US / EU / Auto | Auto | US uses New York times (NQ), EU uses Madrid times (DAX). Auto picks EU when the symbol looks like DAX (see Quick start), otherwise US. Changes every time window in section 3. |
+| Attenuation | 2 (0 to 4) | Dims the drawings: 0 as configured, 4 the most dimmed. See below. |
+| Ignore wicks longer than (daily ATRs) | 6 | Bad data filter. A wick longer than this many daily ATRs (chart, daily or monthly candle) is taken as a bad print: the candle's high or low is taken at its body, so day, session, week and month highs and lows, swings, EQH / EQL and ranges leave it out. 0 turns it off. Also in ICTgaps and ICTday |
+| Scale sizes using NQ sizes as reference | on | Sizes in points are set for NQ. When on, they are multiplied by a fixed factor for the chart instrument, roughly its typical range relative to NQ: ES 0.2, YM 1.3, RTY 0.1, DAX 0.7 (with their micros and CFDs: MES, US500, SPX; MYM, US30; M2K, US2000; FDXM, GER40, DE40...); NQ, MNQ, NAS100 and US100 are 1, and any other instrument keeps the sizes as given. Scaled: the RTHOG and PMKT minimum sizes for quadrants and for stddevs, and the EQH / EQL tolerance. Also in ICTgaps and ICTday. Off: the sizes are used as typed |
+| Month max/min/close (last 3 months) | on | Draws the high, low and close of the last three completed months. |
+| TGIF levels | on | Draws the TGIF levels on Friday, or on Monday, while they apply. |
+| Sessions | on | Draws the Asia, London, NY AM and NY PM sessions and their high and low. |
+| EQH / EQL | on | Draws untaken equal highs and lows of the chart timeframe. |
+| NDOGs | on | Draws new day opening gaps. |
+| NWOGs | on | Draws new week opening gaps. |
+| RTHOGs (up to 15m) | on | Draws regular trading hours opening gaps (15m or lower charts). |
+| PMKT range (m5 or less) | on | Draws the premarket range on 5m or lower charts. |
+| Flag macros | on | Tints the chart background during every macro window (charts below 15m only). The color is in Macros and Events. |
+
+Attenuation dims the drawings without changing their settings. Drawings have three ranks:
+
+- Important: the last midnight open (M.O.), untaken day and session highs and lows that are swings or flat (REH / REL), the current and previous RTHOG, TGIF levels, NWOGs and the last NDOG.
+- Normal: month lines, session highs and lows that are not swings (or not decided yet), taken highs and lows, body levels, week vertical lines, the quadrants and octants of the current RTHOG, the PMKT high and low, EQH / EQL and the macro background.
+- Minor: day highs and lows that are not swings, day vertical lines, eq, older M.O.s, older NDOGs, old RTHOGs (the short marks), the RTHOG deviations, and the PMKT quadrants and deviations.
+
+| Level | Important | Normal | Minor | Session rectangles |
+| --- | --- | --- | --- | --- |
+| 0 | as configured | as configured | as configured | as configured |
+| 1 | as configured | 18% fainter | 36% fainter, width -1 | filled, lighter |
+| 2 | 18% fainter | 36% fainter, width -1 | 54% fainter, width -1 | outline only |
+| 3 | 18% fainter | 54% fainter, width -1 | 72% fainter, width -1 | outline only, fainter, width 1 |
+| 4 | 36% fainter, width -1 | 72% fainter, width -1 | 90% fainter, width -1 | outline only, fainter, width 1 |
+
+"Fainter" is the share of the remaining opacity that is taken away, for lines and label text. Widths never go below 1. Gap rectangles fade with the rank of their gap (20% per step), so the rectangles of older NDOGs are gone at level 4. RTHOGs get no rectangle at all from level 2 on. NWOGs keep their line color as important but get the width and fill of a normal drawing at levels 3 and 4. NinjaTrader and Tradovate have the same attenuation, swing and REH / REL emphasis and body levels. Tradovate ignores the transparency of line and text colors, so there a fainter color is the color blended into the chart background: set "attbg" (white by default) to your chart background color.
+
+### 5.2 Time & Settings
+
+| Label in dialog | Default | What it does |
+| --- | --- | --- |
 | compute for historic data use | off | Off: levels are computed up to the last bar, for live trading. On: levels are computed up to the rightmost visible bar, so you can scroll back and see the levels as they were at that point. The script recomputes every time you scroll. |
+| Zone: US / EU / Auto | Auto | US uses New York times (NQ), EU uses Madrid times (DAX). Auto picks EU when the symbol looks like DAX (see Quick start), otherwise US. Changes every time window in section 3. |
 | offset for margin labels | 2 (min 1) | Number of bars to the right of the last bar where margin labels and line ends are placed: gaps, RTHOG, premarket quadrants and deviations, TGIF, EQH/EQL and month labels. Day, session and premarket high/low labels and the eq and M.O. labels are always 2 bars to the right. |
 | show object cap warning | on | Shows "object cap: N days" in the table when the day, session or gap counts were reduced to fit the 500-object limits. The day cap on 5m and lower charts is not warned about. |
 
-### 5.2 Month Settings
+### 5.3 Month Settings
 
 | Label in dialog | Default | What it does |
 | --- | --- | --- |
-| Draw max/min/close for last 3 months | on | Draws the high, low and close of the last three completed months. |
 | max | green | Color of the month high lines and labels. |
 | min | red | Color of the month low lines and labels. |
 | close | black | Color of the month close lines and labels. |
 | line style | solid | Style of the month lines. |
 | (no label, width) | 3 | Width of the month lines. |
 
-### 5.3 Day Settings
+### 5.4 Day Settings
 
 | Label in dialog | Default | What it does |
 | --- | --- | --- |
@@ -347,6 +389,7 @@ Settings are listed in the order they appear in the settings dialog. Several set
 | (no label, width) | 2 | Width of the day high and low lines. |
 | label unbroken day max/min | on | Labels day highs and lows that have not been taken ("day high", "week high", ...). |
 | size | tiny | Text size of those labels. |
+| body high / low levels (days and sessions) | on | Lines at the highest (lowest) candle body around the extreme of days and sessions (current ones included) whose high (low) is untaken and above (below) that body; removed when the body is taken later or the high (low) is taken. The 6 most recent per side. |
 | REH/REL labels | on | Groups untaken day highs (lows) that are close to each other and labels only the outermost as "day REHs" ("day RELs"). |
 | tolerance x daily ATR | 0.05 | Maximum distance between two day highs (lows) to be relative equal, as a fraction of the daily ATR(14). Higher values group more levels. |
 | equilibrium | on | Draws the day equilibrium (midpoint of high and low) with an "eq" label. |
@@ -358,12 +401,11 @@ Settings are listed in the order they appear in the settings dialog. Several set
 | (no label, width) | 1 | Width of the midnight open line. |
 | (no label, color) | black | Color of the midnight open line and label. |
 
-### 5.4 TGIF
+### 5.5 TGIF
 
 | Label in dialog | Default | What it does |
 | --- | --- | --- |
-| TGIF levels % | on | Draws the TGIF levels on Friday, or on Monday, while they apply. |
-| (no label, first level) | 0.2 (0.01 to 1.0) | First retracement level as a fraction of the week range (20%). Also the "no final wick" test: the week close must be closer to the extreme than this fraction. The label shows the value in percent. |
+| TGIF levels % | 0.2 (0.01 to 1.0) | First retracement level as a fraction of the week range (20%). Also the "no final wick" test: the week close must be closer to the extreme than this fraction. The label shows the value in percent. |
 | (no label, second level) | 0.3 (0.01 to 1.0) | Second retracement level (30%). |
 | TGIF displacement: price within x range of the high / low | 0.4 (0.05 to 0.5) | The week counts as a displacement up (down) when price is within this fraction of the week range from the week high (low), whatever its body. Higher values give TGIF levels more often. |
 | colors: up | green | Color of the levels after a bearish week (retracement up from the week low). |
@@ -372,15 +414,14 @@ Settings are listed in the order they appear in the settings dialog. Several set
 | (no label, width) | 2 | Width of the TGIF lines. |
 | text size | normal | Size of the TGIF labels. |
 
-### 5.5 Session Settings
+### 5.6 Session Settings
 
 | Label in dialog | Default | What it does |
 | --- | --- | --- |
-| Draw sessions, keep | on | Draws the Asia, London, NY AM and NY PM sessions and their high and low. |
-| (no label, count) | 20 (min 3) | How many sessions to keep, all four kinds together. Values above 40 are reduced to 40. Also the number of premarket ranges kept. |
-| Draw session rectangles | on | Draws a shaded box for each session. |
+| Sessions to keep | 20 (min 3) | How many sessions to keep, all four kinds together. Values above 40 are reduced to 40. Also the number of premarket ranges kept. |
+| Draw session rectangles | on | Draws a shaded box for each session, below 1H only. |
 | transparency | 75 | Transparency of the session boxes (0 opaque, 100 invisible). |
-| Session rectangles: border only | off | Draws only the outline of each session box, 2 px wide, in the session color with half the transparency above (37 at the default 75), and no fill. On Tradovate the outline is drawn solid, without the transparency. |
+| Session rectangles: border only | off | Draws only the outline of each session box, 2 px wide, in the session color with half the transparency above (37 at the default 75), and no fill. On Tradovate the outline color is blended into the chart background (attbg) instead. |
 | No session rectangles at or under | on | Hides the session boxes on low timeframes. |
 | timeframe | 5 (5 minutes) | Boxes are hidden when the chart timeframe is at or below this value and below 15 minutes. Setting a timeframe of 15m or more hides them on every chart below 15m. |
 | ses. | on | Draws the session high and low lines (also used for the premarket high and low). |
@@ -394,22 +435,20 @@ Settings are listed in the order they appear in the settings dialog. Several set
 | london | green | Box color of the London session. |
 | NY | blue | Box color of the NY AM and NY PM sessions. |
 
-### 5.6 Gaps and Ranges
+### 5.7 Gaps and Ranges
 
 | Label in dialog | Default | What it does |
 | --- | --- | --- |
-| Draw NDOG/NWOG/RTHOGs | on | Master switch for all opening gaps. |
-| keep | 10 (min 1) | Number of NDOGs, of NWOGs and of RTHOGs to keep (each). Values above 15 are reduced to 15. |
-| NDOGs | on | Draws new day opening gaps. |
-| NWOGs | on | Draws new week opening gaps. |
-| RTHOGs (timeframes up to 15m) | on | Draws regular trading hours opening gaps (15m or lower charts). |
+| Gaps to keep | 10 (min 1) | Number of NDOGs, of NWOGs and of RTHOGs to keep (each). Values above 15 are reduced to 15. |
+| NDOGs: Monday and Friday only | off | Only the first and the last NDOG of the week: the gap after Monday's session and the gap that opens Friday's session (after Thursday's). The Sunday open is the NWOG. The latest NDOG is always shown. |
 | RTHOG quadrants | on | Draws the 25% and 75% lines of the current RTHOG. |
-| min size | 25.0 | Minimum distance in points between quadrant lines; quadrants are drawn only when a quarter of the gap is larger. |
+| min size | 50.0 | Minimum distance in points between quadrant lines; quadrants are drawn only when a quarter of the gap is larger. |
 | RTHOG octants | on | Draws the 1/8, 3/8, 5/8 and 7/8 lines of the latest RTHOG until noon, when an eighth of the gap is larger than the quadrant min size. |
 | RTHOG stddevs | on | Draws standard deviation projections of the current RTHOG. |
-| min size | 25.0 | Minimum step in points; the step is the first of gap/8, gap/4, gap/2 or the whole gap that is larger than this, otherwise none are drawn. |
+| min size | 50.0 | Minimum step in points; the step is the first of gap/8, gap/4, gap/2, the whole gap or twice the gap that is larger than this, otherwise none are drawn. |
 | number of stddevs to draw above/below | 4 | Deviation lines per side. Keep it at 1 or more; to hide them, turn off "RTHOG stddevs". |
-| Draw gap rectangles | off | Draws shaded boxes for NDOG, NWOG and RTHOG gaps. |
+| auto | on | Latest RTHOG only, from the open until the market close: more deviations are drawn as price goes beyond them, so there are always at least the number above and also the next one to be hit on each side (at most 40 per side). |
+| Draw gap rectangles | on | Draws shaded boxes for NDOG, NWOG and RTHOG gaps (RTHOGs only at attenuation 0 and 1). |
 | transp | 90 | Transparency of the gap boxes. |
 | Combine gaps at similar levels | on | Draws nearby NDOGs (NWOGs) once with their outer levels ("NDOGx3"), and merges NDOGs into a NWOG at the same levels ("NWOG+NDOG"). |
 | tolerance x daily ATR | 0.05 | Maximum distance between levels to be combined, as a fraction of the daily ATR(14). Also decides when a gap is so small that it gets a single label in the middle. |
@@ -427,18 +466,17 @@ Settings are listed in the order they appear in the settings dialog. Several set
 | PO3 line | dotted | Style of the RTHOG standard deviation lines. |
 | extend old RTHOG lines | off | Extends to the right the open-side ticks (settlement, CE and open) of older RTHOGs. |
 
-### 5.7 Premarket Range
+### 5.8 Premarket Range
 
 | Label in dialog | Default | What it does |
 | --- | --- | --- |
-| Draw premarket range (m5 or less) | on | Draws the premarket range on 5m or lower charts. |
 | quadrants/stddevs for the last | 1 (1 to 5) | How many of the most recent ranges get quadrant and deviation lines. Older ranges keep only their high and low. |
 | range | Auto | Auto: 07:00-09:00 New York (US) or 06:30-08:30 Madrid (EU). Manual: uses the "manual range" setting. |
 | manual range | 07:00-09:00 | The range window in Manual mode, in the script's time zone (New York for US, Madrid for EU). |
 | PMKT quadrants | on | Draws the 25%, 50% (CE) and 75% lines. |
-| min size | 20.0 | Minimum distance in points between quadrant lines; drawn only when a quarter of the range is larger. |
+| min size | 50.0 | Minimum distance in points between quadrant lines; drawn only when a quarter of the range is larger. |
 | PMKT stddevs | on | Draws standard deviation projections above and below the range. |
-| min size | 20.0 | Minimum step in points; the step is the first of range/8, range/4, range/2 or the whole range that is larger than this, otherwise none are drawn. |
+| min size | 50.0 | Minimum step in points; the step is the first of range/8, range/4, range/2, the whole range or twice the range that is larger than this, otherwise none are drawn. |
 | number of stddevs to draw above/below | 4 (min 1) | Deviation lines per side. |
 | line | red | Color of all PMKT lines and labels (hi, lo, quadrants, CE, deviations). |
 | (no label, width) | 2 | Width of the PMKT lines. |
@@ -448,11 +486,10 @@ Settings are listed in the order they appear in the settings dialog. Several set
 | label size | normal | Text size of the PMKT labels. |
 | combine RTHOG labels, tolerance x daily ATR | 0.05 | When an RTHOG deviation and a premarket deviation are within this fraction of the daily ATR(14), one label is shown for both ("RTHOG+0.5 PMKT+1"). |
 
-### 5.8 Equal Highs / Lows
+### 5.9 Equal Highs / Lows
 
 | Label in dialog | Default | What it does |
 | --- | --- | --- |
-| Draw EQH / EQL | on | Draws untaken equal highs and lows of the chart timeframe. |
 | also from the daily chart | on | Also finds equal highs and lows on daily swings ("EQH D", "EQL D"), completed daily bars only. |
 | pivot | 3 (min 1) | Bars on each side of a swing on the chart timeframe. Larger values find fewer, more significant swings, and confirm them later. |
 | daily pivot | 3 (min 1) | Bars on each side of a swing on the daily chart. |
@@ -466,7 +503,7 @@ Settings are listed in the order they appear in the settings dialog. Several set
 | (no label, width) | 2 | Width of the EQH / EQL lines. |
 | label size | normal | Text size of the EQH / EQL labels. |
 
-### 5.9 Macros and Events
+### 5.10 Macros and Events
 
 | Label in dialog | Default | What it does |
 | --- | --- | --- |
@@ -474,8 +511,7 @@ Settings are listed in the order they appear in the settings dialog. Several set
 | (no label, color) | blue | Text color of the session name. |
 | Show current macro name | on | Shows the active macro name in the table. |
 | (no label, color) | orange | Text color of the macro name. |
-| flag macros with background color | off | Tints the chart background during every macro window (charts below 15m only). |
-| (no label, color) | black, 90% transparent | Background tint color. |
+| Macro background | black, 90% transparent | Background tint color for "Flag macros". |
 | Show active silver bullet | on | Shows "S.Bullet" in the table during a silver bullet window. |
 | (no label, color) | red | Text color of the silver bullet note. |
 
@@ -489,7 +525,7 @@ ICTlevels defines **no alerts**: it has no alert conditions and makes no alert c
 
 TradingView allows a script at most 500 lines, 500 labels and 500 boxes. ICTlevels never lets the limit delete objects silently. Before drawing, it reserves room for every enabled module (months, gaps, RTHOG, sessions, premarket ranges and deviations, EQH/EQL, TGIF, plus 10 spare) and then fits as many days as possible into what is left:
 
-- "Draw sessions, keep" is capped at 40 and "keep" for gaps at 15.
+- "Sessions to keep" is capped at 40 and "Gaps to keep" at 15.
 - "Number of days" is lowered to what fits, never below 1.
 - When anything was reduced (except the expected day cap on 5m and lower charts), the table shows "object cap: N days" and the Pine Logs show the old and new day, session and gap counts.
 
@@ -512,9 +548,9 @@ To stay fast, the script processes only a window of recent history: about 1.5 ti
 
 **Nothing is drawn.** The chart timeframe is above 1 hour. Use 1h or lower.
 
-**The premarket range is missing.** It needs 5m or lower and "Draw premarket range" on. Quadrants and deviations are drawn only when the range is large enough (over 80 points for quadrants and over 20 points for deviations with the defaults); otherwise only the Pre-mkt high and low lines are shown, without the red PMKT hi / lo lines.
+**The premarket range is missing.** It needs 5m or lower and "PMKT range" on in Enable / Filter. Quadrants and deviations are drawn only when the range is large enough (over 200 points for quadrants and over 50 points for deviations with the defaults); otherwise only the Pre-mkt high and low lines are shown, without the red PMKT hi / lo lines.
 
-**There is no RTHOG.** It needs 15m or lower. Quadrants need a gap over 100 points with the defaults, and deviations a gap over 25 points. RTHOGs are computed only for the last 5000 bars.
+**There is no RTHOG.** It needs 15m or lower. Quadrants need a gap over 200 points with the defaults, and deviations a gap over 50 points. RTHOGs are computed only for the last 5000 bars.
 
 **NDOGs or NWOGs do not appear.** The gap is completed only on a bar that opens exactly at 18:00 New York (US) or 00:00 Madrid (EU), and its first edge comes from the bar that ends at 17:00 / 23:00 or the bar that opens then. If your symbol's data has no bars at those times, no gaps are drawn.
 
@@ -559,6 +595,6 @@ To stay fast, the script processes only a window of recent history: about 1.5 ti
 | REH / REL | Relative equal highs / lows: highs (lows) close to each other within a tolerance. |
 | RTHOG | Regular trading hours opening gap: between the regular session settlement and the next regular open. |
 | Settlement | The last price of the regular session as used by the script (close of the last bar before 16:15 New York or 17:30 Madrid). |
-| Silver bullet | A one-hour ICT window (10:00-11:00, and 14:00-15:00 for US) for a fair value gap entry. |
+| Silver bullet | A one-hour ICT window (US: 03:00-04:00, 10:00-11:00 and 14:00-15:00 New York; EU: 10:00-11:00) for a fair value gap entry. |
 | Sweep / taken | Price trading through a level, taking the liquidity resting there. |
 | TGIF | "Thank God it's Friday": the expected 20%-30% retracement of a displaced week on Friday or Monday. |

@@ -1,50 +1,27 @@
-//@version=5
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © franjballest
+//@version=6
 indicator("Wicks", overlay=true, max_lines_count=500)
 
+// Redraws the candle wicks as thick lines, as OTEFibWick does, and nothing else.
 
-// NB: copied from the Thick Wick indicator width
-// added stuff to draw the last wick CEs.
+GW = "Wicks"
+wick_width = input.int(2, "Wick Width", group = GW, minval = 1, maxval = 10, inline = "w")
+wick_color = input.color(color.gray, "color", group = GW, inline = "w")
+dAlt = input.bool(false, "Data from another symbol", group = GW, inline = "dsym",
+     tooltip = "Draw the wicks of this symbol's candles, at the chart timeframe, instead of the chart's own")
+dSym = input.symbol("CME_MINI:MNQ1!", "", group = GW, inline = "dsym")
 
-// Inputs
-wick_width = input.int(2, "Wick Width", minval=1, maxval=10)
-wick_color = input.color(color.gray, "Wick Color")
-var dowick = input.bool(false,"draw wick  CE", inline="wick")
-var minwick = input.float(20, "sz", inline = "wick")
-var wickdx = input.int(1, "wid",  inline = "wick")
+string dataSym = dAlt ? dSym : syminfo.tickerid
+[dO, dH, dL, dC] = request.security(dataSym, timeframe.period, [open, high, low, close], gaps = barmerge.gaps_off,
+     lookahead = barmerge.lookahead_off)
 
-body_top = math.max(open, close)
-body_bottom = math.min(open, close)
-
-wdx() =>
-    r = wickdx
-    if r == 0 and timeframe.in_seconds()/60 < 15
-        r := 4
-    else if r == 0
-        r := 1
-    r
-var wicks = array.new<line>()
-if dowick
-    bodyh = math.max(open[1],close[1])
-    bodyl = math.min(open[1],close[1])
-    wh = high[1]-bodyh
-    wl = bodyl-low[1]
-    
-    if wh > minwick
-        ce = math.avg(high[1],bodyh)
-        ln = line.new(bar_index-1, ce, bar_index-1+wdx(), ce)
-        wicks.push(ln)
-    if wl > minwick
-        ce = math.avg(low[1],bodyl)
-        ln = line.new(bar_index-1, ce, bar_index-1+wdx(), ce)
-        wicks.push(ln)
-    if wicks.size() > 30
-        w = wicks.shift()
-        w.delete()
-
-// Draw upper wick
-if high > body_top
-    line.new(bar_index, high, bar_index, body_top, color=wick_color, width=wick_width)
-
-// Draw lower wick  
-if low < body_bottom
-    line.new(bar_index, low, bar_index, body_bottom, color=wick_color, width=wick_width)
+// one line per wick; TradingView removes the oldest lines past max_lines_count (500), so the last wicks that fit
+// are kept. On the live bar each tick is rolled back with its lines, so a new line per tick is right.
+if not na(dO)
+    float bodyTop = math.max(dO, dC)
+    float bodyBot = math.min(dO, dC)
+    if dH > bodyTop
+        line.new(bar_index, dH, bar_index, bodyTop, color = wick_color, width = wick_width)
+    if dL < bodyBot
+        line.new(bar_index, dL, bar_index, bodyBot, color = wick_color, width = wick_width)

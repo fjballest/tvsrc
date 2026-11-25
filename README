@@ -24,7 +24,7 @@ FVGs (source FVGS+IFVG+OTE.txt, i.e. FVGs+IFVG+OTE5):
 Levels (source ICTlevels.txt):
 
 	python3 tools/mklevelsderiv.py
-		writes ICTgaps.txt and ICTday.txt.
+		writes ICTgaps.txt, ICTday.txt, NWOGs.txt, NDOGs.txt and RTHOGs.txt.
 
 ICTScalp (source ICTScalp.txt):
 

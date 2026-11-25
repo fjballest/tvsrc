@@ -19,15 +19,20 @@ OTE4_KEEP = {"deConf", "deInv", "deMaxInv", "deDead", "deDeadCol"}  # IFVG confi
 OTE4_DROP = re.compile(r"^(brk\w*|mb\w*|de\w*|ifvgswings|useSwingFilter|showSwing|lblAp)$")
 OTE4_SET = {"brkOn": "false", "mbOn": "false", "lblAp": "false"}
 
-# ICTblocks: breakers, mitigation blocks and the Delivery Engine (FVGs / IFVGs computed, not drawn)
+# ICTblocks: breakers, mitigation blocks and the Delivery Engine (FVGs / IFVGs computed, not drawn), plus the
+# OB mean threshold section of tools/ictblocks-ob.txt (appended as is)
 BLK_KEEP = re.compile(r"^(brk\w*|mb\w*|deDisp|deDispType|deStdLen|deStdX|deDispBar|deDispCol|deConf|deInv|"
-                      r"deMaxInv|plMode|minfvg|maxfvg)$")
-BLK_SET = {"dofp": "false", "dowick": "false", "useOTE": "false", "oteFvg": "false", "showOTEband": "false",
+                      r"deMaxInv|plMode|minfvgIn|maxfvgIn|nqscale)$")
+BLK_SET = {"sbOn": "false", "dofp": "false", "dowick": "false", "useOTE": "false", "oteFvg": "false", "showOTEband": "false",
            "showSignals": "false", "showOTEsig": "false", "doifvgalert": "false", "dofvgalert": "false",
            "dowickalert": "false", "fp1m": "false", "oteHtf1": "false", "oteHtf2": "false",
-           "deAplus": "false", "deFlag": "false", "showSwing": "false", "ifvgswings": "false"}
+           "deAplus": "false", "deFlag": "false", "showSwing": "false", "ifvgswings": "false",
+           "attLvl": "0"}  # no attenuation of the block drawings
 BLK_SUBST = [  # (old, new): defaults of the inputs it keeps
     ('brkBox = input.bool(false, "Rectangle"', 'brkBox = input.bool(true, "Rectangle"'),
+    ('brkShd = input.bool(false, "Shadow rectangle"', 'brkShd = input.bool(true, "Shadow rectangle"'),
+    ('mbShd = input.bool(false, "Shadow rectangle"', 'mbShd = input.bool(true, "Shadow rectangle"'),
+    ('mbPart = input.string("Body"', 'mbPart = input.string("Full candle"'),
     ('mbBox = input.bool(false, "Rectangle"', 'mbBox = input.bool(true, "Rectangle"'),
     ('"Breakers at FVG / IFVG pullbacks"', '"Breakers"'),
     ('"Mitigation blocks at FVG / IFVG pullbacks"', '"Mitigation blocks"'),
@@ -157,11 +162,12 @@ def derive(lines, tag, keep, setv, title, header, srctitle="FVGs+IFVG+OTE5"):
 
 
 def fold(txt):
-    """both derivatives have deFlag and deAplus as constants false: drop bw() (always 1) and deAp() (always
-    false), whose arguments would be unused"""
-    txt, n = re.subn(r"(?m)^// \[DE\] border width[^\n]*\nmethod bw\(FVG f\) =>\n(?: [^\n]*\n)+", "", txt)
+    """both derivatives have deFlag and deAplus as constants false: bw() keeps only the silver bullet width,
+    deAp() (always false) is dropped, its argument would be unused"""
+    txt, n = re.subn(r"(?m)^// \[DE\] border width[^\n]*\nmethod bw\(FVG f\) =>\n(?: [^\n]*\n)+",
+                     "// [SB] border width: the silver bullet FVG has its own\nmethod bw(FVG f) =>\n"
+                     "    f.sb and not f.isfp and not f.isifp ? sbWid : 1\n\n", txt)
     assert n == 1, "bw"
-    txt = txt.replace("f.bw()", "1")
     txt, n = re.subn(r"(?m)^(?:// A\+ for an IFVG[^\n]*\n)?deAp\(int d\) =>\n(?: [^\n]*\n)+", "", txt)
     assert n == 1, "deAp"
     txt = re.sub(r"\bdeAp\([^()]*\)", "false", txt)
@@ -169,7 +175,7 @@ def fold(txt):
     txt = re.sub(r"(?m)^    if isMss and false\n(?:        [^\n]*\n)+", "", txt)
     txt = re.sub(r"f\.aplus := deAplus and not na\(deMss(?:Up|Dn)Bar\)[^\n]*", "f.aplus := false // [DE] A+ off", txt)
     txt = re.sub(r"(?m)^var int deMss(?:Up|Dn)Bar = na[^\n]*\n", "", txt)
-    assert "bw(" not in txt and not re.search(r"\bdeAp\b|deMss(Up|Dn)Bar", txt)
+    assert "deFlag and f.disp" not in txt and not re.search(r"\bdeAp\b|deMss(Up|Dn)Bar", txt)
     return txt
 
 
@@ -245,6 +251,95 @@ def noApLbl(txt):
     return out + txt[last:]
 
 
+def blkInputs(s):
+    """ICTblocks only: the options shared by breakers and mitigation blocks go to one Block settings group (the
+    brk* / mb* names become constants set from it), the drawing is one choice (rectangle, filled rectangle, shadow
+    or segment) and the IFVG settings come after the blocks"""
+    a = s.index("// Breakers =========\n")
+    b = s.index("// Delivery Engine (from Nuno's")
+    reg = s[a:b]
+    def stmt(name, txt):
+        m = re.search(r"(?m)^%s = [^\n]*\n(?:    [^\n]*\n)*" % name, txt)
+        assert m, name
+        return m.group(0)
+    brkOn, mbOn = stmt("brkOn", reg), stmt("mbOn", reg)
+    ifvg = ""
+    for n in ("deConf", "deInv", "deMaxInv"):
+        st = stmt(n, s)
+        assert s.count(st) == 1, n
+        s = s.replace(st, "")
+        ifvg += st
+    a = s.index("// Breakers =========\n")
+    b = s.index("// Delivery Engine (from Nuno's")
+    new = ('// Block settings (breakers and mitigation blocks) =========\n'
+           'G_BLK = "Block settings"\n'
+           'blkMode = input.string("Last candle", "Zone", options = ["Last candle", "Whole sequence"], group = G_BLK,\n'
+           '    inline = "zm", tooltip = "Last candle: the last up-close candle making the high (bullish) / down-close "\n'
+           '    + "candle making the low (bearish). Whole sequence: that candle and the consecutive up-close / down-close "\n'
+           '    + "candles before it. Full candle / Body: the zone spans the high to the low of its candle(s), or their bodies.")\n'
+           'blkPart = input.string("Full candle", "", options = ["Full candle", "Body"], group = G_BLK, inline = "zm")\n'
+           'blkLen = input.int(2, "Swing length / keep", minval = 1, maxval = 20, group = G_BLK, inline = "zl",\n'
+           '    tooltip = "Pivot length (left and right) of the lows and highs, and blocks kept per kind and direction.")\n'
+           'blkKeep = input.int(3, "", minval = 1, maxval = 10, group = G_BLK, inline = "zl")\n'
+           'blkAge = input.int(60, "Max bars to the pullback", minval = 5, maxval = 1000, group = G_BLK,\n'
+           '    tooltip = "Bars from the zone (its last candle) within which the pullback has to come; later the block is dropped "\n'
+           '    + "(of no interest at this timeframe, look at a higher one). Once tagged it is extended to each later pullback "\n'
+           '    + "into it, until a candle closes through its far side (failed; erased if no pullback had worked yet) or no "\n'
+           '    + "pullback comes for that many bars.")\n'
+           'blkDraw = input.string("Shadow", "Draw", options = ["Rectangle", "Filled rectangle", "Shadow", "Segment", "CE segment"],\n'
+           '    group = G_BLK, inline = "zd", tooltip = "Rectangle: border and label, no fill. Filled rectangle: with a "\n'
+           '    + "semi-transparent fill in the block color. Shadow: a grey transparent rectangle without border. Segment: only "\n'
+           '    + "the top of the zone (bullish) / its bottom (bearish), with the label; where it goes depends on Full candle / "\n'
+           '    + "Body. CE segment: the same, at the C.E. (middle) of the zone. Style and width are those of the border, the mid line and the segment. The bold IFVG labels and the "\n'
+           '    + "B / M labels of the FVGs are set either way.")\n'
+           'blkSty = getstyle(input.string("dashed", "", options = ["solid", "dashed", "dotted"], group = G_BLK, inline = "zd"))\n'
+           'blkW = attW(input.int(1, "width", minval = 1, maxval = 4, group = G_BLK, inline = "zd"))\n'
+           'blkFlag = input.bool(false, "Flag candles", group = G_BLK, inline = "zf",\n'
+           '    tooltip = "Flag candles: color the block candle(s) (the zone candles) with the block color, once it is "\n'
+           '    + "tagged at the pullback; removed together with the block. Mid line: draw the C.E. of the rectangle (grey with "\n'
+           '    + "the shadow; not drawn with the segment).")\n'
+           'blkCe = input.bool(true, "Mid line (C.E.)", group = G_BLK, inline = "zf")\n'
+           'blkLbl = input.string("right", "Label", options = ["right", "left", "center", "top left", "top right"], group = G_BLK,\n'
+           '    tooltip = "Where the B↑ / B↓ / M↑ / M↓ label goes in the rectangle: centered vertically on its right / left "\n'
+           '    + "side, in the middle, or at a top corner. With a segment it sits on the segment, on that side.")\n'
+           'blkCeSeg = blkDraw == "CE segment"\n'
+           'blkSeg = blkDraw == "Segment" or blkCeSeg\n'
+           'blkLblH = blkLbl == "left" or blkLbl == "top left" ? text.align_left : blkLbl == "center" ? text.align_center : text.align_right\n'
+           'blkLblV = blkLbl == "top left" or blkLbl == "top right" ? text.align_top : text.align_center\n'
+           '// segment: the label goes on the segment (top of a bullish zone, bottom of a bearish one, middle for the CE segment)\n'
+           'blkLblVd(int d) => blkCeSeg ? text.align_center : blkSeg ? (d == 1 ? text.align_top : text.align_bottom) : blkLblV\n'
+           '// level of the mid line, or of the segment\n'
+           'blkY(int d, float hi, float lo) => blkSeg and not blkCeSeg ? (d == 1 ? hi : lo) : (hi + lo) / 2\n\n'
+           '// Breakers =========\nG_BRK = "Breakers"\n' + brkOn +
+           'brkCol = attB(input.color(color.orange, "↑", group = G_BRK, inline = "bc"))\n'
+           'brkColDn = attB(input.color(color.fuchsia, "↓", group = G_BRK, inline = "bc"))\n'
+           'brkC(int d) => d == 1 ? brkCol : brkColDn  // color of a bullish / bearish block\n\n'
+           '// Mitigation blocks =========\nG_MB = "Mitigation blocks"\n' + mbOn +
+           'mbCol = attB(input.color(color.orange, "↑", group = G_MB, inline = "mc"))\n'
+           'mbColDn = attB(input.color(color.fuchsia, "↓", group = G_MB, inline = "mc"))\n'
+           'mbC(int d) => d == 1 ? mbCol : mbColDn  // color of a bullish / bearish block\n\n'
+           '// IFVG Settings (after the blocks) =========\n' + ifvg + '\n'
+           '// breakers and mitigation blocks share the block settings\n')
+    for k in ("brk", "mb"):
+        new += ("%sMode = blkMode\n%sPart = blkPart\n%sLen = blkLen\n%sKeep = blkKeep\n%sAge = blkAge\n"
+                "%sBox = true\n%sShd = blkDraw == \"Shadow\"\n%sNoFill = blkDraw != \"Filled rectangle\"\n"
+                "%sSty = blkSty\n%sW = blkW\n%sFlag = blkFlag\n%sCe = blkCe and not blkSeg\n%sLblH = blkLblH\n" % ((k,) * 13))
+    s = s[:a] + new + "\n" + s[b:]
+    # drawing: the segment hides the rectangle (label kept, on the segment) and puts the line at the zone edge
+    for k in ("brk", "mb"):
+        for x, y, n in (("border_color = %sShd ? color.new(color.gray, 100)" % k,
+                         "border_color = %sShd or blkSeg ? color.new(color.gray, 100)" % k, 2),
+                        ("border_width = %sShd ? 0 : %sW" % (k, k), "border_width = %sShd or blkSeg ? 0 : %sW" % (k, k), 2),
+                        ("text_valign = %sLblV)" % k, "text_valign = blkLblVd(b.dir))", 2),
+                        ("b.ml := %sCe ? line.new(b.t, (b.hi + b.lo) / 2, time, (b.hi + b.lo) / 2," % k,
+                         "b.ml := %sCe or blkSeg ? line.new(b.t, blkY(b.dir, b.hi, b.lo), time, blkY(b.dir, b.hi, b.lo)," % k, 1),
+                        ("b.ml := %sCe ? line.new(b.t, mid, time, mid," % k,
+                         "b.ml := %sCe or blkSeg ? line.new(b.t, blkY(b.dir, b.hi, b.lo), time, blkY(b.dir, b.hi, b.lo)," % k, 1)):
+            assert s.count(x) == n, (x, s.count(x))
+            s = s.replace(x, y)
+    return s
+
+
 def main():
     os.chdir(os.path.dirname(os.path.abspath(__file__)) + "/..")
     src = open(SRC, newline="").read()
@@ -270,9 +365,18 @@ def main():
     for a, b in BLK_SUBST:
         assert s.count(a) == 1, a
         s = s.replace(a, b)
+    # no C.E. lines here: lnColor needs no ce argument (it would be reported as unused)
+    for a, b in [("method lnColor(FVG f, bool ce = false) =>", "method lnColor(FVG f) =>"),
+                 ("(attLvl >= (ce ? 4 : 3) and not stySeg) ? color.new(c, 100) : ce ? attCE(c) : c", "(attLvl >= 3 and not stySeg) ? color.new(c, 100) : c"),
+                 ("bool sbB = f.sb and not ce and not hid", "bool sbB = f.sb and not hid")]:
+        assert s.count(a) == 1, a
+        s = s.replace(a, b)
     # Border only: no fill for the block rectangles (the shadow rectangle keeps its own)
     s, n = re.subn(r"\b(brk|mb)Shd \? (80|88) : (85|93)\b", r"\1Shd ? \2 : (\1NoFill ? 100 : \3)", s)
     assert n == 6, n
+    s = blkInputs(s)
+    # OB mean threshold (15m, experimental): only in ICTblocks, its own section at the end
+    s = s.rstrip("\n") + "\n" + open("tools/ictblocks-ob.txt").read()
     open("FVGS+IFVG+OTE4.txt", "w", newline="").write(ote4)
     open("ICTblocks.txt", "w", newline="").write(s)
     print("FVGS+IFVG+OTE4.txt", ote4.count("\n"), "lines; ICTblocks.txt", s.count("\n"), "lines")

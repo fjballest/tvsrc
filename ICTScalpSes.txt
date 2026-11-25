@@ -11,7 +11,8 @@
 // ICTScalp: enter-long / enter-short signals only, to experiment with scalping conditions.
 // It copies, unchanged, the logic of the other indicators (no drawing):
 //  - IFVGs and OTE IFVGs: close mode of FVGs+IFVG+OTE (last long FVG -> IFVG- candidate,
-//    last short FVG -> IFVG+ candidate, confirmed by a close through it, cancelled by a close back)
+//    last short FVG -> IFVG+ candidate, confirmed by a close through it, cancelled by a close back, with
+//    the invalidation hold: a near close back with a rejection wick waits a few bars)
 //  - Higher timeframe levels: ICTcotas (D / W / M FVGs, IFVGs, VIs and wick CEs, plus the FVGs of
 //    15m / 1H / 4H / D / W)
 //  - Bias table: IFVGCISDbias (IFVG bias and delivery rows), with every timeframe selected
@@ -215,6 +216,13 @@ var maxfvg = input.float(10000, "max", minval = 100, group = G_I, inline = "sz",
 pivL = input.int(10, "Swing pivot left / right", minval = 1, group = G_I, inline = "piv",
     tooltip = "Pivot lengths used to find the leg before the FVG for the OTE prior-leg rejection.")
 pivR = input.int(3, "", minval = 1, group = G_I, inline = "piv")
+ifvgTolT = input.int(4, "Invalidation margin (ticks), hold bars", minval = 0, group = G_I, inline = "ho",
+    tooltip = "A close back through a confirmed IFVG by no more than this many ticks, with a wick beyond the close "+
+        "(a rejection), does not cancel it at once: the IFVG is on hold for up to the given bars. A close back "+
+        "inside (or beyond it in its direction) ends the hold and it stays an IFVG; a close beyond the margin, or "+
+        "the hold running out with the close still past it, cancels it. 0 ticks: cancel on the first close "+
+        "through. The invalidation hold of FVGs+IFVG+OTE.")
+ifvgHold = input.int(3, "", minval = 1, maxval = 10, group = G_I, inline = "ho")
 
 const string G_OTE = "OTE (FVGs+IFVG+OTE settings)"
 oteMin = input.float(0.62, "OTE retracement: lower", minval = 0.0, maxval = 1.0, step = 0.01, group = G_OTE, inline = "lvl")
@@ -651,22 +659,51 @@ var FVG bullifvg = na
 var FVG bearifvg = na
 var int bullconfirm = na
 var int bearconfirm = na
+var int bullHold = na   // [HOLD] bar of the first close back through the confirmed IFVG, na: none
+var int bearHold = na
 var bool bullUsed = false   // return entry already taken for this confirmation
 var bool bearUsed = false
 if not na(lastlongfvg)
     bearifvg := lastlongfvg
     bearconfirm := na
+    bearHold := na
     bearUsed := false
     gBear.gStart(-1, bearifvg.lo, bearifvg.hi, h4, bearifvg.sbar)
 if not na(lastshortfvg)
     bullifvg := lastshortfvg
     bullconfirm := na
+    bullHold := na
     bullUsed := false
     gBull.gStart(1, bullifvg.lo, bullifvg.hi, l4, bullifvg.sbar)
 
+// [HOLD] closed bar check of a confirmed IFVG of direction d (zone lo..hi) with hold h (bar of the first close
+// through, na: none). Returns [cancel, new hold] (ifvgOut of FVGs+IFVG+OTE).
+ifvgOut(int d, float lo, float hi, int h) =>
+    float tol = ifvgTolT * syminfo.mintick
+    bool past = d < 0 ? close > hi : close < lo
+    bool far = d < 0 ? close > hi + tol : close < lo - tol
+    bool cancel = false
+    int nh = na
+    if past
+        if far
+            cancel := true
+        else if not na(h)
+            cancel := bar_index - h >= ifvgHold
+            nh := cancel ? na : h
+        else if d < 0 ? high > close : low < close
+            nh := bar_index
+        else
+            cancel := true
+    [cancel, nh]
+
 bool bullLeave = false  // this candle confirms an IFVG+ (price leaves it upwards)
 bool bearLeave = false
-if not na(bullifvg) and not na(bullconfirm) and barstate.isconfirmed and close < bullifvg.lo
+bool bullOut = false
+if not na(bullifvg) and not na(bullconfirm) and barstate.isconfirmed
+    [ifC, ifH] = ifvgOut(1, bullifvg.lo, bullifvg.hi, bullHold)
+    bullOut := ifC
+    bullHold := ifH
+if bullOut
     bullconfirm := na
     gBull.gCancel()
 if not na(bullifvg) and barstate.isconfirmed and close > bullifvg.hi and na(bullconfirm)
@@ -674,7 +711,12 @@ if not na(bullifvg) and barstate.isconfirmed and close > bullifvg.hi and na(bull
     bullUsed := false
     gBull.gConfirm()
     bullLeave := true
-if not na(bearifvg) and not na(bearconfirm) and barstate.isconfirmed and close > bearifvg.hi
+bool bearOut = false
+if not na(bearifvg) and not na(bearconfirm) and barstate.isconfirmed
+    [ifC, ifH] = ifvgOut(-1, bearifvg.lo, bearifvg.hi, bearHold)
+    bearOut := ifC
+    bearHold := ifH
+if bearOut
     bearconfirm := na
     gBear.gCancel()
 if not na(bearifvg) and barstate.isconfirmed and close < bearifvg.lo and na(bearconfirm)

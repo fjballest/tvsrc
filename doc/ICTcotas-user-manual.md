@@ -82,6 +82,8 @@ Timeframe-level labels sit just to the right of each line end and read:
 | `1H UW CE` | Upper wick CE from 1H candles (by-timeframe wick option) |
 | `D FVG+ hi` | Same as `D FVG hi` with **direction (+/-)** on: + bullish, - bearish |
 
+When the hi, lo and CE labels of a level would sit too close to read (closer than **one label when hi / lo / CE closer than x daily ATR**, 0.05 of the daily ATR(14) by default), the level gets a single label without the part, `D VI`, at its CE instead of three labels on top of each other. The lines are still drawn. The same distance combines labels of different levels: when a VI edge and a daily FVG low (or any other labels) fall at about the same price, one label lists them all, `D VI / D FVG lo`, at the price and in the color of the most important one (attenuation rank; the lowest price first on ties).
+
 The sign is added only to FVG, IFVG and VI labels, never to wick labels. All words (D, W, M, FVG, IFVG, VI, UW, LW, hi, lo, CE) can be changed in the settings. Box labels of the by-timeframe layer are described in section 7.
 
 ## 4. Fair Value Gaps and IFVGs (D / W / M)
@@ -174,7 +176,7 @@ ICT treats the 50 percent of a long wick as a level where price often reacts on 
 
 With the default mitigation rule (Fully filled, wick), a lower wick CE is removed when price trades down to the wick's low, and an upper wick CE when price trades up to the wick's high. With **CE touched**, the line is removed as soon as the CE is touched.
 
-The 1H and 4H wick CE options in the last settings section add the same kind of lines for those timeframes, using the Wick CE settings (they need **Draw wick CE** on). They use the 1H / 4H box colors and their labels start with `1H` or `4H`.
+The 1H and 4H wick CE options in the last settings section (on by default) add the same kind of lines for those timeframes, using the Wick CE settings (they need **Draw wick CE** on). They use the 1H / 4H box colors and their labels start with `1H` or `4H`.
 
 ### ULW CE
 
@@ -216,11 +218,11 @@ Ticked timeframes equal to or below the chart timeframe are ignored, so a D box 
 
 ### Right margin layout
 
-With **Draw in the right margin** on, the boxes are drawn in the right margin instead of over the candles. Each enabled timeframe gets its own column, from the lowest timeframe on the left to the highest on the right. Each FVG or IFVG is a box at its own high and low, with its CE box, and a label centered in the box: the timeframe on one line and, below it, an up arrow (bullish) or a down arrow (bearish), so the boxes can be thin. An IFVG adds an "i" to the timeframe ("1Hi") and shows its new direction. The show TF option still applies (off leaves just the arrow); the FVG / IFVG, direction (+/-) and position options do not, and there is no formation marker.
+With **Draw in the right margin** on (the default), the boxes are drawn in the right margin instead of over the candles. Each enabled timeframe gets its own column, from the lowest timeframe on the left to the highest on the right. Each FVG or IFVG is a box at its own high and low, with its CE box, and a label centered in the box: the timeframe on one line and, below it, an up arrow (bullish) or a down arrow (bearish), so the boxes can be thin. An IFVG adds an "i" to the timeframe ("1Hi") and shows its new direction. The show TF option still applies (off leaves just the arrow); the FVG / IFVG, direction (+/-) and position options do not, and there is no formation marker.
 
 - **offset**: bars between the last bar and the first column (default 4).
 - **width**: bars per box; columns are one bar apart (default 4).
-- **extend levels** (off): draws the high, the low and (with CE box on) the CE of each FVG as lines from the left edge of its box back to the point chosen next to it: **for** goes back **candles** bars before the last one (default 20), **to start** goes to the start of the FVG, and **to creation** goes to the end of the FVG's third candle, when the gap was formed, so the third candle's own highs and lows are not read as bounces on the FVG levels.
+- **extend levels** (on, to creation by default): draws the high, the low and (with CE box on) the CE of each FVG as lines from the left edge of its box back to the point chosen next to it: **for** goes back **candles** bars before the last one (default 20), **to start** goes to the start of the FVG, and **to creation** goes to the end of the FVG's third candle, when the gap was formed, so the third candle's own highs and lows are not read as bounces on the FVG levels.
 
 ### How to use it
 
@@ -239,6 +241,10 @@ The tables follow the order of the settings dialog. Several controls often share
 | Monthly | on | Levels from monthly candles. Chart timeframe must be lower than 1M |
 | extra line width per timeframe step | 1 (0 to 2) | Extra width added to weekly lines (1 step) and monthly lines (2 steps) over daily ones. 0 makes all timeframes the same width. Does not affect the by-timeframe layer |
 | remove when | Fully filled (wick) | Mitigation rule for all levels (see table below). FVGs follow the IFVG rule instead while it is enabled; IFVGs, VIs and wick CEs always follow this rule |
+| Turtle soup / continuation indications | on | Small up / down triangles in a chart corner, one per timeframe (see Turtle soup / continuation below) |
+| Attenuation | 2 (0 to 4) | Dims the drawings without changing their settings. 0 draws everything as configured; 4 is the most dimmed (see below) |
+| Ignore wicks longer than (daily ATRs) | 6 | Bad data filter. A wick longer than this many daily ATRs, on any candle (chart or higher timeframe), is taken as a bad print: the candle's high or low is taken at its body, so it makes no FVG, VI, wick CE or turtle soup, and does not mitigate levels. 0 turns it off |
+| Scale sizes using NQ sizes as reference | on | Sizes in points are set for NQ. When on, they are multiplied by a fixed factor for the chart instrument, roughly its typical range relative to NQ: ES 0.2, YM 1.3, RTY 0.1, DAX 0.7 (with their micros and CFDs: MES, US500, SPX; MYM, US30; M2K, US2000; FDXM, GER40, DE40...); NQ, MNQ, NAS100 and US100 are 1, and any other instrument keeps the sizes as given. Scaled: the FVG, VI and multi-timeframe FVG minimum sizes. Off: the sizes are used as typed |
 
 Mitigation rules (tested on every chart bar):
 
@@ -250,6 +256,18 @@ Mitigation rules (tested on every chart bar):
 | Fully filled (close) | a candle of the level's own timeframe closes below its low | a candle of the level's own timeframe closes above its high |
 
 For a wick CE, "low" and "high" are the ends of the wick.
+
+Attenuation ranks (a first version, to be tuned):
+
+| Rank | Levels |
+| ------- | -------------- |
+| important | weekly and monthly FVGs and IFVGs (lines and boxes) |
+| normal | daily and 4H FVGs and IFVGs; weekly and monthly VIs, wick CEs and ULW CEs |
+| minor | 15m and 1H FVG boxes; daily VIs, wick CEs and ULW CEs; 1H and 4H wick CEs |
+
+Each attenuation level makes minor drawings the most transparent and important ones the least (as in ICTlevels): lines, labels and fills fade, and widths go down by 1 when dimmed enough (never below 1). The fills of the daily, weekly and monthly FVG and VI rectangles follow their own steps: at attenuation 1 they fade like the lines, at 2 they fade faster, and at 3 and 4 they are not drawn, except for VIs that are narrow (at most 0.1 of the daily ATR) when there are at most three such VIs on the chart.
+
+With **Draw in the right margin** on, the margin boxes, their labels and the links to them are dimmed as important drawings whatever their rank; only the extended levels over the candles use the rank of their FVG. In Tradovate a faded color is the color blended into the chart background: set **attbg** (white by default) to your chart background color.
 
 ### Colors (by timeframe)
 
@@ -273,6 +291,7 @@ Fills use these colors with the transparency set in each section.
 | direction (+/-) | off | Appends + (bullish) or - (bearish) to FVG, IFVG and VI labels |
 | size | normal | tiny, small, normal, large or huge, for line labels |
 | offset | 2 (min 1) | Bars between the last bar and the right end of all lines, boxes and labels |
+| one label when hi / lo / CE closer than x daily ATR | 0.05 | A level whose hi, lo and CE labels would be closer than this fraction of the daily ATR(14) gets one label (`D VI`) at its CE, and labels of different levels that close are combined (`D VI / D FVG lo`). 0 always uses one label per line |
 | text: daily | D | Timeframe text for daily levels |
 | weekly | W | Timeframe text for weekly levels |
 | monthly | M | Timeframe text for monthly levels |
@@ -366,23 +385,47 @@ Fills use these colors with the transparency set in each section.
 | direction (+/-) | off | Include + or - |
 | position | Inside right | Right margin, Inside left, Inside right, Center, Left of box (section 7) |
 | at | CE | Vertical anchor of the label: High, CE or Low |
-| wick CE: 1H | off | Adds 1H wick CE lines (needs Draw wick CE on and a chart lower than 1H) |
-| 4H | off | Adds 4H wick CE lines (needs Draw wick CE on and a chart lower than 4H) |
-| Draw in the right margin | off | Draws the boxes in the right margin, one column per timeframe, labeled with the timeframe and an up / down arrow below it (section 7) |
+| wick CE: 1H | on | Adds 1H wick CE lines (needs Draw wick CE on and a chart lower than 1H) |
+| 4H | on | Adds 4H wick CE lines (needs Draw wick CE on and a chart lower than 4H) |
+| Draw in the right margin | on | Draws the boxes in the right margin, one column per timeframe, labeled with the timeframe and an up / down arrow below it (section 7) |
 | offset | 4 | Bars between the last bar and the first margin column |
 | width | 4 | Bars per margin box |
-| extend levels | off | Margin only: lines from the high, low and CE of each FVG back into the chart |
-| (mode) | for | Where the extended lines start: **for** the number of candles below, **to start** the start of the FVG, **to creation** the end of its third candle |
+| extend levels | on | Margin only: lines from the high, low and CE of each FVG back into the chart |
+| (mode) | to creation | Where the extended lines start: **for** the number of candles below, **to start** the start of the FVG, **to creation** the end of its third candle |
 | candles | 20 | How far back the extended lines go with **for**, in candles before the last one |
 
 The by-timeframe timeframe names in labels (15m, 1H, 4H, D, W, M) are fixed; the **text: daily / weekly / monthly** inputs do not change them.
+
+### Turtle soup / continuation
+
+With **Turtle soup / continuation indications** on (General), a row of small triangles in a chart corner shows, for a few timeframes, what price is doing with the previous completed candle of that timeframe:
+
+| Previous candle | Forming candle and price now | Triangle |
+| ------- | ----- | -------------- |
+| down | took the previous low and price is back above the previous close (turtle soup up) | bright green ▲ |
+| up | took the previous high and price is back below the previous close (turtle soup down) | bright red ▼ |
+| down | traded above its own open and price is now below the previous close (continuation down) | grey ▼ |
+| up | traded below its own open and price is now above the previous close (continuation up) | grey ▲ |
+| | nothing of the above | faint circle ○ |
+
+A continuation is cancelled for the rest of the forming candle once a chart bar closes back beyond the previous close. For the timeframe of the chart itself (the forming candle is the forming chart bar) it is cancelled as soon as price trades back beyond the previous close, tick by tick. The candles are built from the chart bars. Timeframes, lowest first: 15m, 1H and 4H on charts up to 15m; 1H, 4H and D on charts up to 1H; 4H, D and W on charts up to 4H; D and W on daily charts; W on weekly charts; none above.
+
+| Setting | Default | What it does |
+|---|---|---|
+| position | bottom right | Corner of the triangles (bottom right / left / center, middle right, top right / left) |
+| size | normal | Size of the triangles |
+| timeframe names | on | The timeframe under each triangle |
+| turtle soup: up / down | bright green / bright red | Colors of the turtle soup triangles |
+| continuation | grey | Color of the continuation triangles, the names and (fainter) the circles |
+
+In NinjaTrader the corner is one of the four chart corners and the row is several monospaced texts; with Calculate on bar close the forming candle is updated when each chart bar closes. In Tradovate the triangles are placed by pixel offsets from the corner.
 
 ### Daily Settings
 
 | Setting | Default | What it does |
 |---|---|---|
 | Use settlement (SET) on daily | auto | Futures only (TradingView only). Which close the daily candles use for the daily FVG, VI, wick CE and ULW CE levels. **on**: the settlement price (TradingView's "use settlement as close"). **off**: the last trade. **auto**: each completed daily candle is read both ways, and the version whose largest volume imbalance or wick is bigger is used; on a tie, off. Weekly, monthly and FVGs by timeframe keep the chart's setting. |
-| show SET label | on | On futures, shows `SET on` (orange) or `SET off` (gray) in the upper right corner, for the version used for the last daily candle. |
+| show SET label | on | On futures, shows `SET on` (orange) or `SET off` (gray) in the upper right corner, for the version used for the last daily candle. When the turtle soup indications are also at top right, it is shown to their left. |
 
 The settlement price usually differs from the last trade of the session, so the body of a daily candle, and with it its volume imbalances and wicks, can change with that setting. In auto mode the indicator picks whichever version shows the clearer imbalance or wick for each day.
 
