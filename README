@@ -4,6 +4,29 @@ Trading view ICT tools
 DeliveryEngine.txt is not mine.
 it's from the great Nuno.
 
+Workflow (read this first)
+==========================
+
+The Mac checkout (/Users/nemo/u/trade/tvsrc) is the working copy.
+
+1. git pull before changing anything.
+2. Change the sources on the Mac. Regenerate the derived files
+   (below), port the change to ninja/ and tradovate/ when the
+   source has a port, update the md5 in the port header, and
+   update the manuals (md and PDF).
+3. git commit and git push from the Mac.
+4. Only then, and only if Francisco decides so, update the
+   TradingView scripts from the pushed commit: see
+   tools/tradingview-update.md (save, update the 15m pane, save
+   the ICTmany template, load it on the other panes; publishing
+   needs his OK on the release notes).
+
+Do not change files on the Mac by copying them in from another
+clone without committing: it leaves the Mac checkout out of step
+with git and the next pull conflicts. A Claude working from the
+cloud clone commits and pushes there, then brings the Mac up to
+date through git (pull), not by copying files.
+
 Generated files (reminders)
 ===========================
 
