@@ -103,10 +103,12 @@ string hm50 = input.string(CON, "0.5 rejections", options = [OFF, CON, MAN], gro
          "its 0.5 level (not beyond the origin) and close back on the leg side. Gives the leg direction (a down "+
          "leg rejected at 0.5 gives short) until the leg breaks or a candle closes beyond 0.5. " + IMODE)
 int r50Min = input.int(2, "at least", minval = 1, maxval = 5, group = G_H, inline = "h50")
-string hmIfv = input.string(CON, "IFVG re-leave", options = [OFF, CON, MAN], group = G_H,
+string hmIfv = input.string(CON, "IFVG re-leave", options = [OFF, CON, MAN], group = G_H, inline = "hifv",
      tooltip = "An HTF FVG closed through becomes an IFVG (a bullish FVG closed below: IFVG-). Price comes back into "+
          "it and an HTF candle closes out of it again on the IFVG side (below an IFVG-): short (long for an IFVG+). "+
-         "Holds until a close beyond its far side or the opposite signal. FVG size from the IFVG settings. " + IMODE)
+         "Holds for this many HTF candles, until a close beyond its far side or until the opposite signal. FVG size "+
+         "from the IFVG settings. " + IMODE)
+int ifvHold = input.int(2, "HTF candles", minval = 1, maxval = 50, group = G_H, inline = "hifv")
 int hN = input.int(1, "At least N of the considered", minval = 0, maxval = 7, group = G_H,
      tooltip = "Consider indications that have to agree with the direction, besides the Mandatory ones. "+
          "Capped at the number of Consider indications. With every indication Off both directions are allowed.")
@@ -1397,6 +1399,7 @@ htfCode() =>
     var bool ivUpT = false
     var int ivUpB = na
     var int bIfv = 0          // IFVG re-leave direction
+    var int bIfvB = na        // its bar
     var float sh = na       // last swing high / low not taken yet
     var float sl = na
     var array<float> uN = array.new<float>()    // bearish FVGs (above): near edge (bottom), newest candle low
@@ -1527,6 +1530,7 @@ htfCode() =>
                 ivDnT := true
             if ivDnT and close < ivDnL
                 bIfv := -1
+                bIfvB := bar_index
                 ivDnT := false
     if not na(ivUpH) and bar_index > ivUpB
         if close < ivUpL
@@ -1538,7 +1542,10 @@ htfCode() =>
                 ivUpT := true
             if ivUpT and close > ivUpH
                 bIfv := 1
+                bIfvB := bar_index
                 ivUpT := false
+    if bIfv != 0 and bar_index - bIfvB >= ifvHold
+        bIfv := 0
     if fbH.size() > 0
         for i = fbH.size() - 1 to 0
             if close < fbL.get(i)
