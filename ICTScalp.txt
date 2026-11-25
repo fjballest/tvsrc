@@ -87,12 +87,24 @@ int triMin = input.int(2, "agree", minval = 1, maxval = 3, group = G_H, inline =
 bool tri15 = input.bool(true, "15m", group = G_H, inline = "tri2")
 bool tri1h = input.bool(true, "1H", group = G_H, inline = "tri2")
 bool tri4h = input.bool(true, "4H", group = G_H, inline = "tri2")
-int hN = input.int(1, "At least N of the considered", minval = 0, maxval = 4, group = G_H,
+string hmBlk = input.string(CON, "Respected breakers / MBs", options = [OFF, CON, MAN], group = G_H, inline = "hb",
+     tooltip = "Breakers and mitigation blocks on this timeframe (zone and swings from the Breakers and Mitigation "+
+         "blocks settings). A block only counts once price respected it: after it formed, a candle came back into "+
+         "the zone and then a candle closed back out on its side (above a bullish block, below a bearish one) "+
+         "without any close through its far side. The most recently respected block that still holds gives the "+
+         "direction; it holds until a close through its far side or until it has not been respected again for "+
+         "'max bars'. Only closed candles of that timeframe are used. " + IMODE)
+string hbTf = input.timeframe("15", "", group = G_H, inline = "hb")
+int hbAge = input.int(40, "max bars", minval = 2, maxval = 500, group = G_H, inline = "hb2",
+     tooltip = "Candles of the blocks timeframe since the last respect (or since it formed, while not respected "+
+         "yet) after which the block is dropped.")
+int hN = input.int(1, "At least N of the considered", minval = 0, maxval = 5, group = G_H,
      tooltip = "Consider indications that have to agree with the direction, besides the Mandatory ones. "+
          "Capped at the number of Consider indications. With every indication Off both directions are allowed.")
 bool hShow = input.bool(true, "Show the HTF OTE lines and draw targets", group = G_H,
      tooltip = "Lines at 0.62 / 0.705 / 0.79 of the major leg (solid) and of the minor leg (dotted), and the near "+
-         "edge of the HTF FVG drawing price up (red) / down (green).")
+         "edge of the HTF FVG drawing price up (red) / down (green). Also the zone of the respected HTF breaker / "+
+         "mitigation block giving the direction (teal long, maroon short).")
 
 const string G_E = "LTF entries"
 string emLeave = input.string(OFF, "Trigger: IFVG leaving", options = [OFF, CON, MAN], group = G_E,
@@ -1499,16 +1511,16 @@ if barstate.isconfirmed and oRejBull
 modeOf(string s) =>
     s == MAN ? 2 : s == CON ? 1 : 0
 
-// Indications: 0..11 LTF (triggers 0..3), 12..15 HTF
-const int NIND = 16
+// Indications: 0..11 LTF (triggers 0..3), 12..16 HTF
+const int NIND = 17
 var array<string> indName = array.from("IFVG leaving", "IFVG return", "FVG return", "Sweep+OTE", "OTE", "Breaker",
      "Mit. block", "Liquidity", "HTF level", "HTF OTE line", "EQH/EQL", "Delivery", "HTF OTE rej.", "HTF FVG draw",
-     "HTF liq. draw", "Cotas triangles")
+     "HTF liq. draw", "Cotas triangles", "HTF blocks")
 var array<string> indShort = array.from("IFVGl", "IFVGr", "FVGr", "SwOTE", "OTE", "B", "MB", "Liq", "Lvl", "OTEl",
-     "EQ", "DLV", "hOTE", "hFVG", "hLiq", "Tri")
+     "EQ", "DLV", "hOTE", "hFVG", "hLiq", "Tri", "hBlk")
 var array<int> indMode = array.from(modeOf(emLeave), modeOf(emRet), modeOf(emFvg), modeOf(emSwp), modeOf(emOte),
      modeOf(emBrk), modeOf(emMb), modeOf(emLiq), modeOf(emLvl), modeOf(emOteL), modeOf(emEq), modeOf(emDlv),
-     modeOf(hmOte), modeOf(hmFvg), modeOf(hmLiq), modeOf(hmTri))
+     modeOf(hmOte), modeOf(hmFvg), modeOf(hmLiq), modeOf(hmTri), modeOf(hmBlk))
 
 // [pass, bit mask of the true indications] for indications i0..i1 with values v (index 0 is i0) and N.
 // Indications below i0 + nTrig are triggers: they never count towards N.
@@ -1743,6 +1755,105 @@ blkHas(int kind, int dir, FVG f) =>
             if b.kind == kind and b.dir == dir and b.swung and ovl(f, b)
                 r := true
     r
+
+// ============================================================ HTF breakers and mitigation blocks (respected)
+type HBlk
+    int kind
+    int dir
+    float hi
+    float lo
+    int fb          // bar it formed
+    int zb          // bar of the last candle of the zone
+    bool touch = false
+    int rb = na     // bar of the last respect (back into the zone, then a close out on its side)
+
+// Runs on the blocks timeframe (request.security): [direction, zone high, zone low] of the most recently
+// respected block that still holds, from the last closed candle.
+hBlkCode() =>
+    var BlkSeq sq0 = BlkSeq.new(array.new<float>(), array.new<int>(), array.new<int>())
+    var BlkSeq sq1 = BlkSeq.new(array.new<float>(), array.new<int>(), array.new<int>())
+    var array<HBlk> hb = array.new<HBlk>()
+    float ph0 = ta.pivothigh(high, brkLen, brkLen)
+    float pl0 = ta.pivotlow(low, brkLen, brkLen)
+    float ph1 = ta.pivothigh(high, mbLen, mbLen)
+    float pl1 = ta.pivotlow(low, mbLen, mbLen)
+    for kind = 0 to 1
+        BlkSeq s = kind == 0 ? sq0 : sq1
+        float ph = kind == 0 ? ph0 : ph1
+        float pl = kind == 0 ? pl0 : pl1
+        int len = kind == 0 ? brkLen : mbLen
+        bool body = (kind == 0 ? brkPart : mbPart) == "Body"
+        bool whole = (kind == 0 ? brkMode : mbMode) == "Whole sequence"
+        int keep = kind == 0 ? brkKeep : mbKeep
+        if not na(ph) and blkPivot(s.p, s.b, s.t, ph, bar_index - len, 1)
+            if s.t.size() == 3 and s.t.get(0) == 1 and s.b.get(1) != nz(s.dnDone, -1)
+                bool ok = kind == 0 ? s.p.get(2) > s.p.get(0) : s.p.get(2) < s.p.get(0)
+                s.dnLvl := ok ? s.p.get(1) : na
+                s.dnBar := s.b.get(1)
+        if not na(pl) and blkPivot(s.p, s.b, s.t, pl, bar_index - len, -1)
+            if s.t.size() == 3 and s.t.get(0) == -1 and s.b.get(1) != nz(s.upDone, -1)
+                bool ok = kind == 0 ? s.p.get(2) < s.p.get(0) : s.p.get(2) > s.p.get(0)
+                s.upLvl := ok ? s.p.get(1) : na
+                s.upBar := s.b.get(1)
+        if not na(s.dnLvl) and bar_index - s.dnBar > hbAge
+            s.dnLvl := na
+        if not na(s.upLvl) and bar_index - s.upBar > hbAge
+            s.upLvl := na
+        for dir in array.from(-1, 1)
+            float lvl = dir == 1 ? s.upLvl : s.dnLvl
+            if not na(lvl) and (dir == 1 ? close > lvl : close < lvl)
+                int sb = dir == 1 ? s.upBar : s.dnBar
+                [zh, zl, zt1] = blkZone(dir, bar_index - sb, body, whole)
+                if not na(zt1)
+                    int zk = 0
+                    while zk < 300 and time[zk] > zt1
+                        zk += 1
+                    hb.push(HBlk.new(kind, dir, zh, zl, bar_index, bar_index - zk))
+                    int cnt = 0
+                    int first = -1
+                    for [i, o] in hb
+                        if o.kind == kind and o.dir == dir
+                            cnt += 1
+                            if first < 0
+                                first := i
+                    if cnt > keep
+                        hb.remove(first)
+                if dir == 1
+                    s.upDone := s.upBar
+                    s.upLvl := na
+                else
+                    s.dnDone := s.dnBar
+                    s.dnLvl := na
+    int bDir = 0
+    float bHi = na
+    float bLo = na
+    int bRb = -1
+    if hb.size() > 0
+        for i = hb.size() - 1 to 0
+            HBlk b = hb.get(i)
+            bool thru = b.dir == 1 ? close < b.lo : close > b.hi
+            if thru or bar_index - nz(b.rb, b.fb) > hbAge
+                hb.remove(i)
+            else
+                if bar_index > b.fb and (b.dir == 1 ? low <= b.hi : high >= b.lo)
+                    b.touch := true
+                if b.touch and (b.dir == 1 ? close > b.hi : close < b.lo)
+                    b.rb := bar_index
+                    b.touch := false
+                if not na(b.rb) and b.rb > bRb
+                    bRb := b.rb
+                    bDir := b.dir
+                    bHi := b.hi
+                    bLo := b.lo
+    [bDir[1], bHi[1], bLo[1]]
+
+bool hbOn = modeOf(hmBlk) > 0 or explore
+string hbRq = timeframe.in_seconds(hbTf) > tfsecs ? hbTf : timeframe.period
+[hbDir0, hbHi, hbLo] = request.security(syminfo.tickerid, hbRq, hBlkCode(), lookahead = barmerge.lookahead_on)
+int hbDir = hbOn ? hbDir0 : 0
+color hbCol = hbDir == 1 ? color.new(color.teal, 20) : color.new(color.maroon, 20)
+plot(hShow and hbOn and hbDir != 0 ? hbHi : na, "HTF block high", hbCol, 1, plot.style_linebr)
+plot(hShow and hbOn and hbDir != 0 ? hbLo : na, "HTF block low", hbCol, 1, plot.style_linebr)
 
 // ============================================================ entries
 // liquidity sweeps (FVG filter of FVGs+IFVG+OTE): a bar breaking the last confirmed short-term
@@ -2059,8 +2170,8 @@ triAgree(int dir) =>
 
 // HTF bias of direction dir: [allowed, mask]
 htfAllow(int dir) =>
-    [ok, mask] = indCheck(12, 15, 0, array.from(hbOte == dir, hbFvg == dir, hbLiq == dir,
-         triAgree(dir)), hN)
+    [ok, mask] = indCheck(12, 16, 0, array.from(hbOte == dir, hbFvg == dir, hbLiq == dir,
+         triAgree(dir), hbDir == dir), hN)
     [ok, mask]
 
 // LTF entry of direction dir with FVG / IFVG f (kind 0 IFVG, 1 FVG, 2 sweep leg); t0..t3: the triggers that
@@ -2399,22 +2510,22 @@ if showTrades and simulate and statsOn and barstate.islast
 
 // ============================================================ exploration of combinations
 // Every trigger, whatever its setting, is a virtual trade (stop / take profit / trailing of Show Trades); its
-// result counts for the trigger alone and with every one or two of the 12 confirmations that were true.
-// Combination c = trigger * 79 + k, k: 0 alone, 1..12 one confirmation, 13..78 two.
-const int EXC = 79
+// result counts for the trigger alone and with every one or two of the 13 confirmations that were true.
+// Combination c = trigger * 92 + k, k: 0 alone, 1..13 one confirmation, 14..91 two.
+const int EXC = 92
 var array<string> exTrig = array.from("IFVGl", "IFVGr", "SwOTE", "FVGr")
 var array<string> exCond = array.from("OTE", "B", "MB", "Liq", "Lvl", "OTEl", "EQ", "DLV", "hOTE", "hFVG", "hLiq",
-     "Tri")
+     "Tri", "hBlk")
 var array<int> exA = array.new<int>()
 var array<int> exB = array.new<int>()
 if barstate.isfirst
     exA.push(-1)
     exB.push(-1)
-    for a = 0 to 11
+    for a = 0 to 12
         exA.push(a)
         exB.push(-1)
-    for a = 0 to 10
-        for b = a + 1 to 11
+    for a = 0 to 11
+        for b = a + 1 to 12
             exA.push(a)
             exB.push(b)
 var array<int> exN = array.new<int>(4 * EXC, 0)
@@ -2437,7 +2548,7 @@ type VTrade
 
 var array<VTrade> vts = array.new<VTrade>()
 
-// the 12 confirmations for a trade of direction dir on f (kind 0 IFVG, 1 FVG, 2 sweep leg)
+// the 13 confirmations for a trade of direction dir on f (kind 0 IFVG, 1 FVG, 2 sweep leg)
 exConds(int dir, FVG f, int kind) =>
     bool ote = kind == 0 ? (dir == 1 ? gBull.flagged : gBear.flagged) : kind == 2 ? true : oteFvg(dir, f)
     int sw = dir == 1 ? lastSweepL : lastSweepH
@@ -2445,7 +2556,8 @@ exConds(int dir, FVG f, int kind) =>
     int orj = dir == 1 ? lastORejBull : lastORejBear
     array.from(ote, blkHas(0, dir, f), blkHas(1, dir, f), not na(sw) and bar_index - sw < liqLook,
          not na(lr) and bar_index - lr < htfLook, not na(orj) and bar_index - orj < htfLook,
-         not na(eqNext(dir, close)), dlvCur == dir, hbOte == dir, hbFvg == dir, hbLiq == dir, triAgree(dir))
+         not na(eqNext(dir, close)), dlvCur == dir, hbOte == dir, hbFvg == dir, hbLiq == dir, triAgree(dir),
+         hbDir == dir)
 
 exOpen(int dir, int trig, FVG f, int kind, int id) =>
     [stp, tp, ok] = tradeLevels(dir, f)
