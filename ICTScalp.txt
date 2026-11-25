@@ -84,6 +84,11 @@ string hmTri = input.string(OFF, "Cotas triangles", options = [OFF, CON, MAN], g
          "Mirrored for an up candle. At least 'agree' of the ticked timeframes have to point in the direction "+
          "(turtle soup or continuation) and none against it. Evaluated at chart candle closes. " + IMODE)
 int triMin = input.int(2, "agree", minval = 1, maxval = 3, group = G_H, inline = "tri")
+string triPat = input.string("Agree", "pattern", options = ["Agree", "15m turtle soup", "All agree", "4H continuation"],
+     group = G_H, tooltip = "Agree: at least 'agree' of the ticked timeframes point in the direction and none "+
+         "against it. 15m turtle soup: the 15m triangle is a turtle soup in the direction. All agree: 15m, 1H and "+
+         "4H all point in the direction (turtle soup or continuation). 4H continuation: the 4H triangle is a "+
+         "continuation in the direction.")
 bool tri15 = input.bool(true, "15m", group = G_H, inline = "tri2")
 bool tri1h = input.bool(true, "1H", group = G_H, inline = "tri2")
 bool tri4h = input.bool(true, "4H", group = G_H, inline = "tri2")
@@ -271,6 +276,10 @@ bool trOn = input.bool(true, "Simulate: trailing stop after points up", group = 
          "high (short) of each new closed candle, never backwards, and the take profit is no longer used: "+
          "the trade runs until it is stopped out. Points for NQ, scaled when 'Scale sizes' is on.")
 float trPtsIn = input.float(50.0, "", minval = 0.25, step = 0.25, group = G_T, inline = "tr")
+bool stOn = input.bool(false, "Simulate: structure trailing stop", group = G_T,
+     tooltip = "From the entry on, the stop moves past each new short-term low (long) / high (short) and past "+
+         "each new FVG of the trade direction that form after the entry (by the stop margin), never backwards. "+
+         "The take profit stays (use an HTF take profit to run to the HTF target). Applies to the exploration too.")
 bool boxOn = input.bool(true, "Boxes, transparency", group = G_T, inline = "bx",
      tooltip = "Red box from the entry to the initial stop, green box from the entry to the take profit, "+
          "up to the exit candle (simulated) or the segment length.")
@@ -2202,7 +2211,7 @@ for i = 0 to 2
             s.armed := true
 
 // the ticked timeframes above the chart: at least triMin point in direction dir and none against it
-triAgree(int dir) =>
+triAgreeN(int dir) =>
     int pro = 0
     int con = 0
     array<bool> sel = array.from(tri15, tri1h, tri4h)
@@ -2222,6 +2231,18 @@ triCode(int i, int dir) =>
     int sg = tst.get(i).tsSig()
     int d = sg > 0 ? 1 : sg < 0 ? -1 : 0
     d == dir ? math.abs(sg) : d == -dir ? -1 : 0
+
+triAgree(int dir) =>
+    bool r = false
+    if triPat == "15m turtle soup"
+        r := triCode(0, dir) == 1
+    else if triPat == "All agree"
+        r := triCode(0, dir) > 0 and triCode(1, dir) > 0 and triCode(2, dir) > 0
+    else if triPat == "4H continuation"
+        r := triCode(2, dir) == 2
+    else
+        r := triAgreeN(dir)
+    r
 
 // HTF bias of direction dir: [allowed, mask]
 htfAllow(int dir) =>
@@ -2368,9 +2389,19 @@ statAdd(int row, float pts) =>
 // stop of an open trade after a closed candle: breakeven once a candle closes in profit by more than
 // beMin, trailing to the low (long) / high (short) of each candle once price went trPts in favour (best
 // is the best price reached so far). The stop never moves backwards.
-manageStop(int dir, float entry, float stp, bool trail, float best) =>
+manageStop(int dir, float entry, float stp, bool trail, float best, int ebar) =>
     float st = stp
     bool tr = trail
+    if stOn
+        float sp = dir == 1 ? fPL : fPH
+        if not na(sp) and bar_index - flR > ebar and (close - sp) * dir > 0
+            float ns = sp - dir * stopDelta
+            st := dir == 1 ? math.max(st, ns) : math.min(st, ns)
+        FVG nf = dir == 1 ? lastlongfvg : lastshortfvg
+        if not na(nf) and nf.sbar > ebar
+            float ns = dir == 1 ? nf.lo - stopDelta : nf.hi + stopDelta
+            if (close - ns) * dir > 0
+                st := dir == 1 ? math.max(st, ns) : math.min(st, ns)
     if beOn and (close - entry) * dir > beMin
         st := dir == 1 ? math.max(st, entry) : math.min(st, entry)
     if trOn and (best - entry) * dir >= trPts
@@ -2414,10 +2445,10 @@ if showTrades and simulate and barstate.isconfirmed
                     label.new(bar_index, ex, res + " " + str.tostring(pts, "#.##"),
                          style = label.style_label_left, color = color.new(color.white, 100),
                          textcolor = rc, size = size.small)
-            else if beOn or trOn
+            else if beOn or trOn or stOn
                 t.best := na(t.best) ? (t.dir == 1 ? high : low)
                      : (t.dir == 1 ? math.max(t.best, high) : math.min(t.best, low))
-                [st, tr] = manageStop(t.dir, t.entry, t.stop, t.trail, t.best)
+                [st, tr] = manageStop(t.dir, t.entry, t.stop, t.trail, t.best, t.bar)
                 t.stop := st
                 t.trail := tr
                 t.sln.set_y1(st)
@@ -2658,10 +2689,10 @@ if explore and showTrades and simulate and barstate.isconfirmed
                             exLP.set(c, exLP.get(c) + pts)
                         exP.set(c, exP.get(c) + pts)
                     vts.remove(i)
-                else if beOn or trOn
+                else if beOn or trOn or stOn
                     t.best := na(t.best) ? (t.dir == 1 ? high : low)
                          : (t.dir == 1 ? math.max(t.best, high) : math.min(t.best, low))
-                    [st, tr] = manageStop(t.dir, t.entry, t.stop, t.trail, t.best)
+                    [st, tr] = manageStop(t.dir, t.entry, t.stop, t.trail, t.best, t.bar)
                     t.stop := st
                     t.trail := tr
     // new virtual trades
