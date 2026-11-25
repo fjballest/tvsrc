@@ -252,7 +252,10 @@ float sesEff = input.float(0.5, "Session trend: |close - open| / range at least"
          "previous session trended / consolidated) and can count only trades of trending or consolidating "+
          "sessions (known only when the session ends).")
 string regMode = input.string("Off", "Entries only after a session that", options = ["Off", "Consolidated",
-     "Trended"], group = G_TM)
+     "Trended", "Predict"], group = G_TM,
+     tooltip = "Predict: after a session that consolidated, the setup above (trend setup); after a session that "+
+         "trended, the range setup: IFVG return trigger with the HTF FVG draw in the trade direction (no other "+
+         "checks but the back checks).")
 string macMode = input.string("Hourly :50-:10", "Only inside ICT macros", options = ["Off", "ICT macros", "Hourly :50-:10"],
      group = G_TM, tooltip = "Entries only on candles that open inside a macro, always in New York time.\n"+
          "ICT macros: 02:33-03:00, 04:03-04:30, 08:50-09:10, 09:50-10:10, 10:50-11:10, 11:50-12:10, "+
@@ -2450,7 +2453,8 @@ if sesNow >= 0
     sL := math.min(sL, low)
     sC := close
 int curSes = sesNow >= 0 ? sesId : -1
-bool regOk = regMode == "Off" or (regMode == "Consolidated" ? sesPrev == 0 : sesPrev == 1)
+bool regOk = regMode == "Off" or regMode == "Predict" or (regMode == "Consolidated" ? sesPrev == 0 : sesPrev == 1)
+bool rangeSet = regMode == "Predict" and sesPrev == 1
 
 // triggers of this candle; a trigger that is Off never fires
 bool tLeaveS = modeOf(emLeave) > 0 and bearLeave
@@ -2485,7 +2489,17 @@ if barstate.isconfirmed and timeOk and regOk
         bool go = false
         FVG ent = na
         int msk = 0
-        if tLv or tRt or tFv or tSw
+        if rangeSet
+            bool rr = (dir == 1 ? bullRet and not bullUsed : bearRet and not bearUsed) and hbFvg == dir
+            if rr and not na(iv) and backOk(dir, iv)
+                go := true
+                ent := iv
+                msk := 2 + 8192  // IFVG return, HTF FVG draw
+                if dir == 1
+                    bullUsed := true
+                else
+                    bearUsed := true
+        else if tLv or tRt or tFv or tSw
             [hOk, hMask] = htfAllow(dir)
             if hOk
                 // candidates in order: IFVG, sweep leg, FVG
