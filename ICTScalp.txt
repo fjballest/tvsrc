@@ -234,7 +234,7 @@ bool kzAsia = input.bool(false, "Asia", group = G_TM, inline = "kz")
 bool kzLondon = input.bool(true, "London", group = G_TM, inline = "kz")
 bool kzNyam = input.bool(true, "NY AM", group = G_TM, inline = "kz")
 bool kzNypm = input.bool(true, "NY PM", group = G_TM, inline = "kz")
-string macMode = input.string("Off", "Only inside ICT macros", options = ["Off", "ICT macros", "Hourly :50-:10"],
+string macMode = input.string("Hourly :50-:10", "Only inside ICT macros", options = ["Off", "ICT macros", "Hourly :50-:10"],
      group = G_TM, tooltip = "Entries only on candles that open inside a macro, always in New York time.\n"+
          "ICT macros: 02:33-03:00, 04:03-04:30, 08:50-09:10, 09:50-10:10, 10:50-11:10, 11:50-12:10, "+
          "13:10-13:40, 15:15-15:45.\nHourly: from :50 to :10 of every hour.\n"+
