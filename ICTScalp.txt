@@ -124,6 +124,14 @@ string emFvg = input.string(OFF, "Trigger: FVG return", options = [OFF, CON, MAN
      tooltip = "Enter on a candle that comes back into a chart FVG of the trade direction (bullish FVG for longs) "+
          "and closes at or beyond its CE (at or above for longs). One entry per FVG; a close beyond its far side "+
          "removes it. " + IMODE)
+string emBrj = input.string(CON, "Trigger: block rejection in OTE", options = [OFF, CON, MAN], group = G_E,
+     inline = "brj", tooltip = "Short: a candle wicks into a bearish breaker / mitigation block (past its swing, "+
+         "Breakers and Mitigation blocks settings) and closes back below it, and the block lies in the retracement "+
+         "band of the last leg down, from this level to the upper OTE level. The leg: from the lowest low of the "+
+         "last 60 candles back to the highest high of the 60 candles before it (at least the sweep 'min leg' "+
+         "points), and the wick does not go above that high. Long: the mirror. One entry per block; the stop is "+
+         "past the block. " + IMODE)
+float brjMin = input.float(0.5, "from", minval = 0.0, maxval = 1.0, step = 0.05, group = G_E, inline = "brj")
 string emOte = input.string(CON, "OTE", options = [OFF, CON, MAN], group = G_E,
      tooltip = "IFVG triggers: the IFVG is an OTE IFVG (OTE settings below; when leaving, only the prior-leg "+
          "rejection can flag it on the confirming candle). FVG return: the FVG matches the OTE band of its leg "+
@@ -134,7 +142,7 @@ string emBrk = input.string(CON, "Breaker", options = [OFF, CON, MAN], group = G
 string emMb = input.string(CON, "Mitigation block", options = [OFF, CON, MAN], group = G_E,
      tooltip = "The FVG / IFVG of the trigger overlaps a mitigation block of the trade direction that broke and "+
          "made a swing beyond it (Mitigation blocks settings below). " + IMODE)
-string emLiq = input.string(MAN, "Took liquidity", options = [OFF, CON, MAN], group = G_E, inline = "liq",
+string emLiq = input.string(CON, "Took liquidity", options = [OFF, CON, MAN], group = G_E, inline = "liq",
      tooltip = "Short: a candle took the last short-term high within the last N candles (the entry candle "+
          "included), with its wick or its body. Long: a candle took the last short-term low. Short-term highs / lows are pivots with the "+
          "left / right lengths given here (the sweep pivots of FVGs+IFVG+OTE). " + IMODE)
@@ -165,6 +173,13 @@ bool inFvgHi = input.bool(true, "Wait for the highs / lows inside the FVG to be 
      tooltip = "No short on an FVG / IFVG (or sweep leg zone) while a short-term high not taken yet lies inside it; "+
          "no long while a short-term low not taken yet lies inside it. The entry comes on a later trigger, once it "+
          "was taken and price turns. Applies to every entry and to the exploration.")
+bool needOL = input.bool(true, "Require OTE or taken liquidity", group = G_E,
+     tooltip = "Every entry needs the OTE confirmation or the 'Took liquidity' one, whatever their settings. Applies "+
+         "to the exploration too.")
+bool coolOn = input.bool(true, "After a stopped entry, wait for liquidity or an HTF OTE rejection", group = G_E,
+     tooltip = "Once an entry hits its initial stop, no new entry in that direction until a short-term low (long) / "+
+         "high (short) is taken or a candle rejects an HTF OTE line in that direction after the stop. Not applied to "+
+         "the exploration.")
 int eN = input.int(1, "At least N of the considered confirmations", minval = 0, maxval = 10, group = G_E,
      tooltip = "Consider confirmations (not triggers) that have to be true, besides the Mandatory ones. Capped at "+
          "the number of Consider confirmations. Triggers: at least one Consider or Mandatory trigger has to fire, "+
@@ -1521,16 +1536,16 @@ if barstate.isconfirmed and oRejBull
 modeOf(string s) =>
     s == MAN ? 2 : s == CON ? 1 : 0
 
-// Indications: 0..11 LTF (triggers 0..3), 12..16 HTF
-const int NIND = 17
+// Indications: 0..11 LTF (triggers 0..3), 12..16 HTF, 17 LTF trigger (block rejection)
+const int NIND = 18
 var array<string> indName = array.from("IFVG leaving", "IFVG return", "FVG return", "Sweep+OTE", "OTE", "Breaker",
      "Mit. block", "Liquidity", "HTF level", "HTF OTE line", "EQH/EQL", "Delivery", "HTF OTE rej.", "HTF FVG draw",
-     "HTF liq. draw", "Cotas triangles", "HTF blocks")
+     "HTF liq. draw", "Cotas triangles", "HTF blocks", "Block rej.")
 var array<string> indShort = array.from("IFVGl", "IFVGr", "FVGr", "SwOTE", "OTE", "B", "MB", "Liq", "Lvl", "OTEl",
-     "EQ", "DLV", "hOTE", "hFVG", "hLiq", "Tri", "hBlk")
+     "EQ", "DLV", "hOTE", "hFVG", "hLiq", "Tri", "hBlk", "BRj")
 var array<int> indMode = array.from(modeOf(emLeave), modeOf(emRet), modeOf(emFvg), modeOf(emSwp), modeOf(emOte),
      modeOf(emBrk), modeOf(emMb), modeOf(emLiq), modeOf(emLvl), modeOf(emOteL), modeOf(emEq), modeOf(emDlv),
-     modeOf(hmOte), modeOf(hmFvg), modeOf(hmLiq), modeOf(hmTri), modeOf(hmBlk))
+     modeOf(hmOte), modeOf(hmFvg), modeOf(hmLiq), modeOf(hmTri), modeOf(hmBlk), modeOf(emBrj))
 
 // [pass, bit mask of the true indications] for indications i0..i1 with values v (index 0 is i0) and N.
 // Indications below i0 + nTrig are triggers: they never count towards N.
@@ -1567,6 +1582,7 @@ type Blk
     bool tagged = false // first pullback with a matching FVG / IFVG seen
     int zb = na     // bar of the last candle of the zone (age)
     int pb = na     // bar of the last pullback into the zone (age once tagged)
+    bool rj = false // block rejection trigger used
 
 // swing sequence and armed levels of one kind (ICTblocks)
 type BlkSeq
@@ -1587,7 +1603,7 @@ float bPH = ta.pivothigh(high, brkLen, brkLen)
 float bPL = ta.pivotlow(low, brkLen, brkLen)
 float mPH = ta.pivothigh(high, mbLen, mbLen)
 float mPL = ta.pivotlow(low, mbLen, mbLen)
-bool blkOn = modeOf(emBrk) > 0 or modeOf(emMb) > 0 or explore
+bool blkOn = modeOf(emBrk) > 0 or modeOf(emMb) > 0 or modeOf(emBrj) > 0 or explore
 
 blkPivot(array<float> pr, array<int> br, array<int> ty, float price, int bar, int kind) =>
     bool changed = false
@@ -2202,16 +2218,25 @@ htfAllow(int dir) =>
 
 // LTF entry of direction dir with FVG / IFVG f (kind 0 IFVG, 1 FVG, 2 sweep leg); t0..t3: the triggers that
 // fired. [ok, mask]
-ltfCheck(int dir, FVG f, int kind, bool t0, bool t1, bool t2, bool t3) =>
+ltfCheck(int dir, FVG f, int kind, bool t0, bool t1, bool t2, bool t3, bool t4) =>
     bool ote = kind == 0 ? (dir == 1 ? gBull.flagged : gBear.flagged) : kind == 2 ? true
-         : (modeOf(emOte) > 0 and oteFvg(dir, f))
+         : ((modeOf(emOte) > 0 or needOL) and oteFvg(dir, f))
     int sw = dir == 1 ? lastSweepL : lastSweepH
     int lr = dir == 1 ? lastRejBull : lastRejBear
     int orj = dir == 1 ? lastORejBull : lastORejBear
     [ok, mask] = indCheck(0, 11, 4, array.from(t0, t1, t2, t3, ote, blkHas(0, dir, f), blkHas(1, dir, f),
          not na(sw) and bar_index - sw < liqLook, not na(lr) and bar_index - lr < htfLook,
          not na(orj) and bar_index - orj < htfLook, not na(eqNext(dir, close)), dlvCur == dir), eN)
-    [ok, mask]
+    bool pass = ok
+    int msk = mask
+    int m17 = indMode.get(17)
+    if m17 > 0 and t4
+        msk += int(math.pow(2, 17))
+    if m17 == 2 and not t4
+        pass := false
+    if needOL and not (ote or (not na(sw) and bar_index - sw < liqLook))
+        pass := false
+    [pass, msk]
 
 // time filters (session definitions and time zone rule of ICTlevels)
 string tkr = str.upper(syminfo.ticker)
@@ -2246,6 +2271,66 @@ if modeOf(emFvg) == 0
 bool tFvgS = not na(fRetS)
 bool tFvgL = not na(fRetL)
 
+// block rejection in OTE: [synthetic FVG over the block zone] when this candle rejects a block of direction dir
+// lying in the brjMin..oteMax band of the last leg
+brjStep(int dir) =>
+    FVG f = na
+    if blks.size() > 0
+        int kE = 1
+        float ext = dir == -1 ? low[1] : high[1]
+        for k = 1 to 60
+            if dir == -1 ? low[k] < ext : high[k] > ext
+                ext := dir == -1 ? low[k] : high[k]
+                kE := k
+        float org = na
+        for k = kE to kE + 60
+            org := na(org) ? (dir == -1 ? high[k] : low[k]) : (dir == -1 ? math.max(org, high[k]) : math.min(org, low[k]))
+        float r = math.abs(org - ext)
+        if r >= swpMin
+            float l1 = ext - dir * brjMin * r
+            float l2 = ext - dir * oteMax * r
+            float bLo = math.min(l1, l2)
+            float bHi = math.max(l1, l2)
+            for b in blks
+                if na(f) and b.dir == dir and b.swung and not b.rj and b.hi >= bLo and b.lo <= bHi
+                    bool hit = dir == -1 ? high >= b.lo and close < b.lo and high <= org
+                         : low <= b.hi and close > b.hi and low >= org
+                    if hit
+                        b.rj := true
+                        f := FVG.new(b.hi, b.lo, (b.hi + b.lo) / 2, dir == 1, time, bar_index, high, low)
+    f
+
+FVG fBrjS = na
+FVG fBrjL = na
+if barstate.isconfirmed and (modeOf(emBrj) > 0 or explore)
+    fBrjS := brjStep(-1)
+    fBrjL := brjStep(1)
+bool rBrjS = not na(fBrjS)  // fired, whatever the trigger setting (exploration)
+bool rBrjL = not na(fBrjL)
+bool tBrjS = modeOf(emBrj) > 0 and rBrjS
+bool tBrjL = modeOf(emBrj) > 0 and rBrjL
+
+// entries that hit their initial stop (index 0 short, 1 long), for the wait after a stopped entry
+var array<float> ckStp = array.new<float>(2, na)
+var array<float> ckTp = array.new<float>(2, na)
+var array<int> ckBar = array.new<int>(2, -1)
+var array<int> failBar = array.new<int>(2, -1)
+if barstate.isconfirmed and coolOn
+    for i = 0 to 1
+        float cs = ckStp.get(i)
+        if not na(cs) and bar_index > ckBar.get(i)
+            if i == 1 ? low <= cs : high >= cs
+                failBar.set(i, bar_index)
+                ckStp.set(i, na)
+            else if i == 1 ? high >= ckTp.get(i) : low <= ckTp.get(i)
+                ckStp.set(i, na)
+
+coolOk(int dir) =>
+    int fb = failBar.get(dir == 1 ? 1 : 0)
+    int sw = dir == 1 ? lastSweepL : lastSweepH
+    int orj = dir == 1 ? lastORejBull : lastORejBear
+    not coolOn or fb < 0 or nz(sw, -1) > fb or nz(orj, -1) > fb
+
 bool goShort = false
 bool goLong = false
 FVG entS = na
@@ -2261,18 +2346,20 @@ if barstate.isconfirmed and timeOk
         FVG iv = dir == 1 ? bullifvg : bearifvg
         FVG fv = dir == 1 ? fRetL : fRetS
         FVG sv = dir == 1 ? fSwpL : fSwpS
+        bool tBj = dir == 1 ? tBrjL : tBrjS
+        FVG bv = dir == 1 ? fBrjL : fBrjS
         bool go = false
         FVG ent = na
         int msk = 0
-        if tLv or tRt or tFv or tSw
+        if (tLv or tRt or tFv or tSw or tBj) and coolOk(dir)
             [hOk, hMask] = htfAllow(dir)
             if hOk
-                // candidates in order: IFVG, sweep leg, FVG
-                for k = 0 to 2
-                    bool fired = k == 0 ? (tLv or tRt) : k == 1 ? tSw : tFv
+                // candidates in order: IFVG, sweep leg, FVG, block rejection
+                for k = 0 to 3
+                    bool fired = k == 0 ? (tLv or tRt) : k == 1 ? tSw : k == 2 ? tFv : tBj
                     if not go and fired
-                        FVG cf = k == 0 ? iv : k == 1 ? sv : fv
-                        [ok, m] = ltfCheck(dir, cf, k == 0 ? 0 : k == 1 ? 2 : 1, tLv, tRt, tFv, tSw)
+                        FVG cf = k == 0 ? iv : k == 1 ? sv : k == 2 ? fv : bv
+                        [ok, m] = ltfCheck(dir, cf, k == 0 ? 0 : k == 2 ? 1 : 2, tLv, tRt, tFv, tSw, tBj)
                         if ok and backOk(dir, cf)
                             go := true
                             ent := cf
@@ -2285,8 +2372,14 @@ if barstate.isconfirmed and timeOk
                             else if k == 1
                                 SwLeg lg = dir == 1 ? lgL : lgS
                                 lg.used := true
-                            else
+                            else if k == 2
                                 cf.used := true
+        if go and coolOn
+            [cs, ct, cok] = tradeLevels(dir, ent)
+            int ci = dir == 1 ? 1 : 0
+            ckStp.set(ci, cs)
+            ckTp.set(ci, ct)
+            ckBar.set(ci, bar_index)
         if dir == 1
             goLong := go
             entL := ent
@@ -2537,9 +2630,9 @@ if showTrades and simulate and statsOn and barstate.islast
 // ============================================================ exploration of combinations
 // Every trigger, whatever its setting, is a virtual trade (stop / take profit / trailing of Show Trades); its
 // result counts for the trigger alone and with every one or two of the 13 confirmations that were true.
-// Combination c = trigger * 92 + k, k: 0 alone, 1..13 one confirmation, 14..91 two.
+// Combination c = trigger (0..4) * 92 + k, k: 0 alone, 1..13 one confirmation, 14..91 two.
 const int EXC = 92
-var array<string> exTrig = array.from("IFVGl", "IFVGr", "SwOTE", "FVGr")
+var array<string> exTrig = array.from("IFVGl", "IFVGr", "SwOTE", "FVGr", "BRj")
 var array<string> exCond = array.from("OTE", "B", "MB", "Liq", "Lvl", "OTEl", "EQ", "DLV", "hOTE", "hFVG", "hLiq",
      "Tri", "hBlk")
 var array<int> exA = array.new<int>()
@@ -2554,13 +2647,13 @@ if barstate.isfirst
         for b = a + 1 to 12
             exA.push(a)
             exB.push(b)
-var array<int> exN = array.new<int>(4 * EXC, 0)
-var array<int> exW = array.new<int>(4 * EXC, 0)
-var array<float> exP = array.new<float>(4 * EXC, 0.0)
-var array<int> exL = array.new<int>(4 * EXC, 0)
-var array<float> exWP = array.new<float>(4 * EXC, 0.0)
-var array<float> exLP = array.new<float>(4 * EXC, 0.0)
-var array<int> exLast = array.new<int>(8 * EXC, -1)  // last IFVG / leg / FVG id used, per combination and side
+var array<int> exN = array.new<int>(5 * EXC, 0)
+var array<int> exW = array.new<int>(5 * EXC, 0)
+var array<float> exP = array.new<float>(5 * EXC, 0.0)
+var array<int> exL = array.new<int>(5 * EXC, 0)
+var array<float> exWP = array.new<float>(5 * EXC, 0.0)
+var array<float> exLP = array.new<float>(5 * EXC, 0.0)
+var array<int> exLast = array.new<int>(10 * EXC, -1)  // last IFVG / leg / FVG id used, per combination and side
 
 type VTrade
     int dir
@@ -2589,12 +2682,13 @@ exOpen(int dir, int trig, FVG f, int kind, int id) =>
     [stp, tp, ok] = tradeLevels(dir, f)
     if ok and backOk(dir, f)
         array<bool> v = exConds(dir, f, kind)
+        bool olOk = not needOL or v.get(0) or v.get(3)
         array<int> cs = array.new<int>()
         int side = dir == 1 ? 1 : 0
         for k = 0 to EXC - 1
             int a = exA.get(k)
             int b = exB.get(k)
-            if (a < 0 or v.get(a)) and (b < 0 or v.get(b))
+            if olOk and (a < 0 or v.get(a)) and (b < 0 or v.get(b))
                 int c = trig * EXC + k
                 int li = c * 2 + side
                 if exLast.get(li) != id
@@ -2649,6 +2743,9 @@ if explore and showTrades and simulate and barstate.isconfirmed
                 // FVG returns: only the first return into each FVG (the OTE check of an FVG is costly)
                 if not na(fv) and exLast.get((3 * EXC) * 2 + (dir == 1 ? 1 : 0)) != fv.start
                     exOpen(dir, 3, fv, 1, fv.start)
+            if dir == 1 ? rBrjL : rBrjS
+                FVG bv = dir == 1 ? fBrjL : fBrjS
+                exOpen(dir, 4, bv, 2, bv.sbar)
     if vts.size() > 400
         vts.shift()
 
@@ -2657,10 +2754,10 @@ var table exTbl = table.new(position.bottom_right, 8, 17, bgcolor = color.white,
 if explore and showTrades and simulate and barstate.islast
     resHead(exTbl)
     exTbl.cell(0, 0, "Combination", text_color = color.black, text_size = size.small)
-    array<bool> done = array.new<bool>(4 * EXC, false)
+    array<bool> done = array.new<bool>(5 * EXC, false)
     for r = 1 to 16
         int best = -1
-        for c = 0 to 4 * EXC - 1
+        for c = 0 to 5 * EXC - 1
             if not done.get(c) and exN.get(c) >= exMin and (best < 0 or exP.get(c) > exP.get(best))
                 best := c
         if best >= 0
