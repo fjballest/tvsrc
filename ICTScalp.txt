@@ -2183,6 +2183,8 @@ var array<int> rsN = array.new<int>(NIND + 1, 0)
 var array<int> rsW = array.new<int>(NIND + 1, 0)
 var array<int> rsL = array.new<int>(NIND + 1, 0)
 var array<float> rsP = array.new<float>(NIND + 1, 0.0)
+var array<float> rsWP = array.new<float>(NIND + 1, 0.0)    // points of the positive trades
+var array<float> rsLP = array.new<float>(NIND + 1, 0.0)    // points of the negative trades
 
 var array<Trade> trades = array.new<Trade>()
 
@@ -2190,8 +2192,10 @@ statAdd(int row, float pts) =>
     rsN.set(row, rsN.get(row) + 1)
     if pts > 0
         rsW.set(row, rsW.get(row) + 1)
+        rsWP.set(row, rsWP.get(row) + pts)
     else if pts < 0
         rsL.set(row, rsL.get(row) + 1)
+        rsLP.set(row, rsLP.get(row) + pts)
     rsP.set(row, rsP.get(row) + pts)
     true
 
@@ -2356,24 +2360,36 @@ if showTrades and goLong
     newTrade(1, entL, maskL)
 
 // results table of the simulated trades: all, then each indication in use
+// text of a percentage / an average, "-" when there is nothing to divide by
+pctTxt(int a, int n) =>
+    n > 0 ? str.tostring(100.0 * a / n, "#") + "%" : "-"
+avgTxt(float p, int n) =>
+    n > 0 ? (p > 0 ? "+" : "") + str.tostring(p / n, "#.##") : "-"
+// header and row of a results table: name, trades, win %, loss %, avg win, avg loss, points, avg
+resHead(table t) =>
+    array<string> hs = array.from("", "Trades", "Win", "Loss", "Avg win", "Avg loss", "Points", "Avg")
+    for [i, h] in hs
+        t.cell(i, 0, h, text_color = color.black, text_size = size.small)
+    true
+resRow(table t, int r, string name, int n, int w, int l, float wp, float lp, float p) =>
+    t.cell(0, r, name, text_color = color.black, text_size = size.small, text_halign = text.align_left)
+    t.cell(1, r, str.tostring(n), text_color = color.black, text_size = size.small)
+    t.cell(2, r, pctTxt(w, n), text_color = tpCol, text_size = size.small)
+    t.cell(3, r, pctTxt(l, n), text_color = stopCol, text_size = size.small)
+    t.cell(4, r, avgTxt(wp, w), text_color = tpCol, text_size = size.small)
+    t.cell(5, r, avgTxt(lp, l), text_color = stopCol, text_size = size.small)
+    t.cell(6, r, (p > 0 ? "+" : "") + str.tostring(p, "#.##"), text_color = p > 0 ? tpCol : p < 0 ? stopCol
+         : color.black, text_size = size.small)
+    t.cell(7, r, avgTxt(p, n), text_color = color.black, text_size = size.small)
+    true
+
 var table stats = table.new(statsPos == "Top right" ? position.top_right : statsPos == "Bottom right" ?
-     position.bottom_right : statsPos == "Top left" ? position.top_left : position.bottom_left, 5, NIND + 2,
+     position.bottom_right : statsPos == "Top left" ? position.top_left : position.bottom_left, 8, NIND + 2,
      bgcolor = color.white, border_width = 1, border_color = color.new(color.gray, 50))
 statRow(int r, int row, string name) =>
-    float p = rsP.get(row)
-    stats.cell(0, r, name, text_color = color.black, text_size = size.small, text_halign = text.align_left)
-    stats.cell(1, r, str.tostring(rsN.get(row)), text_color = color.black, text_size = size.small)
-    stats.cell(2, r, str.tostring(rsW.get(row)), text_color = color.black, text_size = size.small)
-    stats.cell(3, r, str.tostring(rsL.get(row)), text_color = color.black, text_size = size.small)
-    stats.cell(4, r, (p > 0 ? "+" : "") + str.tostring(p, "#.##"), text_color = p > 0 ? tpCol : p < 0 ? stopCol
-         : color.black, text_size = size.small)
-    true
+    resRow(stats, r, name, rsN.get(row), rsW.get(row), rsL.get(row), rsWP.get(row), rsLP.get(row), rsP.get(row))
 if showTrades and simulate and statsOn and barstate.islast
-    stats.cell(0, 0, "", text_color = color.black, text_size = size.small)
-    stats.cell(1, 0, "Trades", text_color = color.black, text_size = size.small)
-    stats.cell(2, 0, "+", text_color = color.black, text_size = size.small)
-    stats.cell(3, 0, "-", text_color = color.black, text_size = size.small)
-    stats.cell(4, 0, "Points", text_color = color.black, text_size = size.small)
+    resHead(stats)
     statRow(1, 0, "All")
     int r = 2
     for i = 0 to NIND - 1
@@ -2404,6 +2420,9 @@ if barstate.isfirst
 var array<int> exN = array.new<int>(4 * EXC, 0)
 var array<int> exW = array.new<int>(4 * EXC, 0)
 var array<float> exP = array.new<float>(4 * EXC, 0.0)
+var array<int> exL = array.new<int>(4 * EXC, 0)
+var array<float> exWP = array.new<float>(4 * EXC, 0.0)
+var array<float> exLP = array.new<float>(4 * EXC, 0.0)
 var array<int> exLast = array.new<int>(8 * EXC, -1)  // last IFVG / leg / FVG id used, per combination and side
 
 type VTrade
@@ -2461,6 +2480,10 @@ if explore and showTrades and simulate and barstate.isconfirmed
                         exN.set(c, exN.get(c) + 1)
                         if pts > 0
                             exW.set(c, exW.get(c) + 1)
+                            exWP.set(c, exWP.get(c) + pts)
+                        else if pts < 0
+                            exL.set(c, exL.get(c) + 1)
+                            exLP.set(c, exLP.get(c) + pts)
                         exP.set(c, exP.get(c) + pts)
                     vts.remove(i)
                 else if beOn or trOn
@@ -2491,14 +2514,11 @@ if explore and showTrades and simulate and barstate.isconfirmed
     if vts.size() > 400
         vts.shift()
 
-var table exTbl = table.new(position.bottom_right, 5, 17, bgcolor = color.white, border_width = 1,
+var table exTbl = table.new(position.bottom_right, 8, 17, bgcolor = color.white, border_width = 1,
      border_color = color.new(color.gray, 50))
 if explore and showTrades and simulate and barstate.islast
+    resHead(exTbl)
     exTbl.cell(0, 0, "Combination", text_color = color.black, text_size = size.small)
-    exTbl.cell(1, 0, "Trades", text_color = color.black, text_size = size.small)
-    exTbl.cell(2, 0, "Win %", text_color = color.black, text_size = size.small)
-    exTbl.cell(3, 0, "Points", text_color = color.black, text_size = size.small)
-    exTbl.cell(4, 0, "Avg", text_color = color.black, text_size = size.small)
     array<bool> done = array.new<bool>(4 * EXC, false)
     for r = 1 to 16
         int best = -1
@@ -2513,14 +2533,8 @@ if explore and showTrades and simulate and barstate.islast
                 nm += " " + exCond.get(exA.get(k))
             if exB.get(k) >= 0
                 nm += "+" + exCond.get(exB.get(k))
-            float p = exP.get(best)
-            int n = exN.get(best)
-            exTbl.cell(0, r, nm, text_color = color.black, text_size = size.small, text_halign = text.align_left)
-            exTbl.cell(1, r, str.tostring(n), text_color = color.black, text_size = size.small)
-            exTbl.cell(2, r, str.tostring(100.0 * exW.get(best) / n, "#"), text_color = color.black, text_size = size.small)
-            exTbl.cell(3, r, (p > 0 ? "+" : "") + str.tostring(p, "#.##"), text_color = p > 0 ? tpCol : stopCol,
-                 text_size = size.small)
-            exTbl.cell(4, r, str.tostring(p / n, "#.##"), text_color = color.black, text_size = size.small)
+            resRow(exTbl, r, nm, exN.get(best), exW.get(best), exL.get(best), exWP.get(best), exLP.get(best),
+                 exP.get(best))
 
 plotshape(goShort, "Enter short", shape.triangledown, location.abovebar, shortCol, size = size.small,
      text = "SHORT", textcolor = shortCol)
