@@ -1,114 +1,162 @@
 // This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
 // © franjballest
 // ICTScalp: enter-long / enter-short signals only, to experiment with scalping conditions.
-// It copies, unchanged, the logic of the other indicators (no drawing):
-//  - IFVGs and OTE IFVGs: close mode of FVGs+IFVG+OTE (last long FVG -> IFVG- candidate,
-//    last short FVG -> IFVG+ candidate, confirmed by a close through it, cancelled by a close back, with
-//    the invalidation hold: a near close back with a rejection wick waits a few bars)
-//  - Higher timeframe levels: ICTcotas (D / W / M FVGs, IFVGs, VIs and wick CEs, plus the FVGs of
-//    15m / 1H / 4H / D / W)
-//  - Bias table: IFVGCISDbias (IFVG bias and delivery rows), with every timeframe selected
+// The idea: a higher timeframe (HTF, 4H by default) read says where price is likely to go, and the chart
+// (lower) timeframe looks for entries in that direction. Both are made of indications. Each indication is
+// Off, Consider or Mandatory: a direction is allowed when every Mandatory indication agrees and at least N of
+// the Consider ones agree (N capped at the number of Consider ones).
 //
-// Short when an IFVG- is confirmed on the chart timeframe, long when an IFVG+ is confirmed.
-// Optional conditions (each one can be turned off):
-//  - Entry: when price leaves the IFVG (the candle that confirms it) or when price returns to it
-//    (a later candle wicks back into it without passing its far edge, once per confirmation)
-//  - Only OTE IFVGs (flagged by the OTE logic of FVGs+IFVG+OTE) or any IFVG
-//  - Rejection of an ICTcotas level (hi, lo or CE; CE only for wick levels) within the last bars:
-//    wick through the level with the whole body on the trade side of it
-//  - Agreement of the rightmost columns of the bias table (chart timeframe first)
-//  - Wait until the delivery of the chart timeframe matches the direction of the trade
-//  - Breakers (the breakers of FVGs+IFVG+OTE): the IFVG must overlap a breaker of the trade direction,
-//    and / or the entry is on a chart FVG of the trade direction right above (long) / below (short) an
-//    IFVG with a breaker, or on any FVG with a breaker; the entry candle closes at or beyond the CE of
-//    the FVG / IFVG used
-//  - Took liquidity: a short-term high (short) or low (long) was taken shortly before the entry
-//    (short-term pivots and sweep rule of the FVG filter of FVGs+IFVG+OTE)
-//  - Time: only inside a time interval, and / or only inside the ICT killzones (the Asia, London,
-//    NY AM and NY PM sessions of ICTlevels, same time zone rule)
+// HTF bias indications (computed on closed HTF candles, nothing repaints):
+//  - OTE rejection: the HTF major leg runs from its origin to its extreme (it flips on an HTF close beyond the
+//    origin). An HTF candle that wicks into the OTE band (0.62-0.79) of that leg and closes back out of it
+//    gives the leg direction. Once the retracement reached that band, the retracement itself is the minor leg:
+//    a candle that wicks into the OTE band of the minor leg and closes back gives the minor leg direction.
+//    The last rejection holds until its leg is broken (a close beyond the major origin, or a new major extreme
+//    for a minor leg rejection).
+//  - FVG draw: towards the nearest HTF FVG price has not come back to yet (bearish FVG above: long,
+//    bullish FVG below: short).
+//  - Liquidity draw: after an HTF swing low is taken, long (towards the highs); after a swing high, short.
+//  - Bias table: agreement of the rightmost columns of the IFVGCISDbias table.
+//
+// LTF entry indications. Triggers decide when to enter and which FVG sets the stop; at least one trigger has
+// to fire on the entry candle:
+//  - IFVG leaving: the candle that confirms the IFVG (close mode of FVGs+IFVG+OTE).
+//  - IFVG return: a later candle wicks back into the confirmed IFVG without passing its far edge.
+//  - FVG return: a candle comes back into a chart FVG of the trade direction and closes at or beyond its CE.
+//  One entry per IFVG confirmation and per FVG.
+// Confirmations, checked for the FVG / IFVG of the trigger or within the last candles:
+//  - OTE: the IFVG is an OTE IFVG (OTE logic of FVGs+IFVG+OTE), or the FVG matches the OTE band of its leg.
+//  - Breaker / Mitigation block: the FVG / IFVG overlaps a breaker / mitigation block of the trade direction
+//    that broke and made a swing beyond it (logic of FVGs+IFVG+OTE).
+//  - Took liquidity: a short-term high (short) / low (long) was taken shortly before.
+//  - HTF level rejection: an ICTcotas level was rejected shortly before (wick through, body on the trade side).
+//  - HTF OTE line rejection: same, with the 0.62 / 0.705 / 0.79 lines of the HTF legs above.
+//  - Delivery: the delivery of the chart timeframe (IFVGCISDbias) matches the trade.
+// Time filter: only inside a time interval and / or the ICT killzones (ICTlevels sessions).
 // Everything is evaluated on closed candles only.
 //
-// Show trades: entry at the close of the signal candle, stop a few points past the far edge of the
-// IFVG, past candle 2 of its FVG, or past the short-term high / low that formed the IFVG, take profit
-// at 1:N or at the next short-term high / low that gives at least 1:N. Simulate trades follows each
-// trade until the stop or the take profit is hit and flags it (a candle that reaches both counts as
-// the stop), optionally moving the stop to breakeven once the trade is positive and trailing it to the
-// low / high of each new candle once the trade is a number of points up. Trades are drawn as
-// red / green boxes (risk / reward) with the entry, stop and take profit segments, a label above each
-// trade with the points to the stop / take profit and the result, and a table with the totals.
+// Show trades: entry at the close of the signal candle, stop past the FVG / IFVG, its candle 2 or the
+// short-term swing, take profit at 1:N, at the next short-term high / low, or at the HTF FVG of the draw
+// (the near candle of its three or its near edge). Simulate trades follows each trade until the stop or the
+// take profit (a candle reaching both counts as the stop), with optional breakeven and trailing stop. The
+// results table has a row per indication in use: the trades where it was true, so the indications can be
+// compared.
 //
 // Keep in sync: the sections below are copies. When FVGs+IFVG+OTE (FVG detection, pivots, OTE,
-// close-mode IFVG), ICTcotas (levels, mitigation) or IFVGCISDbias (ifvgCode, deliveryCode, secPair)
-// change, the same change has to be made here.
-// ICTScalpStrategy.txt is this script as a strategy: same code, a strategy() declaration and the
-// orders at the "strategy orders" mark. A change to either file has to be made to both.
+// close-mode IFVG, breakers, mitigation blocks), ICTcotas (levels, mitigation) or IFVGCISDbias (ifvgCode,
+// deliveryCode, secPair) change, the same change has to be made here.
 
 //@version=6
 indicator("ICTScalp", overlay = true, max_bars_back = 5000, max_lines_count = 500, max_labels_count = 500,
      max_boxes_count = 500)
 
 // ============================================================ inputs
-const string G_E = "Entry conditions"
-bool retMode = input.bool(true, "Enter when price returns to the IFVG (else when leaving it)", group = G_E,
-     tooltip = "Off: enter on the candle that closes through the FVG (confirms the IFVG).\n"+
-         "On: enter on a later candle that comes back into the confirmed IFVG: its high reaches the IFVG "+
-         "without going above its top (short), or its low reaches it without going below its bottom (long). "+
-         "Once per confirmation.")
-bool oteOnly = input.bool(false, "Only OTE IFVGs (else any IFVG)", group = G_E,
-     tooltip = "Only IFVGs flagged as OTE IFVGs by the FVGs+IFVG+OTE logic (OTE settings below). "+
-         "When leaving, only the prior-leg rejection can flag the IFVG on the confirming candle; "+
-         "when returning, both OTE checks count.")
-bool useHtf = input.bool(false, "Require rejection of a higher timeframe level", group = G_E, inline = "htf",
-     tooltip = "A candle within the last N candles (the entry candle included) rejected an ICTcotas level: "+
-         "short: its high reached the level and its whole body stayed below it; long: its low reached the level "+
-         "and its whole body stayed above it. Levels are those of the ICTcotas settings below.")
-int htfLook = input.int(3, "within", minval = 1, maxval = 50, group = G_E, inline = "htf")
-bool useBias = input.bool(false, "Require bias table agreement", group = G_E,
+const string OFF = "Off"
+const string CON = "Consider"
+const string MAN = "Mandatory"
+const string IMODE = "Off: not used. Consider: counts towards 'at least N'. Mandatory: always required."
+
+const string G_H = "HTF bias"
+string hTf = input.timeframe("240", "Higher timeframe", group = G_H,
+     tooltip = "Timeframe of the bias read. It has to be above the chart timeframe (else the chart timeframe "+
+         "is used). Only closed HTF candles are used.")
+string hmOte = input.string(CON, "OTE rejection", options = [OFF, CON, MAN], group = G_H,
+     tooltip = "Major leg: from its origin to its extreme; it flips when an HTF candle closes beyond the origin. "+
+         "An HTF candle that wicks into the OTE band of the leg (not beyond the origin) and closes back out of it "+
+         "(not beyond the far OTE level) gives the leg direction. Minor leg: the retracement of the major leg, once "+
+         "it reached the OTE band; a candle wicking into the OTE band of the minor leg and closing back gives the "+
+         "minor leg direction (the retracement continues). The last rejection holds until its leg breaks. "+
+         "OTE levels and match from the OTE settings. " + IMODE)
+string hmFvg = input.string(CON, "FVG draw", options = [OFF, CON, MAN], group = G_H,
+     tooltip = "Towards the nearest HTF FVG price has not come back to since it formed: a bearish FVG above "+
+         "gives long, a bullish FVG below gives short. Minimum size: the IFVG FVG size. " + IMODE)
+string hmLiq = input.string(OFF, "Liquidity draw", options = [OFF, CON, MAN], group = G_H,
+     tooltip = "After an HTF swing low is taken, long (towards the highs); after a swing high is taken, short. "+
+         "Swings: HTF pivots of the OTE settings. " + IMODE)
+string hmTbl = input.string(OFF, "Bias table", options = [OFF, CON, MAN], group = G_H,
      tooltip = "Columns of the IFVGCISDbias table counted from the right (the chart timeframe, then 3m, 5m, 15m, "+
          "1H, 4H, 1D, 1W above the chart timeframe). At least 'must agree' of the first 'columns' have to show "+
-         "the direction of the trade in the selected row.")
-int biasCols = input.int(2, "columns from the right / must agree", minval = 1, maxval = 8, group = G_E, inline = "bias")
-int biasMin = input.int(2, "", minval = 1, maxval = 8, group = G_E, inline = "bias")
-string biasRow = input.string("DLV", "row", options = ["IFVG", "DLV", "IFVG and DLV"], group = G_E,
+         "the direction in the selected row. " + IMODE)
+int biasCols = input.int(2, "Bias table: columns / must agree", minval = 1, maxval = 8, group = G_H, inline = "bias")
+int biasMin = input.int(2, "", minval = 1, maxval = 8, group = G_H, inline = "bias")
+string biasRow = input.string("DLV", "row", options = ["IFVG", "DLV", "IFVG and DLV"], group = G_H, inline = "bias",
      tooltip = "IFVG: the IFVG bias row. DLV: the delivery row. IFVG and DLV: both rows of the column.")
-bool waitDlv = input.bool(false, "Wait for the delivery to match the trade direction", group = G_E,
-     tooltip = "Delivery of the chart timeframe (the DLV logic of IFVGCISDbias, settings below). When the other "+
-         "conditions are met but the delivery does not match yet, the entry waits for the first closed candle "+
-         "with a matching delivery, as long as the same IFVG stays confirmed.")
-bool liqOn = input.bool(true, "Took liquidity", group = G_E, inline = "liq",
+int hN = input.int(1, "At least N of the considered", minval = 0, maxval = 4, group = G_H,
+     tooltip = "Consider indications that have to agree with the direction, besides the Mandatory ones. "+
+         "Capped at the number of Consider indications. With every indication Off both directions are allowed.")
+bool hShow = input.bool(true, "Show the HTF OTE lines and draw targets", group = G_H,
+     tooltip = "Lines at 0.62 / 0.705 / 0.79 of the major leg (solid) and of the minor leg (dotted), and the near "+
+         "edge of the HTF FVG drawing price up (red) / down (green).")
+
+const string G_E = "LTF entries"
+string emLeave = input.string(OFF, "Trigger: IFVG leaving", options = [OFF, CON, MAN], group = G_E,
+     tooltip = "Enter on the candle that closes through the FVG (confirms the IFVG). " + IMODE)
+string emRet = input.string(MAN, "Trigger: IFVG return", options = [OFF, CON, MAN], group = G_E,
+     tooltip = "Enter on a later candle that comes back into the confirmed IFVG: its high reaches the IFVG "+
+         "without going above its top (short), or its low reaches it without going below its bottom (long). "+
+         "One entry per confirmation. " + IMODE)
+string emFvg = input.string(OFF, "Trigger: FVG return", options = [OFF, CON, MAN], group = G_E,
+     tooltip = "Enter on a candle that comes back into a chart FVG of the trade direction (bullish FVG for longs) "+
+         "and closes at or beyond its CE (at or above for longs). One entry per FVG; a close beyond its far side "+
+         "removes it. " + IMODE)
+string emOte = input.string(CON, "OTE", options = [OFF, CON, MAN], group = G_E,
+     tooltip = "IFVG triggers: the IFVG is an OTE IFVG (OTE settings below; when leaving, only the prior-leg "+
+         "rejection can flag it on the confirming candle). FVG return: the FVG matches the OTE band of its leg "+
+         "(from the last swing before the FVG to the extreme since the FVG). " + IMODE)
+string emBrk = input.string(CON, "Breaker", options = [OFF, CON, MAN], group = G_E,
+     tooltip = "The FVG / IFVG of the trigger overlaps a breaker of the trade direction that broke and made a "+
+         "swing beyond it (Breakers settings below). " + IMODE)
+string emMb = input.string(CON, "Mitigation block", options = [OFF, CON, MAN], group = G_E,
+     tooltip = "The FVG / IFVG of the trigger overlaps a mitigation block of the trade direction that broke and "+
+         "made a swing beyond it (Mitigation blocks settings below). " + IMODE)
+string emLiq = input.string(CON, "Took liquidity", options = [OFF, CON, MAN], group = G_E, inline = "liq",
      tooltip = "Short: a candle took the last short-term high within the last N candles (the entry candle "+
          "included). Long: a candle took the last short-term low. Short-term highs / lows are pivots with the "+
-         "left / right lengths given here (the sweep pivots of FVGs+IFVG+OTE).")
+         "left / right lengths given here (the sweep pivots of FVGs+IFVG+OTE). " + IMODE)
 int liqLook = input.int(20, "within", minval = 1, maxval = 500, group = G_E, inline = "liq")
-flL = input.int(3, "pivots L, R", minval = 1, group = G_E, inline = "liq")
-flR = input.int(3, "", minval = 1, group = G_E, inline = "liq")
+flL = input.int(3, "Short-term pivots L, R", minval = 1, group = G_E, inline = "stp")
+flR = input.int(3, "", minval = 1, group = G_E, inline = "stp")
+string emLvl = input.string(OFF, "HTF level rejection", options = [OFF, CON, MAN], group = G_E, inline = "htf",
+     tooltip = "A candle within the last N candles (the entry candle included) rejected an ICTcotas level: "+
+         "short: its high reached the level and its whole body stayed below it; long: its low reached the level "+
+         "and its whole body stayed above it. Levels are those of the ICTcotas settings below. N is shared with "+
+         "the HTF OTE line rejection. " + IMODE)
+int htfLook = input.int(3, "within", minval = 1, maxval = 50, group = G_E, inline = "htf")
+string emOteL = input.string(CON, "HTF OTE line rejection", options = [OFF, CON, MAN], group = G_E,
+     tooltip = "As the HTF level rejection, with the 0.62 / 0.705 / 0.79 lines of the HTF major and minor legs "+
+         "(HTF bias, OTE rejection). " + IMODE)
+string emDlv = input.string(OFF, "Delivery", options = [OFF, CON, MAN], group = G_E,
+     tooltip = "The delivery of the chart timeframe (the DLV logic of IFVGCISDbias, settings below) matches the "+
+         "direction of the trade on the entry candle. " + IMODE)
+int eN = input.int(1, "At least N of the considered", minval = 0, maxval = 10, group = G_E,
+     tooltip = "Consider indications (triggers included) that have to be true, besides the Mandatory ones. "+
+         "Capped at the number of Consider indications.")
 
-const string G_BRK = "Breakers"
-bool brkUse = input.bool(false, "Breakers", group = G_BRK,
-     tooltip = "Bullish breaker: a low, a high and a lower low; the zone is the last up-close candle making the "+
-         "high (or the whole up-close sequence there). Bearish breaker: a high, a low and a higher high (down-close "+
-         "candle(s) making the low). A breaker counts once price has closed beyond the zone (above for bullish, "+
-         "below for bearish) and then made a swing high / low beyond it; a close through the other side of the "+
-         "zone removes it. The rules of FVGs+IFVG+OTE. With breakers on, every entry candle has to close at or "+
-         "beyond the CE of the FVG / IFVG used (at or above for longs, at or below for shorts).")
-bool brkReq = input.bool(true, "IFVG entries need a breaker", group = G_BRK,
-     tooltip = "The IFVG of an IFVG entry overlaps a breaker of the trade direction (IFVG+ / bullish breaker, "+
-         "IFVG- / bearish breaker). Off: IFVG entries as without breakers (plus the CE close), and the "+
-         "breaker FVG entries below are added.")
-bool brkAdj = input.bool(true, "FVG next to an IFVG with a breaker", group = G_BRK,
-     tooltip = "Long: a bullish FVG formed after the confirmed IFVG+, right above it (bottom inside the IFVG+ "+
-         "or at most one IFVG height above its top), when the IFVG+ overlaps a bullish breaker. Entry on a "+
-         "candle that comes back into the FVG and closes at or above its CE. Short: the mirror (bearish FVG "+
-         "right below an IFVG- with a bearish breaker). One entry per FVG; a close beyond its far side removes it.")
-bool brkFvg = input.bool(false, "FVGs with a breaker", group = G_BRK,
-     tooltip = "Also any bullish FVG that overlaps a bullish breaker (long), or bearish FVG that overlaps a "+
-         "bearish breaker (short), with the same entry rule.")
+const string G_BRK = "Breakers (FVGs+IFVG+OTE settings)"
 string brkMode = input.string("Last candle", "Zone", options = ["Last candle", "Whole sequence"], group = G_BRK,
-     tooltip = "Last candle: the last up-close candle making the high (bullish) / down-close candle making the "+
-         "low (bearish). Whole sequence: that candle and the consecutive up-close / down-close candles before it.")
-int brkLen = input.int(3, "Swing length / keep", minval = 1, maxval = 20, group = G_BRK, inline = "bl",
+     inline = "bm", tooltip = "Bullish breaker: a low, a high and a lower low (the second low raids the first); "+
+         "it forms on a close above that high. Bearish: a high, a low and a higher high, formed on a close below "+
+         "that low. Price then has to make a swing beyond the zone. A close through the far side removes it.\n"+
+         "Last candle: the last up-close candle making the high (bullish) / down-close candle making the low "+
+         "(bearish). Whole sequence: that candle and the consecutive up-close / down-close candles before it. "+
+         "Full candle / Body: the zone spans the high to the low of its candle(s), or their bodies.")
+string brkPart = input.string("Full candle", "", options = ["Full candle", "Body"], group = G_BRK, inline = "bm")
+int brkLen = input.int(2, "Swing length / keep", minval = 1, maxval = 20, group = G_BRK, inline = "bl",
      tooltip = "Pivot length (left and right) of the lows and highs, and breakers kept per direction.")
 int brkKeep = input.int(3, "", minval = 1, maxval = 10, group = G_BRK, inline = "bl")
+int brkAge = input.int(60, "Max bars to the pullback", minval = 5, maxval = 1000, group = G_BRK,
+     tooltip = "Bars from the zone within which the pullback has to come; later the breaker is dropped. Once a "+
+         "pullback came, it is kept until no pullback comes for that many bars.")
+
+const string G_MB = "Mitigation blocks (FVGs+IFVG+OTE settings)"
+string mbMode = input.string("Last candle", "Zone", options = ["Last candle", "Whole sequence"], group = G_MB,
+     inline = "mm", tooltip = "Bullish mitigation block: a low, a high and a higher low; it forms on a close above "+
+         "that high. Bearish: a high, a low and a lower high, formed on a close below that low. Otherwise as the "+
+         "breakers.")
+string mbPart = input.string("Body", "", options = ["Full candle", "Body"], group = G_MB, inline = "mm")
+int mbLen = input.int(2, "Swing length / keep", minval = 1, maxval = 20, group = G_MB, inline = "ml")
+int mbKeep = input.int(3, "", minval = 1, maxval = 10, group = G_MB, inline = "ml")
+int mbAge = input.int(60, "Max bars to the pullback", minval = 5, maxval = 1000, group = G_MB)
 
 const string G_TM = "Time"
 string TZ = input.string("Auto", "Zone: US / EU / Auto", options = ["US", "EU", "Auto"], group = G_TM,
@@ -133,21 +181,24 @@ bool showTrades = input.bool(false, "Show trades", group = G_T,
          "green one at the take profit.")
 string stopMode = input.string("Short-term high / low", "Stop past", options = ["IFVG far edge", "Candle 2",
      "Candle 2 and IFVG wicks", "Short-term high / low"], group = G_T,
-     tooltip = "IFVG far edge: above the top of the IFVG (short) / below its bottom (long).\n"+
+     tooltip = "IFVG far edge: above the top of the FVG / IFVG (short) / below its bottom (long).\n"+
          "Candle 2: above the high (short) / below the low (long) of the middle candle of the FVG.\n"+
          "Candle 2 and IFVG wicks: past the safest of candle 2 and the wicks against the trade that reached "+
-         "the IFVG, from candle 2 to the entry: the highest of those highs (short) / lowest of those lows (long).\n"+
+         "the FVG / IFVG, from candle 2 to the entry.\n"+
          "Short-term high / low: above the highest short-term high (short) / below the lowest short-term low "+
-         "(long) formed from the start of the FVG to the entry: the swing that created the IFVG. Short-term "+
-         "pivots use the 'Took liquidity' pivot lengths; with no pivot in that span, the highest high / "+
+         "(long) formed from the start of the FVG to the entry. With no pivot in that span, the highest high / "+
          "lowest low of the span is used.")
-float stopDelta = input.float(2.0, "Stop: points past that level", minval = 0.0, step = 0.25, group = G_T)
+float stopDeltaIn = input.float(2.0, "Stop: points past that level", minval = 0.0, step = 0.25, group = G_T,
+     tooltip = "Points for NQ, scaled for other instruments when 'Scale sizes' is on (IFVG settings).")
 string tpMode = input.string("Risk ratio 1:N", "Take profit", options = ["Risk ratio 1:N",
-     "Next short-term high / low"], group = G_T,
+     "Next short-term high / low", "HTF FVG: near candle", "HTF FVG: near edge"], group = G_T,
      tooltip = "Risk ratio 1:N: at N times the risk.\n"+
          "Next short-term high / low: at the nearest short-term high (long) / low (short) not taken yet that "+
-         "is at least N times the risk away; with none, at 1:N. Short-term pivots use the 'Took liquidity' "+
-         "pivot lengths.")
+         "is at least N times the risk away; with none, at 1:N.\n"+
+         "HTF FVG: the nearest HTF FVG price has not come back to, in the trade direction (the FVG draw of the "+
+         "HTF bias). Near candle: the low (long, bearish FVG above) / high (short) of the newest of its three "+
+         "candles, the one next to the price side; when price is already past it, the near edge. Near edge: the "+
+         "bottom (long) / top (short) of the FVG. With no such FVG, at 1:N.")
 float rrN = input.float(2.0, "Risk ratio 1:N (minimum for short-term high / low), N", minval = 1.0, step = 0.5,
      group = G_T)
 int segLen = input.int(20, "Segment length (bars)", minval = 1, maxval = 500, group = G_T,
@@ -158,21 +209,22 @@ bool simulate = input.bool(false, "Simulate trades", group = G_T,
 bool beOn = input.bool(false, "Simulate: breakeven stop once positive, by points", group = G_T, inline = "be",
      tooltip = "After a candle closes in profit by more than these points (0: any profit), the stop moves to "+
          "the entry price.")
-float beMin = input.float(0.0, "", minval = 0.0, step = 0.25, group = G_T, inline = "be")
+float beMinIn = input.float(0.0, "", minval = 0.0, step = 0.25, group = G_T, inline = "be")
 bool trOn = input.bool(true, "Simulate: trailing stop after points up", group = G_T, inline = "tr",
      tooltip = "Once price has gone these points in favour of the trade, the stop moves to the low (long) / "+
          "high (short) of each new closed candle, never backwards, and the take profit is no longer used: "+
-         "the trade runs until it is stopped out.")
-float trPts = input.float(50.0, "", minval = 0.25, step = 0.25, group = G_T, inline = "tr")
+         "the trade runs until it is stopped out. Points for NQ, scaled when 'Scale sizes' is on.")
+float trPtsIn = input.float(50.0, "", minval = 0.25, step = 0.25, group = G_T, inline = "tr")
 bool boxOn = input.bool(true, "Boxes, transparency", group = G_T, inline = "bx",
      tooltip = "Red box from the entry to the initial stop, green box from the entry to the take profit, "+
          "up to the exit candle (simulated) or the segment length.")
 int boxTr = input.int(80, "", minval = 0, maxval = 100, group = G_T, inline = "bx")
 bool lblOn = input.bool(true, "Trade label with the points", group = G_T,
-     tooltip = "Above each trade: points to the stop and to the take profit, and the points made once a "+
-         "simulated trade ends.")
+     tooltip = "Above each trade: points to the stop and to the take profit, the indications that were true, "+
+         "and the points made once a simulated trade ends.")
 bool statsOn = input.bool(true, "Results table (simulated trades)", group = G_T, inline = "st",
-     tooltip = "Number of positive and negative simulated trades and the points of each, plus the total.")
+     tooltip = "One row for all the simulated trades and one per indication in use, counting the trades where "+
+         "that indication was true: trades, positive, negative and points.")
 string statsPos = input.string("Top right", "", options = ["Top right", "Bottom right", "Top left", "Bottom left"],
      group = G_T, inline = "st")
 color entryCol = input.color(color.gray, "Colors: entry", group = G_T, inline = "tc")
@@ -186,9 +238,13 @@ bool doAlerts = input.bool(true, "Alerts", group = G_S)
 
 // FVGs+IFVG+OTE settings ===================================
 const string G_I = "IFVG (FVGs+IFVG+OTE settings)"
-var minfvg = input.float(3, "Size: min", minval = 1, maxval = 1000, group = G_I, inline = "sz",
+nqscale = input.bool(true, "Scale sizes using NQ sizes as reference", group = G_I,
+    tooltip = "Sizes in points (minimum sizes, stop offset, breakeven and trailing points) are set for NQ. On: "+
+        "they are scaled for the chart instrument by a fixed factor, its typical range relative to NQ: ES 0.2, "+
+        "YM 1.3, RTY 0.1, DAX 0.7 (and their micros and CFDs); other instruments keep them as given.")
+minfvgIn = input.float(3, "Size: min", minval = 1, maxval = 1000, group = G_I, inline = "sz",
     tooltip = "Minimum FVG size (points) to be valid.")
-var maxfvg = input.float(10000, "max", minval = 100, group = G_I, inline = "sz",
+maxfvgIn = input.float(10000, "max", minval = 100, group = G_I, inline = "sz",
     tooltip = "Ignore FVGs larger than this (buggy data with huge gaps).")
 pivL = input.int(10, "Swing pivot left / right", minval = 1, group = G_I, inline = "piv",
     tooltip = "Pivot lengths used to find the leg before the FVG for the OTE prior-leg rejection.")
@@ -244,14 +300,13 @@ int nwk = input.int(8, "keep", minval = 1, maxval = 20, group = G_GEN, inline = 
 float wkmin = input.float(30.0, "min wick %", minval = 1.0, maxval = 100.0, group = G_GEN, inline = "w1")
 bool domf = input.bool(true, "FVGs by timeframe", group = G_GEN, inline = "m0")
 int mfnext = input.int(0, "plus the next higher", minval = 0, maxval = 6, group = G_GEN, inline = "m0")
-bool mf15 = input.bool(true, "15m", group = G_GEN, inline = "m1")
+bool mf15 = input.bool(false, "15m", group = G_GEN, inline = "m1")
 bool mf1h = input.bool(true, "1H", group = G_GEN, inline = "m1")
 bool mf4h = input.bool(true, "4H", group = G_GEN, inline = "m1")
-bool mfd = input.bool(true, "D", group = G_GEN, inline = "m1")
-bool mfw = input.bool(true, "W", group = G_GEN, inline = "m1")
-bool mfm = input.bool(true, "M", group = G_GEN, inline = "m1",
-     tooltip = "Unlike ICTcotas, all of them are on by default. Only timeframes higher than "+
-         "the chart timeframe are used, never the chart's own.")
+bool mfd = input.bool(false, "D", group = G_GEN, inline = "m1")
+bool mfw = input.bool(false, "W", group = G_GEN, inline = "m1")
+bool mfm = input.bool(false, "M", group = G_GEN, inline = "m1",
+     tooltip = "Only timeframes higher than the chart timeframe are used, never the chart's own.")
 int nmf = input.int(6, "keep per timeframe", minval = 1, maxval = 20, group = G_GEN, inline = "m2")
 float mfmin = input.float(0.0, "min size", minval = 0.0, group = G_GEN, inline = "m2")
 bool wk1h = input.bool(true, "wick CE: 1H", group = G_GEN, inline = "m3")
@@ -266,10 +321,36 @@ deferOn = input.bool(true, "Defer CISD until the low / high is taken", group = G
 exclInner = input.bool(true, "Exclude inner candles", group = G_B, inline = "in")
 innerRange = input.string("Body", "", options = ["Body", "High-Low"], group = G_B, inline = "in")
 
+
+// [NQS] sizes in points are given for NQ; with nqscale they are scaled for the chart instrument by a hardwired
+// factor (its typical daily range relative to NQ's). Futures match by root, other symbols by ticker prefix;
+// instruments not in the table keep the sizes as given (FVGs+IFVG+OTE)
+nqScale() =>
+    array<string> nms = array.from("NQ", "MNQ", "NNQ", "NAS100", "US100", "USTEC", "NDX", "NQ100",
+         "ES", "MES", "US500", "SPX", "SP500", "US30", "YM", "MYM", "DJI", "WS30", "DJ30",
+         "RTY", "M2K", "US2000", "RUT", "FDAX", "FDXM", "FDXS", "DAX", "GER40", "DE40", "GER30", "DE30", "DEU40")
+    array<float> ks = array.from(1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+         0.2, 0.2, 0.2, 0.2, 0.2, 1.3, 1.3, 1.3, 1.3, 1.3, 1.3,
+         0.1, 0.1, 0.1, 0.1, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7)
+    bool fut = syminfo.type == "futures"
+    string s = str.upper(fut ? syminfo.root : syminfo.ticker)
+    float r = 1.0
+    for [i, nm] in nms
+        if fut ? s == nm : str.startswith(s, nm)
+            r := ks.get(i)
+            break
+    r
+var float sizeK = nqscale ? nqScale() : 1.0
+float minfvg = minfvgIn * sizeK
+float maxfvg = maxfvgIn * sizeK
+float stopDelta = stopDeltaIn * sizeK
+float beMin = beMinIn * sizeK
+float trPts = trPtsIn * sizeK
+
 int tfsecs = timeframe.in_seconds()
 
 // ============================================================ IFVG + OTE (from FVGs+IFVG+OTE, close mode)
-bool useOTE = true // OTE is always tracked; "Only OTE IFVGs" decides whether it is required
+bool useOTE = true // OTE is always tracked; the OTE indication decides whether it is used
 
 longFVGHL(o1,c1,l1,o2,c2,o3,c3,h3) =>
     hi = l1
@@ -1259,163 +1340,408 @@ biasAgree(int dir) =>
                 cnt += 1
     cnt >= biasMin
 
-// ============================================================ breakers (FVGs+IFVG+OTE, state only)
-type Breaker
-    int dir         // 1 bullish (long), -1 bearish (short)
+
+// ============================================================ HTF bias
+// Runs on the HTF candles (request.security); every value is that of the last closed HTF candle.
+// Major leg: ld 1 up (org low, ext high), -1 down (org high, ext low); flips on a close beyond org.
+// rx: retracement extreme since ext (lowest low of an up leg, highest high of a down leg).
+htfCode() =>
+    var int ld = 0
+    var float org = na
+    var float ext = na
+    var float rx = na
+    var int b1 = 0          // OTE rejection direction
+    var int b1src = 0       // 1 major leg, 2 minor leg
+    var int b3 = 0          // liquidity draw
+    var float sh = na       // last swing high / low not taken yet
+    var float sl = na
+    var array<float> uN = array.new<float>()    // bearish FVGs (above): near edge (bottom), newest candle low
+    var array<float> uC = array.new<float>()
+    var array<float> dN = array.new<float>()    // bullish FVGs (below): near edge (top), newest candle high
+    var array<float> dC = array.new<float>()
+    float ph = ta.pivothigh(high, oteHtfL, oteHtfR)
+    float pl = ta.pivotlow(low, oteHtfL, oteHtfR)
+    // --- OTE rejection
+    if ld == 0
+        ld := 1
+        org := low
+        ext := high
+        rx := high
+    else
+        float r = math.abs(ext - org)
+        float m62 = ext - ld * oteMin * r
+        float m79 = ext - ld * oteMax * r
+        float mr = math.abs(ext - rx)
+        bool minorOk = r > 0 and mr > 0 and (ld == 1 ? rx <= m62 : rx >= m62)
+        if ld == 1 ? close < org : close > org
+            ld := -ld
+            org := ext
+            ext := ld == 1 ? high : low
+            rx := ext
+            b1 := 0
+            b1src := 0
+        else if ld == 1 ? high > ext : low < ext
+            ext := ld == 1 ? high : low
+            rx := ext
+            if b1src == 2
+                b1 := 0
+                b1src := 0
+        else
+            bool maj = r > 0 and (ld == 1 ? low <= m62 and low >= org and close >= m79
+                 : high >= m62 and high <= org and close <= m79)
+            // minor leg: from ext to rx; price back from rx towards ext into its OTE band
+            float n62 = rx + ld * oteMin * mr
+            float n79 = rx + ld * oteMax * mr
+            bool mnr = minorOk and (ld == 1 ? high >= n62 and high <= ext and close <= n79
+                 : low <= n62 and low >= ext and close >= n79)
+            if maj
+                b1 := ld
+                b1src := 1
+            else if mnr
+                b1 := -ld
+                b1src := 2
+            rx := ld == 1 ? math.min(rx, low) : math.max(rx, high)
+    float rr = math.abs(ext - org)
+    float mm = math.abs(ext - rx)
+    bool mOk = rr > 0 and mm > 0 and (ld == 1 ? rx <= ext - oteMin * rr : rx >= ext + oteMin * rr)
+    float a62 = rr > 0 ? ext - ld * oteMin * rr : na
+    float a705 = rr > 0 ? ext - ld * (oteMin + oteMax) / 2 * rr : na
+    float a79 = rr > 0 ? ext - ld * oteMax * rr : na
+    float i62 = mOk ? rx + ld * oteMin * mm : na
+    float i705 = mOk ? rx + ld * (oteMin + oteMax) / 2 * mm : na
+    float i79 = mOk ? rx + ld * oteMax * mm : na
+    // --- liquidity draw
+    bool tH = not na(sh) and high > sh
+    bool tL = not na(sl) and low < sl
+    if tH and not tL
+        b3 := -1
+    else if tL and not tH
+        b3 := 1
+    if tH
+        sh := na
+    if tL
+        sl := na
+    if not na(ph)
+        sh := ph
+    if not na(pl)
+        sl := pl
+    // --- FVG draw: FVGs price has not come back to
+    if uN.size() > 0
+        for i = uN.size() - 1 to 0
+            if high >= uN.get(i)
+                uN.remove(i)
+                uC.remove(i)
+    if dN.size() > 0
+        for i = dN.size() - 1 to 0
+            if low <= dN.get(i)
+                dN.remove(i)
+                dC.remove(i)
+    if high < low[2] and low[2] - high > minfvg and low[2] - high < maxfvg
+        uN.push(high)
+        uC.push(low)
+        if uN.size() > 10
+            uN.shift()
+            uC.shift()
+    if low > high[2] and low - high[2] > minfvg and low - high[2] < maxfvg
+        dN.push(low)
+        dC.push(high)
+        if dN.size() > 10
+            dN.shift()
+            dC.shift()
+    float upN = na
+    float upC = na
+    for [i, v] in uN
+        if na(upN) or v < upN
+            upN := v
+            upC := uC.get(i)
+    float dnN = na
+    float dnC = na
+    for [i, v] in dN
+        if na(dnN) or v > dnN
+            dnN := v
+            dnC := dC.get(i)
+    int b2 = na(upN) and na(dnN) ? 0 : na(dnN) ? 1 : na(upN) ? -1 : (upN - close <= close - dnN ? 1 : -1)
+    [b1[1], b2[1], b3[1], a62[1], a705[1], a79[1], i62[1], i705[1], i79[1], upN[1], upC[1], dnN[1], dnC[1]]
+
+string hRq = timeframe.in_seconds(hTf) > tfsecs ? hTf : timeframe.period
+[hbOte, hbFvg, hbLiq, hA62, hA705, hA79, hI62, hI705, hI79, hUpN, hUpC, hDnN, hDnC] = request.security(
+     syminfo.tickerid, hRq, htfCode(), lookahead = barmerge.lookahead_on)
+
+plot(hShow ? hA62 : na, "HTF major 0.62", color.new(color.navy, 30), 1, plot.style_linebr)
+plot(hShow ? hA705 : na, "HTF major 0.705", color.new(color.navy, 0), 2, plot.style_linebr)
+plot(hShow ? hA79 : na, "HTF major 0.79", color.new(color.navy, 30), 1, plot.style_linebr)
+plot(hShow ? hI62 : na, "HTF minor 0.62", color.new(color.blue, 40), 1, plot.style_circles)
+plot(hShow ? hI705 : na, "HTF minor 0.705", color.new(color.blue, 20), 1, plot.style_circles)
+plot(hShow ? hI79 : na, "HTF minor 0.79", color.new(color.blue, 40), 1, plot.style_circles)
+plot(hShow ? hUpN : na, "HTF FVG draw up", color.new(color.red, 40), 2, plot.style_linebr)
+plot(hShow ? hDnN : na, "HTF FVG draw down", color.new(color.green, 40), 2, plot.style_linebr)
+
+// rejection of the HTF OTE lines by this candle (same rule as the ICTcotas levels)
+oteLineRej() =>
+    bool bear = false
+    bool bull = false
+    float bTop = math.max(open, close)
+    float bBot = math.min(open, close)
+    for p in array.from(hA62, hA705, hA79, hI62, hI705, hI79)
+        if not na(p)
+            if high >= p and bTop < p
+                bear := true
+            if low <= p and bBot > p
+                bull := true
+    [bear, bull]
+
+[oRejBear, oRejBull] = oteLineRej()
+var int lastORejBear = na
+var int lastORejBull = na
+if barstate.isconfirmed and oRejBear
+    lastORejBear := bar_index
+if barstate.isconfirmed and oRejBull
+    lastORejBull := bar_index
+
+modeOf(string s) =>
+    s == MAN ? 2 : s == CON ? 1 : 0
+
+// Indications: 0..9 LTF (triggers 0..2), 10..13 HTF
+var array<string> indName = array.from("IFVG leaving", "IFVG return", "FVG return", "OTE", "Breaker",
+     "Mit. block", "Liquidity", "HTF level", "HTF OTE line", "Delivery", "HTF OTE rej.", "HTF FVG draw",
+     "HTF liq. draw", "Bias table")
+var array<string> indShort = array.from("IFVGl", "IFVGr", "FVGr", "OTE", "B", "MB", "Liq", "Lvl", "OTEl", "DLV",
+     "hOTE", "hFVG", "hLiq", "Tbl")
+var array<int> indMode = array.from(modeOf(emLeave), modeOf(emRet), modeOf(emFvg), modeOf(emOte), modeOf(emBrk),
+     modeOf(emMb), modeOf(emLiq), modeOf(emLvl), modeOf(emOteL), modeOf(emDlv), modeOf(hmOte), modeOf(hmFvg),
+     modeOf(hmLiq), modeOf(hmTbl))
+
+// [pass, bit mask of the true indications] for indications i0..i1 with values v (index 0 is i0) and N
+indCheck(int i0, int i1, array<bool> v, int n) =>
+    bool ok = true
+    int cons = 0
+    int cnt = 0
+    int mask = 0
+    for i = i0 to i1
+        int m = indMode.get(i)
+        bool t = v.get(i - i0)
+        if m > 0 and t
+            mask += int(math.pow(2, i))
+        if m == 2 and not t
+            ok := false
+        if m == 1
+            cons += 1
+            if t
+                cnt += 1
+    [ok and cnt >= math.min(n, cons), mask]
+
+bitOn(int mask, int i) =>
+    int(mask / math.pow(2, i)) % 2 == 1
+
+// ============================================================ breakers and mitigation blocks (FVGs+IFVG+OTE, state only)
+type Blk
+    int kind        // 0 breaker, 1 mitigation block
+    int dir         // 1 bullish (long after the pullback), -1 bearish
     float hi        // zone
     float lo
     bool broken = false
     int bkBar = na  // bar of the close beyond the zone
-    bool swung = false  // a swing beyond the zone formed after the break: entries allowed
+    bool swung = false  // a swing beyond the zone formed after the break (needed for the pullback)
+    bool tagged = false // first pullback with a matching FVG / IFVG seen
+    int zb = na     // bar of the last candle of the zone (age)
+    int pb = na     // bar of the last pullback into the zone (age once tagged)
 
-var array<Breaker> brks = array.new<Breaker>()
+// swing sequence and armed levels of one kind (ICTblocks)
+type BlkSeq
+    array<float> p
+    array<int> b
+    array<int> t
+    float upLvl = na    // swing high waiting for a close above it (bullish), its bar, the last one used
+    int upBar = na
+    int upDone = na
+    float dnLvl = na    // swing low waiting for a close below it (bearish)
+    int dnBar = na
+    int dnDone = na
+
+var array<Blk> blks = array.new<Blk>()
+var BlkSeq bSeq = BlkSeq.new(array.new<float>(), array.new<int>(), array.new<int>())
+var BlkSeq mSeq = BlkSeq.new(array.new<float>(), array.new<int>(), array.new<int>())
 float bPH = ta.pivothigh(high, brkLen, brkLen)
 float bPL = ta.pivotlow(low, brkLen, brkLen)
-var float bLastH = na   // last two pivot highs / lows (price, bar)
-var int bLastHb = na
-var float bPrevH = na
-var int bPrevHb = na
-var float bLastL = na
-var int bLastLb = na
-var float bPrevL = na
-var int bPrevLb = na
+float mPH = ta.pivothigh(high, mbLen, mbLen)
+float mPL = ta.pivotlow(low, mbLen, mbLen)
+bool blkOn = modeOf(emBrk) > 0 or modeOf(emMb) > 0
 
-// zone from candle k bars back: the up-close (dir 1) / down-close (dir -1) candle there or the nearest one
-// before it (not before bar 'from'), plus the consecutive ones before it in "Whole sequence" mode
-brkZone(int dir, int k0, int from) =>
+blkPivot(array<float> pr, array<int> br, array<int> ty, float price, int bar, int kind) =>
+    bool changed = false
+    int n = ty.size()
+    if n > 0 and ty.get(n - 1) == kind
+        if kind == 1 ? price > pr.get(n - 1) : price < pr.get(n - 1)
+            pr.set(n - 1, price)
+            br.set(n - 1, bar)
+            changed := true
+    else
+        pr.push(price)
+        br.push(bar)
+        ty.push(kind)
+        changed := true
+        while ty.size() > 3
+            pr.shift()
+            br.shift()
+            ty.shift()
+    changed
+
+// block zone at the swing k0 bars back: the up-close (dir 1) / down-close (dir -1) candle there or among
+// the 3 before it, high to low or its body, plus the consecutive ones before it in "Whole sequence" mode.
+// Returns [hi, lo, time of its last candle]
+blkZone(int dir, int k0, bool body, bool whole) =>
     float zh = na
     float zl = na
-    bool found = false
-    int kmax = math.min(bar_index - from, 300)
-    int k = k0
-    while k <= kmax and not found
-        if (close[k] - open[k]) * dir > 0
-            zh := high[k]
-            zl := low[k]
-            found := true
-        k += 1
-    if found and brkMode == "Whole sequence"
-        while k <= kmax and (close[k] - open[k]) * dir > 0
-            zh := math.max(zh, high[k])
-            zl := math.min(zl, low[k])
+    int zt1 = na
+    if k0 + 3 <= 300
+        int k = k0
+        while k <= k0 + 3 and na(zt1)
+            if (close[k] - open[k]) * dir > 0
+                zh := body ? math.max(open[k], close[k]) : high[k]
+                zl := body ? math.min(open[k], close[k]) : low[k]
+                zt1 := time[k]
             k += 1
-    [zh, zl, found]
+        if not na(zt1) and whole
+            while k <= 300 and (close[k] - open[k]) * dir > 0
+                zh := math.max(zh, body ? math.max(open[k], close[k]) : high[k])
+                zl := math.min(zl, body ? math.min(open[k], close[k]) : low[k])
+                k += 1
+    [zh, zl, zt1]
 
-brkAdd(int dir, float zh, float zl) =>
-    brks.push(Breaker.new(dir, zh, zl))
+blkAdd(int kind, int dir, float zh, float zl, int zt1) =>
+    int zk = 0
+    while zk < 300 and time[zk] > zt1
+        zk += 1
+    blks.push(Blk.new(kind, dir, zh, zl, true, bar_index, zb = bar_index - zk))
+    int keep = kind == 0 ? brkKeep : mbKeep
     int cnt = 0
-    for b in brks
-        if b.dir == dir
+    for b in blks
+        if b.kind == kind and b.dir == dir
             cnt += 1
-    if cnt > brkKeep
-        for i = 0 to brks.size() - 1
-            if brks.get(i).dir == dir
-                brks.remove(i)
+    if cnt > keep
+        for i = 0 to blks.size() - 1
+            Blk o = blks.get(i)
+            if o.kind == kind and o.dir == dir
+                blks.remove(i)
                 break
     true
 
-if brkUse and barstate.isconfirmed
-    if not na(bPL)
-        bPrevL := bLastL
-        bPrevLb := bLastLb
-        bLastL := bPL
-        bLastLb := bar_index - brkLen
-        // bullish: low, high, lower low (the high between the two lows)
-        if not na(bPrevL) and bLastL < bPrevL and not na(bLastHb) and bLastHb > bPrevLb and bLastHb < bLastLb
-            [zh, zl, ok] = brkZone(1, bar_index - bLastHb, bPrevLb)
-            if ok
-                brkAdd(1, zh, zl)
-    if not na(bPH)
-        bPrevH := bLastH
-        bPrevHb := bLastHb
-        bLastH := bPH
-        bLastHb := bar_index - brkLen
-        // bearish: high, low, higher high (the low between the two highs)
-        if not na(bPrevH) and bLastH > bPrevH and not na(bLastLb) and bLastLb > bPrevHb and bLastLb < bLastHb
-            [zh, zl, ok] = brkZone(-1, bar_index - bLastLb, bPrevHb)
-            if ok
-                brkAdd(-1, zh, zl)
-    if brks.size() > 0
-        for i = brks.size() - 1 to 0
-            Breaker b = brks.get(i)
-            if not b.broken
+// breaker (kind 0): bearish = high, low, higher high; bullish = low, high, lower low.
+// mitigation block (kind 1): bearish = high, low, lower high; bullish = low, high, higher low.
+// Armed on the swing between the first two; formed on the close through it.
+blkSeqStep(BlkSeq s, int kind, float ph, float pl, int len, int age, bool body, bool whole) =>
+    if not na(ph) and blkPivot(s.p, s.b, s.t, ph, bar_index - len, 1)
+        if s.t.size() == 3 and s.t.get(0) == 1 and s.b.get(1) != nz(s.dnDone, -1)
+            bool ok = kind == 0 ? s.p.get(2) > s.p.get(0) : s.p.get(2) < s.p.get(0)
+            s.dnLvl := ok ? s.p.get(1) : na
+            s.dnBar := s.b.get(1)
+    if not na(pl) and blkPivot(s.p, s.b, s.t, pl, bar_index - len, -1)
+        if s.t.size() == 3 and s.t.get(0) == -1 and s.b.get(1) != nz(s.upDone, -1)
+            bool ok = kind == 0 ? s.p.get(2) < s.p.get(0) : s.p.get(2) > s.p.get(0)
+            s.upLvl := ok ? s.p.get(1) : na
+            s.upBar := s.b.get(1)
+    if not na(s.dnLvl) and bar_index - s.dnBar > age
+        s.dnLvl := na
+    if not na(s.upLvl) and bar_index - s.upBar > age
+        s.upLvl := na
+    if not na(s.dnLvl) and close < s.dnLvl
+        [zh, zl, zt1] = blkZone(-1, bar_index - s.dnBar, body, whole)
+        if not na(zt1)
+            blkAdd(kind, -1, zh, zl, zt1)
+        s.dnDone := s.dnBar
+        s.dnLvl := na
+    if not na(s.upLvl) and close > s.upLvl
+        [zh, zl, zt1] = blkZone(1, bar_index - s.upBar, body, whole)
+        if not na(zt1)
+            blkAdd(kind, 1, zh, zl, zt1)
+        s.upDone := s.upBar
+        s.upLvl := na
+    true
+
+// chart FVGs not closed through nor used yet: bullish (long) / bearish (short), for the FVG return trigger
+// and the pullback tags of the blocks
+var array<FVG> fvL = array.new<FVG>()
+var array<FVG> fvS = array.new<FVG>()
+if barstate.isconfirmed
+    if fvL.size() > 0
+        for i = fvL.size() - 1 to 0
+            if close < fvL.get(i).lo or fvL.get(i).used
+                fvL.remove(i)
+    if fvS.size() > 0
+        for i = fvS.size() - 1 to 0
+            if close > fvS.get(i).hi or fvS.get(i).used
+                fvS.remove(i)
+    if not na(lastlongfvg)
+        fvL.push(lastlongfvg)
+        if fvL.size() > 30
+            fvL.shift()
+    if not na(lastshortfvg)
+        fvS.push(lastshortfvg)
+        if fvS.size() > 30
+            fvS.shift()
+
+ovl(FVG f, Blk b) =>
+    not na(f) and f.hi >= b.lo and f.lo <= b.hi
+
+// a live FVG or confirmed IFVG of the block direction overlaps it (the pullback tag of FVGs+IFVG+OTE)
+blkMatch(Blk b) =>
+    bool r = false
+    array<FVG> fs = b.dir == 1 ? fvL : fvS
+    for f in fs
+        if ovl(f, b)
+            r := true
+    if b.dir == 1 and not na(bullconfirm) and ovl(bullifvg, b)
+        r := true
+    if b.dir == -1 and not na(bearconfirm) and ovl(bearifvg, b)
+        r := true
+    r
+
+if blkOn and barstate.isconfirmed
+    blkSeqStep(bSeq, 0, bPH, bPL, brkLen, brkAge, brkPart == "Body", brkMode == "Whole sequence")
+    blkSeqStep(mSeq, 1, mPH, mPL, mbLen, mbAge, mbPart == "Body", mbMode == "Whole sequence")
+    if blks.size() > 0
+        for i = blks.size() - 1 to 0
+            Blk b = blks.get(i)
+            int age = b.kind == 0 ? brkAge : mbAge
+            float sPH = b.kind == 0 ? bPH : mPH
+            float sPL = b.kind == 0 ? bPL : mPL
+            int len = b.kind == 0 ? brkLen : mbLen
+            bool thru = (b.dir == 1 and close < b.lo) or (b.dir == -1 and close > b.hi)
+            bool pull = (b.dir == 1 and low <= b.hi) or (b.dir == -1 and high >= b.lo)
+            if b.tagged
+                if thru or bar_index - b.pb > age
+                    blks.remove(i)
+                else if pull
+                    b.pb := bar_index
+            else if bar_index - b.zb > age
+                blks.remove(i)  // no pullback in time
+            else if not b.broken
                 if (b.dir == 1 and close > b.hi) or (b.dir == -1 and close < b.lo)
                     b.broken := true
                     b.bkBar := bar_index
-            else if (b.dir == 1 and close < b.lo) or (b.dir == -1 and close > b.hi)
-                brks.remove(i)  // closed through the other side: invalidated
             else if not b.swung
-                // after the break: a swing high above the zone (bullish) / low below it (bearish)
-                if b.dir == 1 and not na(bPH) and bar_index - brkLen >= b.bkBar and bPH > b.hi
+                if b.dir == 1 and not na(sPH) and bar_index - len >= b.bkBar and sPH > b.hi
                     b.swung := true
-                else if b.dir == -1 and not na(bPL) and bar_index - brkLen >= b.bkBar and bPL < b.lo
+                else if b.dir == -1 and not na(sPL) and bar_index - len >= b.bkBar and sPL < b.lo
                     b.swung := true
+                else if thru
+                    blks.remove(i)
+            else if thru
+                blks.remove(i)
+            else if pull and blkMatch(b)
+                b.tagged := true
+                b.pb := bar_index
 
-// a breaker of direction dir (broken, swing made after the break) overlaps f
-brkHas(int dir, FVG f) =>
+// a block of this kind and direction, past its swing, overlaps f
+blkHas(int kind, int dir, FVG f) =>
     bool r = false
     if not na(f)
-        for b in brks
-            if b.dir == dir and b.swung and f.hi >= b.lo and f.lo <= b.hi
+        for b in blks
+            if b.kind == kind and b.dir == dir and b.swung and ovl(f, b)
                 r := true
     r
 
-// chart FVGs for the breaker FVG entries: bullish (long) / bearish (short), not used nor closed through yet
-var array<FVG> bkL = array.new<FVG>()
-var array<FVG> bkS = array.new<FVG>()
-
-// FVG of direction dir for a breaker entry on this candle: it comes back into the FVG and closes at or
-// beyond its CE; the FVG is right above (long) / below (short) the confirmed IFVG of that direction with a
-// breaker, or (FVGs with a breaker) overlaps a breaker itself
-brkFind(int dir) =>
-    FVG m = na
-    array<FVG> fs = dir == 1 ? bkL : bkS
-    FVG iv = dir == 1 ? bullifvg : bearifvg
-    bool ivOk = brkAdj and not na(iv) and not na(dir == 1 ? bullconfirm : bearconfirm) and brkHas(dir, iv)
-    if fs.size() > 0
-        for i = fs.size() - 1 to 0
-            FVG f = fs.get(i)
-            if na(m) and not f.used and (dir == 1 ? low <= f.hi and close >= f.ce : high >= f.lo and close <= f.ce)
-                float ih = ivOk ? iv.hi - iv.lo : na
-                bool adj = ivOk and f.sbar > iv.sbar and (dir == 1
-                     ? f.hi > iv.hi and f.lo >= iv.lo and f.lo - iv.hi <= ih
-                     : f.lo < iv.lo and f.hi <= iv.hi and iv.lo - f.hi <= ih)
-                if adj or (brkFvg and brkHas(dir, f))
-                    m := f
-    m
-
-FVG brkFL = na
-FVG brkFS = na
-if brkUse and barstate.isconfirmed
-    if bkL.size() > 0
-        for i = bkL.size() - 1 to 0
-            if close < bkL.get(i).lo or bkL.get(i).used
-                bkL.remove(i)
-    if bkS.size() > 0
-        for i = bkS.size() - 1 to 0
-            if close > bkS.get(i).hi or bkS.get(i).used
-                bkS.remove(i)
-    if not na(lastlongfvg)
-        bkL.push(lastlongfvg)
-        if bkL.size() > 30
-            bkL.shift()
-    if not na(lastshortfvg)
-        bkS.push(lastshortfvg)
-        if bkS.size() > 30
-            bkS.shift()
-    if brkAdj or brkFvg
-        brkFL := brkFind(1)
-        brkFS := brkFind(-1)
-
 // ============================================================ entries
-// IFVG entry (OTE filter; with breakers: CE close and, if required, a breaker), or breaker FVG entry
-bool ifvgShort = (retMode ? bearRet and not bearUsed : bearLeave) and (not oteOnly or gBear.flagged)
-     and (not brkUse or (close <= bearifvg.ce and (not brkReq or brkHas(-1, bearifvg))))
-bool ifvgLong = (retMode ? bullRet and not bullUsed : bullLeave) and (not oteOnly or gBull.flagged)
-     and (not brkUse or (close >= bullifvg.ce and (not brkReq or brkHas(1, bullifvg))))
-bool trigShort = ifvgShort or not na(brkFS)
-bool trigLong = ifvgLong or not na(brkFL)
-
 // liquidity sweeps (FVG filter of FVGs+IFVG+OTE): a bar breaking the last confirmed short-term
 // high / low, tested against the levels known BEFORE this bar
 float fPH = ta.pivothigh(high, flL, flR)
@@ -1471,48 +1797,60 @@ if not na(fPL)
     if ulP.size() > 100
         ulP.shift()
 
-bool condShort = barstate.isconfirmed and trigShort
-     and (not useHtf or (not na(lastRejBear) and bar_index - lastRejBear < htfLook))
-     and (not useBias or biasAgree(-1))
-     and (not liqOn or (not na(lastSweepH) and bar_index - lastSweepH < liqLook))
-bool condLong = barstate.isconfirmed and trigLong
-     and (not useHtf or (not na(lastRejBull) and bar_index - lastRejBull < htfLook))
-     and (not useBias or biasAgree(1))
-     and (not liqOn or (not na(lastSweepL) and bar_index - lastSweepL < liqLook))
+// FVG of direction dir that this candle comes back into, closing at or beyond its CE (newest first)
+fvgReturn(int dir) =>
+    FVG m = na
+    array<FVG> fs = dir == 1 ? fvL : fvS
+    if fs.size() > 0
+        for i = fs.size() - 1 to 0
+            FVG f = fs.get(i)
+            if na(m) and not f.used and (dir == 1 ? low <= f.hi and close >= f.ce : high >= f.lo and close <= f.ce)
+                m := f
+    m
 
-// FVG of the entry: the IFVG, or the breaker FVG when only that one gives the entry
-bool brkEntS = condShort and not ifvgShort
-bool brkEntL = condLong and not ifvgLong
-FVG entS = brkEntS ? brkFS : bearifvg
-FVG entL = brkEntL ? brkFL : bullifvg
+// OTE of a plain FVG: it matches the OTE band of its leg, from the last chart swing before the FVG (low for
+// a bullish FVG) to the extreme since the FVG, before this candle
+oteFvg(int dir, FVG f) =>
+    bool r = false
+    int k0 = math.min(bar_index - f.sbar, 4000)
+    if k0 >= 1
+        [pgh, pgl] = priorLeg(-dir, f.sbar, pv0)
+        float o = dir == 1 ? pgl : pgh
+        float ex = na
+        for k = 1 to k0
+            ex := na(ex) ? (dir == 1 ? high[k] : low[k]) : (dir == 1 ? math.max(ex, high[k]) : math.min(ex, low[k]))
+        if not na(o) and not na(ex) and (ex - o) * dir > 0
+            float rg = math.abs(ex - o)
+            float bLo = dir == 1 ? ex - oteMax * rg : ex + oteMin * rg
+            float bHi = dir == 1 ? ex - oteMin * rg : ex + oteMax * rg
+            if oteMode == "Overlap"
+                r := f.hi >= bLo and f.lo <= bHi
+            else if oteMode == "Fully inside"
+                r := f.lo >= bLo and f.hi <= bHi
+            else
+                r := f.ce >= bLo and f.ce <= bHi
+    r
 
 // delivery of the chart timeframe: 1 bullish, -1 bearish, 0 undefined
 int dlvCur = nz(dCur, 1) % 3 - 1
-// confirmation time of the IFVG whose entry waits for the delivery to match
-var int waitShort = na
-var int waitLong = na
-bool goShort = false
-bool goLong = false
-if condShort
-    if not waitDlv or dlvCur == -1
-        goShort := true
-    else if not brkEntS
-        waitShort := bearconfirm
-else if barstate.isconfirmed and not na(waitShort)
-    if na(bearconfirm) or bearconfirm != waitShort
-        waitShort := na
-    else if dlvCur == -1
-        goShort := true
-if condLong
-    if not waitDlv or dlvCur == 1
-        goLong := true
-    else if not brkEntL
-        waitLong := bullconfirm
-else if barstate.isconfirmed and not na(waitLong)
-    if na(bullconfirm) or bullconfirm != waitLong
-        waitLong := na
-    else if dlvCur == 1
-        goLong := true
+
+// HTF bias of direction dir: [allowed, mask]
+htfAllow(int dir) =>
+    [ok, mask] = indCheck(10, 13, array.from(hbOte == dir, hbFvg == dir, hbLiq == dir,
+         modeOf(hmTbl) > 0 and biasAgree(dir)), hN)
+    [ok, mask]
+
+// LTF entry of direction dir with FVG / IFVG f; t0..t2: the triggers that fired. [ok, mask]
+ltfCheck(int dir, FVG f, bool isIfvg, bool t0, bool t1, bool t2) =>
+    bool ote = isIfvg ? (dir == 1 ? gBull.flagged : gBear.flagged) : (modeOf(emOte) > 0 and oteFvg(dir, f))
+    int sw = dir == 1 ? lastSweepL : lastSweepH
+    int lr = dir == 1 ? lastRejBull : lastRejBear
+    int orj = dir == 1 ? lastORejBull : lastORejBear
+    [ok, mask] = indCheck(0, 9, array.from(t0, t1, t2, ote, blkHas(0, dir, f), blkHas(1, dir, f),
+         not na(sw) and bar_index - sw < liqLook, not na(lr) and bar_index - lr < htfLook,
+         not na(orj) and bar_index - orj < htfLook, dlvCur == dir), eN)
+    [ok, mask]
+
 // time filters (session definitions and time zone rule of ICTlevels)
 string tkr = str.upper(syminfo.ticker)
 string dsc = str.upper(syminfo.description)
@@ -1530,24 +1868,58 @@ bool inKz = (kzAsia and not na(time(timeframe.period, asiastr, tz)))
      or (kzNyam and not na(time(timeframe.period, nyamstr, tz)))
      or (kzNypm and not na(time(timeframe.period, nypmstr, tz)))
 bool timeOk = (not useWin or inWin) and (not useKz or inKz)
-// outside the time filters nothing is entered (a waiting entry keeps waiting)
-if not timeOk
-    goShort := false
-    goLong := false
 
-if goShort
-    waitShort := na
-if goLong
-    waitLong := na
+// triggers of this candle; a trigger that is Off never fires
+bool tLeaveS = modeOf(emLeave) > 0 and bearLeave
+bool tLeaveL = modeOf(emLeave) > 0 and bullLeave
+bool tRetS = modeOf(emRet) > 0 and bearRet and not bearUsed
+bool tRetL = modeOf(emRet) > 0 and bullRet and not bullUsed
+FVG fRetS = modeOf(emFvg) > 0 and barstate.isconfirmed ? fvgReturn(-1) : na
+FVG fRetL = modeOf(emFvg) > 0 and barstate.isconfirmed ? fvgReturn(1) : na
+bool tFvgS = not na(fRetS)
+bool tFvgL = not na(fRetL)
 
-if goShort and retMode and not brkEntS
-    bearUsed := true
-if goLong and retMode and not brkEntL
-    bullUsed := true
-if goShort and brkEntS
-    entS.used := true
-if goLong and brkEntL
-    entL.used := true
+bool goShort = false
+bool goLong = false
+FVG entS = na
+FVG entL = na
+int maskS = 0
+int maskL = 0
+if barstate.isconfirmed and timeOk
+    if tLeaveS or tRetS or tFvgS
+        [hOk, hMask] = htfAllow(-1)
+        if hOk
+            if tLeaveS or tRetS
+                [ok, m] = ltfCheck(-1, bearifvg, true, tLeaveS, tRetS, tFvgS)
+                if ok
+                    goShort := true
+                    entS := bearifvg
+                    maskS := m + hMask
+                    bearUsed := true
+            if not goShort and tFvgS
+                [ok, m] = ltfCheck(-1, fRetS, false, tLeaveS, tRetS, tFvgS)
+                if ok
+                    goShort := true
+                    entS := fRetS
+                    maskS := m + hMask
+                    fRetS.used := true
+    if tLeaveL or tRetL or tFvgL
+        [hOk, hMask] = htfAllow(1)
+        if hOk
+            if tLeaveL or tRetL
+                [ok, m] = ltfCheck(1, bullifvg, true, tLeaveL, tRetL, tFvgL)
+                if ok
+                    goLong := true
+                    entL := bullifvg
+                    maskL := m + hMask
+                    bullUsed := true
+            if not goLong and tFvgL
+                [ok, m] = ltfCheck(1, fRetL, false, tLeaveL, tRetL, tFvgL)
+                if ok
+                    goLong := true
+                    entL := fRetL
+                    maskL := m + hMask
+                    fRetL.used := true
 
 // ============================================================ trades
 type Trade
@@ -1566,19 +1938,28 @@ type Trade
     bool trail = false
     label lbl = na  // points label above the trade
     string ltxt = ""
+    int mask = 0    // indications that were true
 
-// totals of the simulated trades
-var int nWin = 0
-var int nLoss = 0
-var int nBe = 0
-var float pWin = 0.0
-var float pLoss = 0.0
+// totals of the simulated trades: row 0 all, row 1 + i indication i
+var array<int> rsN = array.new<int>(15, 0)
+var array<int> rsW = array.new<int>(15, 0)
+var array<int> rsL = array.new<int>(15, 0)
+var array<float> rsP = array.new<float>(15, 0.0)
 
 var array<Trade> trades = array.new<Trade>()
 
+statAdd(int row, float pts) =>
+    rsN.set(row, rsN.get(row) + 1)
+    if pts > 0
+        rsW.set(row, rsW.get(row) + 1)
+    else if pts < 0
+        rsL.set(row, rsL.get(row) + 1)
+    rsP.set(row, rsP.get(row) + pts)
+    true
+
 // stop of an open trade after a closed candle: breakeven once a candle closes in profit by more than
 // beMin, trailing to the low (long) / high (short) of each candle once price went trPts in favour (best
-// is the best price reached so far). The stop never moves backwards. Shared with the strategy orders.
+// is the best price reached so far). The stop never moves backwards.
 manageStop(int dir, float entry, float stp, bool trail, float best) =>
     float st = stp
     bool tr = trail
@@ -1613,14 +1994,10 @@ if showTrades and simulate and barstate.isconfirmed
                         t.gbx.set_top(ex)
                     else
                         t.gbx.set_bottom(ex)
-                if pts > 0
-                    nWin += 1
-                    pWin += pts
-                else if pts < 0
-                    nLoss += 1
-                    pLoss += pts
-                else
-                    nBe += 1
+                statAdd(0, pts)
+                for i = 0 to 13
+                    if bitOn(t.mask, i)
+                        statAdd(1 + i, pts)
                 color rc = pts > 0 ? tpCol : pts < 0 ? stopCol : entryCol
                 if not na(t.lbl)
                     t.lbl.set_text(t.ltxt + "\n" + res + " " + (pts > 0 ? "+" : "") + str.tostring(pts, "#.##"))
@@ -1657,9 +2034,7 @@ swingFrom(int dir, int b0) =>
             r := na(r) ? (dir == -1 ? high[k] : low[k]) : (dir == -1 ? math.max(r, high[k]) : math.min(r, low[k]))
     r
 
-// stop and take profit of a trade entered at the close of this candle; ok = false when the stop is
-// not on the losing side of the entry
-// safest of candle 2 and the wicks against the trade (dir -1: highs, dir 1: lows) that reached the IFVG,
+// safest of candle 2 and the wicks against the trade (dir -1: highs, dir 1: lows) that reached the FVG,
 // from candle 2 to this bar
 c2Wicks(int dir, FVG f) =>
     float r = dir == -1 ? f.c2hi : f.c2lo
@@ -1672,6 +2047,8 @@ c2Wicks(int dir, FVG f) =>
                 r := math.min(r, low[k])
     r
 
+// stop and take profit of a trade entered at the close of this candle; ok = false when the stop is
+// not on the losing side of the entry
 tradeLevels(int dir, FVG f) =>
     float lvl = stopMode == "Candle 2" ? (dir == -1 ? f.c2hi : f.c2lo)
          : stopMode == "Candle 2 and IFVG wicks" ? c2Wicks(dir, f)
@@ -1689,9 +2066,23 @@ tradeLevels(int dir, FVG f) =>
                 nx := na(nx) ? q : (dir == 1 ? math.min(nx, q) : math.max(nx, q))
         if not na(nx)
             tp := nx
+    // HTF FVG of the draw in the trade direction
+    else if tpMode == "HTF FVG: near candle" or tpMode == "HTF FVG: near edge"
+        float edge = dir == 1 ? hUpN : hDnN
+        float cnd = dir == 1 ? hUpC : hDnC
+        float h = tpMode == "HTF FVG: near candle" and not na(cnd) and (cnd - close) * dir > 0 ? cnd : edge
+        if not na(h) and (h - close) * dir > 0
+            tp := h
     [stp, tp, risk > 0]
 
-newTrade(int dir, FVG f) =>
+maskText(int mask) =>
+    string s = ""
+    for i = 0 to 13
+        if bitOn(mask, i)
+            s += (s == "" ? "" : " ") + indShort.get(i)
+    s
+
+newTrade(int dir, FVG f, int mask) =>
     [stp, tp, ok] = tradeLevels(dir, f)
     if ok
         int x2 = simulate ? bar_index : bar_index + segLen
@@ -1707,42 +2098,46 @@ newTrade(int dir, FVG f) =>
                  bgcolor = color.new(tpCol, boxTr))
         label lb = na
         string lt = "SL " + str.tostring(math.abs(close - stp), "#.##") + "   TP "
-             + str.tostring(math.abs(tp - close), "#.##")
+             + str.tostring(math.abs(tp - close), "#.##") + "\n" + maskText(mask)
         if lblOn
             lb := label.new(bar_index, math.max(close, stp, tp), lt, style = label.style_label_down,
                  color = color.new(entryCol, 10), textcolor = color.white, size = size.normal)
-        trades.push(Trade.new(dir, close, stp, tp, bar_index, e, sl, tl, not simulate, rb, gb, na, false, lb, lt))
+        trades.push(Trade.new(dir, close, stp, tp, bar_index, e, sl, tl, not simulate, rb, gb, na, false, lb, lt, mask))
         // keep the list short; old lines are removed by the 500 line limit
         if trades.size() > 160
             trades.shift()
     true
 
 if showTrades and goShort
-    newTrade(-1, entS)
+    newTrade(-1, entS, maskS)
 if showTrades and goLong
-    newTrade(1, entL)
+    newTrade(1, entL, maskL)
 
-// results table of the simulated trades
+// results table of the simulated trades: all, then each indication in use
 var table stats = table.new(statsPos == "Top right" ? position.top_right : statsPos == "Bottom right" ?
-     position.bottom_right : statsPos == "Top left" ? position.top_left : position.bottom_left, 3, 4,
+     position.bottom_right : statsPos == "Top left" ? position.top_left : position.bottom_left, 5, 16,
      bgcolor = color.white, border_width = 1, border_color = color.new(color.gray, 50))
+statRow(int r, int row, string name) =>
+    float p = rsP.get(row)
+    stats.cell(0, r, name, text_color = color.black, text_size = size.small, text_halign = text.align_left)
+    stats.cell(1, r, str.tostring(rsN.get(row)), text_color = color.black, text_size = size.small)
+    stats.cell(2, r, str.tostring(rsW.get(row)), text_color = color.black, text_size = size.small)
+    stats.cell(3, r, str.tostring(rsL.get(row)), text_color = color.black, text_size = size.small)
+    stats.cell(4, r, (p > 0 ? "+" : "") + str.tostring(p, "#.##"), text_color = p > 0 ? tpCol : p < 0 ? stopCol
+         : color.black, text_size = size.small)
+    true
 if showTrades and simulate and statsOn and barstate.islast
     stats.cell(0, 0, "", text_color = color.black, text_size = size.small)
     stats.cell(1, 0, "Trades", text_color = color.black, text_size = size.small)
-    stats.cell(2, 0, "Points", text_color = color.black, text_size = size.small)
-    stats.cell(0, 1, "Positive", text_color = color.black, text_size = size.small)
-    stats.cell(1, 1, str.tostring(nWin), text_color = color.black, text_size = size.small)
-    stats.cell(2, 1, "+" + str.tostring(pWin, "#.##"), text_color = color.black, text_size = size.small)
-    stats.cell(0, 2, "Negative", text_color = color.black, text_size = size.small)
-    stats.cell(1, 2, str.tostring(nLoss), text_color = color.black, text_size = size.small)
-    stats.cell(2, 2, str.tostring(pLoss, "#.##"), text_color = color.black, text_size = size.small)
-    float net = pWin + pLoss
-    stats.cell(0, 3, "Total" + (nBe > 0 ? " (" + str.tostring(nBe) + " BE)" : ""), text_color = color.black,
-         text_size = size.small)
-    stats.cell(1, 3, str.tostring(nWin + nLoss + nBe), text_color = color.black, text_size = size.small)
-    stats.cell(2, 3, (net > 0 ? "+" : "") + str.tostring(net, "#.##"), text_color = color.black, text_size = size.small)
-
-// ============================================================ strategy orders
+    stats.cell(2, 0, "+", text_color = color.black, text_size = size.small)
+    stats.cell(3, 0, "-", text_color = color.black, text_size = size.small)
+    stats.cell(4, 0, "Points", text_color = color.black, text_size = size.small)
+    statRow(1, 0, "All")
+    int r = 2
+    for i = 0 to 13
+        if indMode.get(i) > 0
+            statRow(r, 1 + i, (i >= 10 ? "HTF " : "") + indName.get(i) + (indMode.get(i) == 2 ? " (M)" : ""))
+            r += 1
 
 plotshape(goShort, "Enter short", shape.triangledown, location.abovebar, shortCol, size = size.small,
      text = "SHORT", textcolor = shortCol)

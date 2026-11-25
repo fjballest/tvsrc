@@ -49,12 +49,13 @@ Levels (source ICTlevels.txt):
 	python3 tools/mklevelsderiv.py
 		writes ICTgaps.txt, ICTday.txt, NWOGs.txt, NDOGs.txt and RTHOGs.txt.
 
-ICTScalp (source ICTScalp.txt):
+ICTScalp (ICTScalp.txt, an indicator, TradingView name ICTScalp):
 
-	python3 tools/mk15.py ICTScalp.txt ICTScalp15.txt
-	python3 tools/mkhtf.py ICTScalp.txt ICTscalpHTFFVGs.txt
-	python3 tools/mkses.py ICTScalp.txt ICTScalpSes.txt
-	python3 tools/mkstrategy.py ICTScalp.txt ICTScalpStrategy.txt
+	Edited by hand; nothing is generated from it any more. Since the
+	HTF bias / LTF entry rework (25 Nov 2026) ICTScalp15.txt,
+	ICTscalpHTFFVGs.txt, ICTScalpSes.txt and ICTScalpStrategy.txt (and
+	tools/mk15.py, mkhtf.py, mkses.py, mkstrategy.py) are no longer
+	maintained and do not match it.
 
 Ports (ICTlevels, ICTcotas and FVGS+IFVG+OTE):
 
