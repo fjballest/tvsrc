@@ -3019,6 +3019,25 @@ bool armSc = barstate.isconfirmed and armS
 plotshape(armOn and armLc, "Armed long", shape.diamond, location.belowbar, color.new(longCol, 30), size = size.tiny)
 plotshape(armOn and armSc, "Armed short", shape.diamond, location.abovebar, color.new(shortCol, 30), size = size.tiny)
 
+// conditions table
+cndSym(bool up, bool dn) =>
+    up and dn ? "▲▼" : up ? "▲" : dn ? "▼" : "○"
+cndCol(bool up, bool dn) =>
+    up and dn ? color.orange : up ? longCol : dn ? shortCol : color.new(color.gray, 50)
+cndPosOf(string p) =>
+    switch p
+        "Top left" => position.top_left
+        "Top center" => position.top_center
+        "Top right" => position.top_right
+        "Middle left" => position.middle_left
+        "Middle center" => position.middle_center
+        "Middle right" => position.middle_right
+        "Bottom left" => position.bottom_left
+        "Bottom right" => position.bottom_right
+        => position.bottom_center
+// PO3 timeframe label: P3H4, P3H1, P3m15...
+p3Lbl(string t) =>
+    t == "D" ? "P3D" : str.endswith(t, "H") ? "P3H" + str.replace(t, "H", "") : "P3m" + str.replace(t, "m", "")
 // compact report of what armed direction dir
 kzName() =>
     not na(time(timeframe.period, londonstr, tz)) ? "LDN" : not na(time(timeframe.period, nyamstr, tz)) ? "NYAM"
@@ -3053,25 +3072,6 @@ armReport(int dir) =>
     r += macMode == "Hourly :50-:10" ? " :50" : macMode == "ICT macros" ? " mac" : ""
     r
 
-// conditions table
-cndSym(bool up, bool dn) =>
-    up and dn ? "▲▼" : up ? "▲" : dn ? "▼" : "○"
-cndCol(bool up, bool dn) =>
-    up and dn ? color.orange : up ? longCol : dn ? shortCol : color.new(color.gray, 50)
-cndPosOf(string p) =>
-    switch p
-        "Top left" => position.top_left
-        "Top center" => position.top_center
-        "Top right" => position.top_right
-        "Middle left" => position.middle_left
-        "Middle center" => position.middle_center
-        "Middle right" => position.middle_right
-        "Bottom left" => position.bottom_left
-        "Bottom right" => position.bottom_right
-        => position.bottom_center
-// PO3 timeframe label: P3H4, P3H1, P3m15...
-p3Lbl(string t) =>
-    t == "D" ? "P3D" : str.endswith(t, "H") ? "P3H" + str.replace(t, "H", "") : "P3m" + str.replace(t, "m", "")
 var table cndTbl = table.new(cndPosOf(condPos), 8, 2)
 bool cndRight = str.endswith(condPos, "right")
 cndCell(int c, string sym, color col, string nm) =>
