@@ -16,7 +16,7 @@
 //  - FVG draw: towards the nearest HTF FVG price has not come back to yet (bearish FVG above: long,
 //    bullish FVG below: short).
 //  - Liquidity draw: after an HTF swing low is taken, long (towards the highs); after a swing high, short.
-//  - Bias table: agreement of the rightmost columns of the IFVGCISDbias table.
+//  - Cotas triangles: the turtle soup / continuation triangles of ICTcotas (15m, 1H, 4H) agree.
 //
 // LTF entry indications. Triggers decide when to enter and which FVG sets the stop; at least one trigger has
 // to fire on the entry candle (triggers do not count towards N):
@@ -46,8 +46,8 @@
 // compared.
 //
 // Keep in sync: the sections below are copies. When FVGs+IFVG+OTE (FVG detection, pivots, OTE,
-// close-mode IFVG, breakers, mitigation blocks), ICTcotas (levels, mitigation) or IFVGCISDbias (ifvgCode,
-// deliveryCode, secPair) change, the same change has to be made here.
+// close-mode IFVG, breakers, mitigation blocks), ICTcotas (levels, mitigation, turtle soup / continuation),
+// ICTlevels (sessions, EQH / EQL) or IFVGCISDbias (deliveryCode) change, the same change has to be made here.
 
 //@version=6
 indicator("ICTScalp", overlay = true, max_bars_back = 5000, max_lines_count = 500, max_labels_count = 500,
@@ -76,14 +76,17 @@ string hmFvg = input.string(CON, "FVG draw", options = [OFF, CON, MAN], group = 
 string hmLiq = input.string(OFF, "Liquidity draw", options = [OFF, CON, MAN], group = G_H,
      tooltip = "After an HTF swing low is taken, long (towards the highs); after a swing high is taken, short. "+
          "Swings: HTF pivots of the OTE settings. " + IMODE)
-string hmTbl = input.string(OFF, "Bias table", options = [OFF, CON, MAN], group = G_H,
-     tooltip = "Columns of the IFVGCISDbias table counted from the right (the chart timeframe, then 3m, 5m, 15m, "+
-         "1H, 4H, 1D, 1W above the chart timeframe). At least 'must agree' of the first 'columns' have to show "+
-         "the direction in the selected row. " + IMODE)
-int biasCols = input.int(2, "Bias table: columns / must agree", minval = 1, maxval = 8, group = G_H, inline = "bias")
-int biasMin = input.int(2, "", minval = 1, maxval = 8, group = G_H, inline = "bias")
-string biasRow = input.string("DLV", "row", options = ["IFVG", "DLV", "IFVG and DLV"], group = G_H, inline = "bias",
-     tooltip = "IFVG: the IFVG bias row. DLV: the delivery row. IFVG and DLV: both rows of the column.")
+string hmTri = input.string(OFF, "Cotas triangles", options = [OFF, CON, MAN], group = G_H, inline = "tri",
+     tooltip = "The turtle soup / continuation triangles of ICTcotas, one per timeframe: the previous completed "+
+         "candle and the forming one. Previous candle down, price took its low and is back above its close: turtle "+
+         "soup up; the forming candle traded above its open and price is now below the previous close: "+
+         "continuation down (cancelled for the rest of the candle when price goes back above that close). "+
+         "Mirrored for an up candle. At least 'agree' of the ticked timeframes have to point in the direction "+
+         "(turtle soup or continuation) and none against it. Evaluated at chart candle closes. " + IMODE)
+int triMin = input.int(2, "agree", minval = 1, maxval = 3, group = G_H, inline = "tri")
+bool tri15 = input.bool(true, "15m", group = G_H, inline = "tri2")
+bool tri1h = input.bool(true, "1H", group = G_H, inline = "tri2")
+bool tri4h = input.bool(true, "4H", group = G_H, inline = "tri2")
 int hN = input.int(1, "At least N of the considered", minval = 0, maxval = 4, group = G_H,
      tooltip = "Consider indications that have to agree with the direction, besides the Mandatory ones. "+
          "Capped at the number of Consider indications. With every indication Off both directions are allowed.")
@@ -254,6 +257,14 @@ bool statsOn = input.bool(true, "Results table (simulated trades)", group = G_T,
          "that indication was true: trades, positive, negative and points.")
 string statsPos = input.string("Top right", "", options = ["Top right", "Bottom right", "Top left", "Bottom left"],
      group = G_T, inline = "st")
+bool explore = input.bool(false, "Explore combinations, min trades", group = G_T, inline = "ex",
+     tooltip = "Ignores the Off / Consider / Mandatory settings for a second table (bottom right): every trigger "+
+         "(IFVG leaving, IFVG return, sweep + OTE, FVG return) is simulated with the stop / take profit settings "+
+         "above, inside the time filter, and its result is counted for the trigger alone and for the trigger with "+
+         "every one or two confirmations (LTF and HTF) that were true. One entry per IFVG / leg / FVG for each "+
+         "combination. The table lists the 15 combinations with the most points among those with at least the "+
+         "given trades. Needs Show trades and Simulate trades.")
+int exMin = input.int(20, "", minval = 1, group = G_T, inline = "ex")
 color entryCol = input.color(color.gray, "Colors: entry", group = G_T, inline = "tc")
 color stopCol = input.color(color.red, "stop", group = G_T, inline = "tc")
 color tpCol = input.color(color.green, "take profit", group = G_T, inline = "tc")
@@ -340,7 +351,7 @@ bool wk1h = input.bool(true, "wick CE: 1H", group = G_GEN, inline = "m3")
 bool wk4h = input.bool(true, "4H", group = G_GEN, inline = "m3")
 
 // IFVGCISDbias settings ====================================
-const string G_B = "Bias table (IFVGCISDbias settings)"
+const string G_B = "Delivery (IFVGCISDbias settings)"
 float bMinfvg = input.float(3, "FVG size: min / max", minval = 0, group = G_B, inline = "sz")
 float bMaxfvg = input.float(10000, "", minval = 0, group = G_B, inline = "sz")
 lockN = input.int(2, "Alternating changes to lock the range", minval = 2, group = G_B)
@@ -1103,7 +1114,7 @@ if barstate.isconfirmed and rejBull
     lastRejBull := bar_index
 runMit()
 
-// ============================================================ bias table (from IFVGCISDbias)
+// ============================================================ delivery (from IFVGCISDbias)
 // Returns 0 = none confirmed, 1 = IFVG+ only, 2 = IFVG- only, 3 = both.
 ifvgCode() =>
     var float bearHi = na
@@ -1324,51 +1335,9 @@ deliveryCode() =>
 
     (st + 1) + (inRng ? 3 : 0)
 
-// States at the close of the last COMPLETED candle of timeframe tf (does not repaint).
-secPair(string tf) =>
-    request.security(syminfo.tickerid, tf, [ifvgCode()[1], deliveryCode()[1]], lookahead = barmerge.lookahead_on)
-
 // The chart timeframe column is computed on the chart itself, at the close of this candle
 // (the table shows the same value on the next candle).
-int bCur = ifvgCode()
 int dCur = deliveryCode()
-
-chartSecs = timeframe.in_seconds()
-int s1 = timeframe.in_seconds("W")
-int s2 = timeframe.in_seconds("D")
-int s3 = timeframe.in_seconds("240")
-int s4 = timeframe.in_seconds("60")
-int s5 = timeframe.in_seconds("15")
-int s6 = timeframe.in_seconds("5")
-int s7 = timeframe.in_seconds("3")
-// timeframes not above the chart timeframe request the chart timeframe (cheap, result ignored)
-[b1, d1] = secPair(s1 > chartSecs ? "W" : timeframe.period)
-[b2, d2] = secPair(s2 > chartSecs ? "D" : timeframe.period)
-[b3, d3] = secPair(s3 > chartSecs ? "240" : timeframe.period)
-[b4, d4] = secPair(s4 > chartSecs ? "60" : timeframe.period)
-[b5, d5] = secPair(s5 > chartSecs ? "15" : timeframe.period)
-[b6, d6] = secPair(s6 > chartSecs ? "5" : timeframe.period)
-[b7, d7] = secPair(s7 > chartSecs ? "3" : timeframe.period)
-
-colAgree(int b, int d, int dir) =>
-    bool okI = dir == 1 ? b == 1 : b == 2
-    bool okD = d % 3 - 1 == dir
-    biasRow == "IFVG" ? okI : biasRow == "DLV" ? okD : okI and okD
-
-// the table columns from the right: chart timeframe, then 3m, 5m, 15m, 1H, 4H, 1D, 1W above it
-biasAgree(int dir) =>
-    array<int> bs = array.from(nz(bCur), nz(b7), nz(b6), nz(b5), nz(b4), nz(b3), nz(b2), nz(b1))
-    array<int> ds = array.from(nz(dCur, 1), nz(d7, 1), nz(d6, 1), nz(d5, 1), nz(d4, 1), nz(d3, 1), nz(d2, 1), nz(d1, 1))
-    array<int> ss = array.from(chartSecs, s7, s6, s5, s4, s3, s2, s1)
-    int seen = 0
-    int cnt = 0
-    for i = 0 to 7
-        if seen < biasCols and (i == 0 or ss.get(i) > chartSecs)
-            seen += 1
-            if colAgree(bs.get(i), ds.get(i), dir)
-                cnt += 1
-    cnt >= biasMin
-
 
 // ============================================================ HTF bias
 // Runs on the HTF candles (request.security); every value is that of the last closed HTF candle.
@@ -1534,12 +1503,12 @@ modeOf(string s) =>
 const int NIND = 16
 var array<string> indName = array.from("IFVG leaving", "IFVG return", "FVG return", "Sweep+OTE", "OTE", "Breaker",
      "Mit. block", "Liquidity", "HTF level", "HTF OTE line", "EQH/EQL", "Delivery", "HTF OTE rej.", "HTF FVG draw",
-     "HTF liq. draw", "Bias table")
+     "HTF liq. draw", "Cotas triangles")
 var array<string> indShort = array.from("IFVGl", "IFVGr", "FVGr", "SwOTE", "OTE", "B", "MB", "Liq", "Lvl", "OTEl",
-     "EQ", "DLV", "hOTE", "hFVG", "hLiq", "Tbl")
+     "EQ", "DLV", "hOTE", "hFVG", "hLiq", "Tri")
 var array<int> indMode = array.from(modeOf(emLeave), modeOf(emRet), modeOf(emFvg), modeOf(emSwp), modeOf(emOte),
      modeOf(emBrk), modeOf(emMb), modeOf(emLiq), modeOf(emLvl), modeOf(emOteL), modeOf(emEq), modeOf(emDlv),
-     modeOf(hmOte), modeOf(hmFvg), modeOf(hmLiq), modeOf(hmTbl))
+     modeOf(hmOte), modeOf(hmFvg), modeOf(hmLiq), modeOf(hmTri))
 
 // [pass, bit mask of the true indications] for indications i0..i1 with values v (index 0 is i0) and N.
 // Indications below i0 + nTrig are triggers: they never count towards N.
@@ -1596,7 +1565,7 @@ float bPH = ta.pivothigh(high, brkLen, brkLen)
 float bPL = ta.pivotlow(low, brkLen, brkLen)
 float mPH = ta.pivothigh(high, mbLen, mbLen)
 float mPL = ta.pivotlow(low, mbLen, mbLen)
-bool blkOn = modeOf(emBrk) > 0 or modeOf(emMb) > 0
+bool blkOn = modeOf(emBrk) > 0 or modeOf(emMb) > 0 or explore
 
 blkPivot(array<float> pr, array<int> br, array<int> ty, float price, int bar, int kind) =>
     bool changed = false
@@ -1846,9 +1815,9 @@ fvgReturn(int dir) =>
 // a bullish FVG) to the extreme since the FVG, before this candle
 oteFvg(int dir, FVG f) =>
     bool r = false
-    int k0 = math.min(bar_index - f.sbar, 4000)
+    int k0 = math.min(bar_index - f.sbar, 500)
     if k0 >= 1
-        [pgh, pgl] = priorLeg(-dir, f.sbar, pv0)
+        [pgh, pgl] = priorLeg(dir, f.sbar, pv0)
         float o = dir == 1 ? pgl : pgh
         float ex = na
         for k = 1 to k0
@@ -1887,7 +1856,7 @@ float epl = ta.pivotlow(low, eqlen, eqlen)
 float eph3 = ta.pivothigh(high, 1, 1)
 float epl3 = ta.pivotlow(low, 1, 1)
 
-if barstate.isconfirmed and (emEq != OFF or tpMode == "EQH / EQL")
+if barstate.isconfirmed and (emEq != OFF or tpMode == "EQH / EQL" or explore)
     float tol = eqtol * nz(eqAtr, 0.0)
     for side = 0 to 1
         bool isHigh = side == 0
@@ -2006,20 +1975,92 @@ swStep(SwLeg g, bool swept) =>
 
 bool tSwpL = false
 bool tSwpS = false
+bool rSwpL = false  // fired, whatever the trigger setting (exploration)
+bool rSwpS = false
 FVG fSwpL = na
 FVG fSwpS = na
 if barstate.isconfirmed
     [fl, ffl] = swStep(lgL, lastSweepL == bar_index)
     [fs, ffs] = swStep(lgS, lastSweepH == bar_index)
+    rSwpL := fl
+    rSwpS := fs
     tSwpL := modeOf(emSwp) > 0 and fl
     tSwpS := modeOf(emSwp) > 0 and fs
     fSwpL := ffl
     fSwpS := ffs
 
+// ICTcotas turtle soup / continuation triangles (15m, 1H, 4H), from chart candles
+type TSt
+    float po = na
+    float ph = na
+    float pl = na
+    float pc = na
+    float o = na
+    float h = na
+    float l = na
+    bool armed = false   // a continuation was seen in the forming candle
+    bool inv = false     // and then price went back beyond the previous close: no continuation for this candle
+
+var array<TSt> tst = array.from(TSt.new(), TSt.new(), TSt.new())
+array<bool> tsNew = array.from(timeframe.change("15"), timeframe.change("60"), timeframe.change("240"))
+
+method tsCont(TSt s) =>
+    s.pc < s.po ? s.h > s.o and close < s.pc : s.pc > s.po ? s.l < s.o and close > s.pc : false
+
+// 1 turtle soup up, -1 turtle soup down, 2 continuation up, -2 continuation down, 0 nothing
+method tsSig(TSt s) =>
+    int r = 0
+    if not na(s.pc)
+        if s.pc < s.po and s.l < s.pl and close > s.pc
+            r := 1
+        else if s.pc > s.po and s.h > s.ph and close < s.pc
+            r := -1
+        else if not s.inv and s.tsCont()
+            r := s.pc < s.po ? -2 : 2
+    r
+
+for i = 0 to 2
+    TSt s = tst.get(i)
+    if tsNew.get(i) or na(s.o)
+        if not na(s.o)
+            s.po := s.o
+            s.ph := s.h
+            s.pl := s.l
+            s.pc := close[1]
+        s.o := open
+        s.h := high
+        s.l := low
+        s.armed := false
+        s.inv := false
+    else
+        s.h := math.max(s.h, high)
+        s.l := math.min(s.l, low)
+    if not na(s.pc)
+        if s.armed and (s.pc < s.po ? close > s.pc : close < s.pc)
+            s.inv := true
+        if s.tsCont()
+            s.armed := true
+
+// the ticked timeframes above the chart: at least triMin point in direction dir and none against it
+triAgree(int dir) =>
+    int pro = 0
+    int con = 0
+    array<bool> sel = array.from(tri15, tri1h, tri4h)
+    array<int> secs = array.from(900, 3600, 14400)
+    for i = 0 to 2
+        if sel.get(i) and secs.get(i) > tfsecs
+            int sg = tst.get(i).tsSig()
+            int d = sg > 0 ? 1 : sg < 0 ? -1 : 0
+            if d == dir
+                pro += 1
+            else if d == -dir
+                con += 1
+    pro >= triMin and con == 0
+
 // HTF bias of direction dir: [allowed, mask]
 htfAllow(int dir) =>
     [ok, mask] = indCheck(12, 15, 0, array.from(hbOte == dir, hbFvg == dir, hbLiq == dir,
-         modeOf(hmTbl) > 0 and biasAgree(dir)), hN)
+         triAgree(dir)), hN)
     [ok, mask]
 
 // LTF entry of direction dir with FVG / IFVG f (kind 0 IFVG, 1 FVG, 2 sweep leg); t0..t3: the triggers that
@@ -2058,8 +2099,13 @@ bool tLeaveS = modeOf(emLeave) > 0 and bearLeave
 bool tLeaveL = modeOf(emLeave) > 0 and bullLeave
 bool tRetS = modeOf(emRet) > 0 and bearRet and not bearUsed
 bool tRetL = modeOf(emRet) > 0 and bullRet and not bullUsed
-FVG fRetS = modeOf(emFvg) > 0 and barstate.isconfirmed ? fvgReturn(-1) : na
-FVG fRetL = modeOf(emFvg) > 0 and barstate.isconfirmed ? fvgReturn(1) : na
+FVG fRetS = (modeOf(emFvg) > 0 or explore) and barstate.isconfirmed ? fvgReturn(-1) : na
+FVG fRetL = (modeOf(emFvg) > 0 or explore) and barstate.isconfirmed ? fvgReturn(1) : na
+bool rFvgS = not na(fRetS)  // fired, whatever the trigger setting (exploration)
+bool rFvgL = not na(fRetL)
+if modeOf(emFvg) == 0
+    fRetS := na
+    fRetL := na
 bool tFvgS = not na(fRetS)
 bool tFvgL = not na(fRetL)
 
@@ -2334,6 +2380,147 @@ if showTrades and simulate and statsOn and barstate.islast
         if indMode.get(i) > 0
             statRow(r, 1 + i, indName.get(i) + (indMode.get(i) == 2 ? " (M)" : ""))
             r += 1
+
+// ============================================================ exploration of combinations
+// Every trigger, whatever its setting, is a virtual trade (stop / take profit / trailing of Show Trades); its
+// result counts for the trigger alone and with every one or two of the 12 confirmations that were true.
+// Combination c = trigger * 79 + k, k: 0 alone, 1..12 one confirmation, 13..78 two.
+const int EXC = 79
+var array<string> exTrig = array.from("IFVGl", "IFVGr", "SwOTE", "FVGr")
+var array<string> exCond = array.from("OTE", "B", "MB", "Liq", "Lvl", "OTEl", "EQ", "DLV", "hOTE", "hFVG", "hLiq",
+     "Tri")
+var array<int> exA = array.new<int>()
+var array<int> exB = array.new<int>()
+if barstate.isfirst
+    exA.push(-1)
+    exB.push(-1)
+    for a = 0 to 11
+        exA.push(a)
+        exB.push(-1)
+    for a = 0 to 10
+        for b = a + 1 to 11
+            exA.push(a)
+            exB.push(b)
+var array<int> exN = array.new<int>(4 * EXC, 0)
+var array<int> exW = array.new<int>(4 * EXC, 0)
+var array<float> exP = array.new<float>(4 * EXC, 0.0)
+var array<int> exLast = array.new<int>(8 * EXC, -1)  // last IFVG / leg / FVG id used, per combination and side
+
+type VTrade
+    int dir
+    float entry
+    float stop
+    float tp
+    int bar
+    float best = na
+    bool trail = false
+    array<int> cs
+
+var array<VTrade> vts = array.new<VTrade>()
+
+// the 12 confirmations for a trade of direction dir on f (kind 0 IFVG, 1 FVG, 2 sweep leg)
+exConds(int dir, FVG f, int kind) =>
+    bool ote = kind == 0 ? (dir == 1 ? gBull.flagged : gBear.flagged) : kind == 2 ? true : oteFvg(dir, f)
+    int sw = dir == 1 ? lastSweepL : lastSweepH
+    int lr = dir == 1 ? lastRejBull : lastRejBear
+    int orj = dir == 1 ? lastORejBull : lastORejBear
+    array.from(ote, blkHas(0, dir, f), blkHas(1, dir, f), not na(sw) and bar_index - sw < liqLook,
+         not na(lr) and bar_index - lr < htfLook, not na(orj) and bar_index - orj < htfLook,
+         not na(eqNext(dir, close)), dlvCur == dir, hbOte == dir, hbFvg == dir, hbLiq == dir, triAgree(dir))
+
+exOpen(int dir, int trig, FVG f, int kind, int id) =>
+    [stp, tp, ok] = tradeLevels(dir, f)
+    if ok
+        array<bool> v = exConds(dir, f, kind)
+        array<int> cs = array.new<int>()
+        int side = dir == 1 ? 1 : 0
+        for k = 0 to EXC - 1
+            int a = exA.get(k)
+            int b = exB.get(k)
+            if (a < 0 or v.get(a)) and (b < 0 or v.get(b))
+                int c = trig * EXC + k
+                int li = c * 2 + side
+                if exLast.get(li) != id
+                    exLast.set(li, id)
+                    cs.push(c)
+        if cs.size() > 0
+            vts.push(VTrade.new(dir, close, stp, tp, bar_index, na, false, cs))
+    true
+
+if explore and showTrades and simulate and barstate.isconfirmed
+    // follow the open virtual trades
+    if vts.size() > 0
+        for i = vts.size() - 1 to 0
+            VTrade t = vts.get(i)
+            if bar_index > t.bar
+                bool hitS = t.dir == -1 ? high >= t.stop : low <= t.stop
+                bool hitT = not t.trail and (t.dir == -1 ? low <= t.tp : high >= t.tp)
+                if hitS or hitT
+                    float pts = ((hitS ? t.stop : t.tp) - t.entry) * t.dir
+                    for c in t.cs
+                        exN.set(c, exN.get(c) + 1)
+                        if pts > 0
+                            exW.set(c, exW.get(c) + 1)
+                        exP.set(c, exP.get(c) + pts)
+                    vts.remove(i)
+                else if beOn or trOn
+                    t.best := na(t.best) ? (t.dir == 1 ? high : low)
+                         : (t.dir == 1 ? math.max(t.best, high) : math.min(t.best, low))
+                    [st, tr] = manageStop(t.dir, t.entry, t.stop, t.trail, t.best)
+                    t.stop := st
+                    t.trail := tr
+    // new virtual trades
+    if timeOk
+        for dir in array.from(-1, 1)
+            FVG iv = dir == 1 ? bullifvg : bearifvg
+            int ivId = dir == 1 ? bullconfirm : bearconfirm
+            if dir == 1 ? bullLeave : bearLeave
+                exOpen(dir, 0, iv, 0, ivId)
+            if dir == 1 ? bullRet : bearRet
+                exOpen(dir, 1, iv, 0, ivId)
+            if dir == 1 ? rSwpL : rSwpS
+                FVG sv = dir == 1 ? fSwpL : fSwpS
+                exOpen(dir, 2, sv, 2, sv.sbar)
+            if dir == 1 ? rFvgL : rFvgS
+                FVG fv = dir == 1 ? fRetL : fRetS
+                if na(fv)
+                    fv := fvgReturn(dir)
+                // FVG returns: only the first return into each FVG (the OTE check of an FVG is costly)
+                if not na(fv) and exLast.get((3 * EXC) * 2 + (dir == 1 ? 1 : 0)) != fv.start
+                    exOpen(dir, 3, fv, 1, fv.start)
+    if vts.size() > 400
+        vts.shift()
+
+var table exTbl = table.new(position.bottom_right, 5, 17, bgcolor = color.white, border_width = 1,
+     border_color = color.new(color.gray, 50))
+if explore and showTrades and simulate and barstate.islast
+    exTbl.cell(0, 0, "Combination", text_color = color.black, text_size = size.small)
+    exTbl.cell(1, 0, "Trades", text_color = color.black, text_size = size.small)
+    exTbl.cell(2, 0, "Win %", text_color = color.black, text_size = size.small)
+    exTbl.cell(3, 0, "Points", text_color = color.black, text_size = size.small)
+    exTbl.cell(4, 0, "Avg", text_color = color.black, text_size = size.small)
+    array<bool> done = array.new<bool>(4 * EXC, false)
+    for r = 1 to 16
+        int best = -1
+        for c = 0 to 4 * EXC - 1
+            if not done.get(c) and exN.get(c) >= exMin and (best < 0 or exP.get(c) > exP.get(best))
+                best := c
+        if best >= 0
+            done.set(best, true)
+            int k = best % EXC
+            string nm = exTrig.get(int(best / EXC))
+            if exA.get(k) >= 0
+                nm += " " + exCond.get(exA.get(k))
+            if exB.get(k) >= 0
+                nm += "+" + exCond.get(exB.get(k))
+            float p = exP.get(best)
+            int n = exN.get(best)
+            exTbl.cell(0, r, nm, text_color = color.black, text_size = size.small, text_halign = text.align_left)
+            exTbl.cell(1, r, str.tostring(n), text_color = color.black, text_size = size.small)
+            exTbl.cell(2, r, str.tostring(100.0 * exW.get(best) / n, "#"), text_color = color.black, text_size = size.small)
+            exTbl.cell(3, r, (p > 0 ? "+" : "") + str.tostring(p, "#.##"), text_color = p > 0 ? tpCol : stopCol,
+                 text_size = size.small)
+            exTbl.cell(4, r, str.tostring(p / n, "#.##"), text_color = color.black, text_size = size.small)
 
 plotshape(goShort, "Enter short", shape.triangledown, location.abovebar, shortCol, size = size.small,
      text = "SHORT", textcolor = shortCol)
