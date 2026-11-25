@@ -370,13 +370,13 @@ color shortCol = input.color(color.red, "short", group = G_S, inline = "c")
 bool doAlerts = input.bool(true, "Alerts", group = G_S)
 bool condOn = input.bool(true, "Conditions table", group = G_S, inline = "cnd",
      tooltip = "Like the ICTcotas triangles: the state now of each condition of the setup, ▲ long, ▼ short, "+
-         "○ nothing. PO3: the candle in progress of each PO3 timeframe in use (Auto included). Quad: a quadrant "+
+         "○ nothing; yellow background while armed. P3H4, P3H1...: PO3, the candle in progress of each PO3 timeframe in use (Auto included). Quad: a quadrant "+
          "reaction within the last bars. Liq: a short-term low (▲) / high (▼) taken within the last bars. Ses: "+
          "the last session trended (T) or consolidated (C), bright when the previous session filter allows "+
          "entries. Time: ● inside the killzones and macros in use. Armed: every HTF, time and session condition "+
          "and took liquidity agree, only the entry trigger (FVG return) is missing.")
-string condPos = input.string("Bottom center", "", options = ["Bottom left", "Bottom center", "Middle right",
-     "Top left"], group = G_S, inline = "cnd")
+string condPos = input.string("Bottom center", "", options = ["Top left", "Top center", "Top right", "Middle left",
+     "Middle center", "Middle right", "Bottom left", "Bottom center", "Bottom right"], group = G_S, inline = "cnd")
 bool armOn = input.bool(true, "Armed dots on the candles (and 'armed' alerts)", group = G_S,
      tooltip = "A small dot below (long) / above (short) each closed candle where the setup is armed: only the "+
          "entry trigger is missing. With Alerts on, an alert when it becomes armed.")
@@ -3019,18 +3019,32 @@ cndSym(bool up, bool dn) =>
     up and dn ? "▲▼" : up ? "▲" : dn ? "▼" : "○"
 cndCol(bool up, bool dn) =>
     up and dn ? color.orange : up ? longCol : dn ? shortCol : color.new(color.gray, 50)
-var table cndTbl = table.new(condPos == "Bottom left" ? position.bottom_left : condPos == "Bottom center" ?
-     position.bottom_center : condPos == "Middle right" ? position.middle_right : position.top_left, 7, 2)
+cndPosOf(string p) =>
+    switch p
+        "Top left" => position.top_left
+        "Top center" => position.top_center
+        "Top right" => position.top_right
+        "Middle left" => position.middle_left
+        "Middle center" => position.middle_center
+        "Middle right" => position.middle_right
+        "Bottom left" => position.bottom_left
+        "Bottom right" => position.bottom_right
+        => position.bottom_center
+// PO3 timeframe label: P3H4, P3H1, P3m15...
+p3Lbl(string t) =>
+    t == "D" ? "P3D" : str.endswith(t, "H") ? "P3H" + str.replace(t, "H", "") : "P3m" + str.replace(t, "m", "")
+var table cndTbl = table.new(cndPosOf(condPos), 7, 2)
 cndCell(int c, string sym, color col, string nm) =>
     cndTbl.cell(c, 0, sym, text_color = col, text_size = size.normal)
     cndTbl.cell(c, 1, nm, text_color = color.new(color.gray, 30), text_size = size.tiny)
 if condOn and barstate.islast
     cndTbl.clear(0, 0, 6, 1)
+    cndTbl.set_bgcolor(armL or armS ? color.new(color.yellow, 40) : na)
     int c = 0
-    cndCell(c, cndSym(p3A == 1, p3A == -1), cndCol(p3A == 1, p3A == -1), "PO3 " + po3Tf)
+    cndCell(c, cndSym(p3A == 1, p3A == -1), cndCol(p3A == 1, p3A == -1), p3Lbl(po3Tf))
     c += 1
     if po3Tf2 != "None"
-        cndCell(c, cndSym(p3B == 1, p3B == -1), cndCol(p3B == 1, p3B == -1), "PO3 " + po3Tf2)
+        cndCell(c, cndSym(p3B == 1, p3B == -1), cndCol(p3B == 1, p3B == -1), p3Lbl(po3Tf2))
         c += 1
     bool qL = quadOk(1)
     bool qS = quadOk(-1)

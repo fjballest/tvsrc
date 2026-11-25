@@ -53,3 +53,21 @@ the chart", write the notes, Continue, tick the House Rules box, "Publish new
 version". TradingView only publishes a script that is on the selected chart:
 if it says "Script is not on the chart", add it, publish, then remove that
 copy ("Undo insert" in the top toolbar, or from the pane legend).
+
+## ICTScalp
+
+ICTScalp is not in the ICTmany template. In the ICT6win layout it is on the
+m1, m3 and m5 panes, which use the "ICTmanyscalp" indicator template (ICTmany
+plus ICTScalp). To update it:
+
+1. Save the new source of ICTScalp in the Pine Editor (as above).
+2. On the m1 pane, update ICTScalp on the chart (its source from the pane
+   legend, "Update on chart" if offered) and check its inputs.
+3. With the m1 pane selected, save its indicators as the "ICTmanyscalp"
+   template (templates menu, "Save indicator template...", replace).
+4. Select the m5 pane and then the m3 pane and load the ICTmanyscalp template
+   on each. Then save the layout.
+
+The "ICTScalp test" layout (one 1m chart) only needs the saved script; reset
+its inputs to the defaults and turn on Show trades, Simulate trades, Results
+table and Explore combinations when the defaults change.
