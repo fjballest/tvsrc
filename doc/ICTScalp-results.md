@@ -2,9 +2,19 @@
 
 Summary of the ICTScalp backtests on TradingView, kept up to date as the script changes. All figures are on MNQ1! (points per trade, NQ points) over the chart history TradingView loads for each timeframe, from the simulated trades table of the script. They come from one history window on one instrument, so they show which way to go, not a proven edge. The 1m history moves as new candles come in (1m went from +10.1 with 60 trades to +8.6 with 62 during the day).
 
-Last update: 2026-11-25, script commit 6fc3ea0 (TradingView version 36).
+Last update: 2026-11-25, script commit 38db50b (TradingView version 39).
 
 ## 1. Current default setup
+
+With **Auto** on (the default), the script picks the best settings found for the chart timeframe; the rest of the setup is common to all timeframes.
+
+| Chart | Auto settings |
+| ----- | ------------- |
+| 1m | Entries only after a session that consolidated; PO3 off |
+| 2m | PO3 Mandatory on the 4H and 1H candles |
+| 3m | PO3 Mandatory on the 5m candle |
+| 5m | PO3 Mandatory on the 4H and 1H candles |
+| Other | The inputs as set |
 
 | Part | Setting |
 | ---- | ------- |
@@ -15,16 +25,19 @@ Last update: 2026-11-25, script commit 6fc3ea0 (TradingView version 36).
 | Time | ICT killzones (London, NY AM, NY PM) and hourly macro :50 to :10, New York time |
 | Stop | Past the short-term high / low since the FVG, 2 points margin |
 | Take profit | Risk ratio 1:2; candle trailing stop once 50 points in favour (the TP is then dropped) |
-| Previous session filter | Off (see section 4, Sessions) |
-| PO3 | Off (see section 4, PO3) |
+| Previous session filter | Set by Auto on 1m to 5m, else the input (Off by default; see section 4, Sessions) |
+| PO3 | Set by Auto on 1m to 5m, else the input (Off by default; see section 4, PO3) |
 
-## 2. Results of the default setup
+## 2. Results of the default setup (Auto on)
 
 | LTF | Trades | Win | Avg win | Avg loss | Points | Avg per trade |
 | --- | ------ | --- | ------- | -------- | ------ | ------------- |
-| 1m | 62 | 61% | +42.1 | -44.5 | +533 | **+8.6** |
-| 2m | 75 | 56% | +57.0 | -38.2 | +1132 | **+15.1** |
-| 5m | 95 | 48% | +86.3 | -41.3 | +1942 | **+20.4** |
+| 1m | 30 | 63% | +40.4 | -28.5 | +454 | **+15.1** |
+| 2m | 26 | 62% | +76.7 | -38.2 | +846 | **+32.6** |
+| 3m | 43 | 60% | +69.7 | -39.4 | +1142 | **+26.6** |
+| 5m | 29 | 66% | +141.6 | -63.0 | +2060 | **+71.0** |
+
+Without Auto (PO3 and the previous session filter off): 1m +8.6 (62), 2m +15.1 (75), 5m +20.4 (95).
 
 ## 3. How we got here
 
@@ -36,7 +49,8 @@ Each step kept only what improved the results; what did not work was removed fro
 | FVG return + 15m turtle soup triangles (config P) | +2.96 (207) | +1.31 (247) | +10.9 (355) |
 | + took liquidity Mandatory | +3.8 (194) | +2.7 (208) | +14.6 (265) |
 | + hourly macro :50-:10 with killzones | +8.2 (76) | +9.3 (86) | +19.7 (106) |
-| + quadrant reactions (current default) | +8.6 (62) | +15.1 (75) | +20.4 (95) |
+| + quadrant reactions | +8.6 (62) | +15.1 (75) | +20.4 (95) |
+| + Auto: after a consolidation (1m), PO3 4H + 1H (2m, 5m) | +15.1 (30) | +32.6 (26) | +71.0 (29) |
 
 Avg points per trade, trades in brackets. Total points are highest on 5m without the time filter (+3,877 with 265 trades), so the time filter trades total points for quality.
 
@@ -116,7 +130,30 @@ On the candle in progress of the chosen timeframe: short when it already traded 
 | 1H | +7.5 (41) | +19.2 (45) | +35.0 (57) |
 | 15m | +7.9 (52) | +15.1 (62) | +32.0 (69), +2,208 points |
 
-PO3 makes no difference on 1m but is the strongest filter found so far on 5m: with 4H PO3 the average per trade more than doubles and total points also go up, with fewer than half the trades. The daily PO3 does not help. It is off by default because the default chart is 1m; for 5m, turn on PO3 Mandatory with 4H (or 15m for more trades).
+More timeframes, and pairs (both candles in progress have to show the PO3), Mandatory on top of the default setup with the previous session filter off:
+
+| PO3 timeframe | 1m | 2m | 3m | 5m |
+| ------------- | -- | -- | -- | -- |
+| 4H | +8.3 (30) | +27.7 (36) | +12.6 (37) | +55.4 (38) |
+| 2H | +1.6 (33) | +25.3 (39) | +14.9 (42) | +40.2 (44) |
+| 1H | +7.5 (41) | +19.2 (45) | +7.9 (53) | +35.0 (57) |
+| 30m | +1.7 (40) | +4.7 (44) | +7.9 (54) | +27.0 (54) |
+| 15m | +7.9 (52) | +15.1 (62) | +12.1 (63) | +32.0 (69) |
+| 10m | +4.7 (41) | +14.7 (48) | +10.6 (58) | +32.5 (60) |
+| 5m | +10.4 (37) | +15.2 (37) | **+26.6 (43)** | |
+| 3m | -0.5 (31) | +19.8 (40) | | |
+| 4H + 1H | +12.9 (24) | **+32.6 (26)** | +10.5 (30) | **+71.0 (29), 66% win** |
+| 4H + 30m | | +13.0 (22) | | +65.3 (24) |
+| 4H + 15m | +7.4 (25) | +29.9 (28) | +13.0 (33) | +67.2 (31) |
+| 4H + 5m | +14.5 (18) | +22.6 (20) | +34.0 (23) | |
+| 1H + 15m | +4.6 (41) | | | |
+
+- On 2m and 5m, the 4H PO3 confirmed by the 1H PO3 is the best: fewer trades, higher average, about the same total on 5m (+2,060 vs +2,106).
+- On 3m, the 5m PO3 works best (+1,142 points); 4H + 5m averages more (+34.0) but with only 23 trades.
+- On 1m, PO3 alone does not beat the previous session filter (after a consolidation, +15.1 with 30 trades). Both together leave too few trades (5m PO3: +14.4 with 17; 4H + 1H: +21.9 with 10).
+- The daily, 30m and 3m PO3s are the weakest.
+
+Auto uses these results (section 1).
 
 ### Other things tried and removed
 
@@ -131,5 +168,6 @@ PO3 makes no difference on 1m but is the strongest filter found so far on 5m: wi
 
 - NWOG / RTHOG quadrants on 5m, once there is more history.
 - Previous session filter per timeframe: after a consolidation on 1m / 2m, after a trend on 5m.
-- 5m with PO3 4H combined with the previous session filter.
+- 5m with PO3 4H + 1H combined with the previous session filter.
+- A 3m baseline without PO3, to see how much the 5m PO3 adds there.
 - Checking the setup on other instruments (ES, DAX) and other history windows.
