@@ -98,7 +98,16 @@ string hbTf = input.timeframe("15", "", group = G_H, inline = "hb")
 int hbAge = input.int(40, "max bars", minval = 2, maxval = 500, group = G_H, inline = "hb2",
      tooltip = "Candles of the blocks timeframe since the last respect (or since it formed, while not respected "+
          "yet) after which the block is dropped.")
-int hN = input.int(1, "At least N of the considered", minval = 0, maxval = 5, group = G_H,
+string hm50 = input.string(CON, "0.5 rejections", options = [OFF, CON, MAN], group = G_H, inline = "h50",
+     tooltip = "Major leg (as for the OTE rejection): at least this many HTF candles of the same pullback wick to "+
+         "its 0.5 level (not beyond the origin) and close back on the leg side. Gives the leg direction (a down "+
+         "leg rejected at 0.5 gives short) until the leg breaks or a candle closes beyond 0.5. " + IMODE)
+int r50Min = input.int(2, "at least", minval = 1, maxval = 5, group = G_H, inline = "h50")
+string hmIfv = input.string(CON, "IFVG re-leave", options = [OFF, CON, MAN], group = G_H,
+     tooltip = "An HTF FVG closed through becomes an IFVG (a bullish FVG closed below: IFVG-). Price comes back into "+
+         "it and an HTF candle closes out of it again on the IFVG side (below an IFVG-): short (long for an IFVG+). "+
+         "Holds until a close beyond its far side or the opposite signal. FVG size from the IFVG settings. " + IMODE)
+int hN = input.int(1, "At least N of the considered", minval = 0, maxval = 7, group = G_H,
      tooltip = "Consider indications that have to agree with the direction, besides the Mandatory ones. "+
          "Capped at the number of Consider indications. With every indication Off both directions are allowed.")
 bool hShow = input.bool(true, "Show the HTF OTE lines and draw targets", group = G_H,
@@ -1373,6 +1382,21 @@ htfCode() =>
     var int bOte = 0          // OTE rejection direction
     var int bOteSrc = 0       // 1 major leg, 2 minor leg
     var int bLiq = 0          // liquidity draw
+    var int r50n = 0          // 0.5 rejections of the current pullback
+    var int b50 = 0           // 0.5 rejection direction
+    var array<float> fbH = array.new<float>()   // bullish FVGs (top, bottom), for the IFVGs
+    var array<float> fbL = array.new<float>()
+    var array<float> fsH = array.new<float>()   // bearish FVGs
+    var array<float> fsL = array.new<float>()
+    var float ivDnH = na      // last IFVG- (closed below a bullish FVG) and whether price came back into it
+    var float ivDnL = na
+    var bool ivDnT = false
+    var int ivDnB = na
+    var float ivUpH = na      // last IFVG+
+    var float ivUpL = na
+    var bool ivUpT = false
+    var int ivUpB = na
+    var int bIfv = 0          // IFVG re-leave direction
     var float sh = na       // last swing high / low not taken yet
     var float sl = na
     var array<float> uN = array.new<float>()    // bearish FVGs (above): near edge (bottom), newest candle low
@@ -1400,9 +1424,12 @@ htfCode() =>
             rx := ext
             bOte := 0
             bOteSrc := 0
+            r50n := 0
+            b50 := 0
         else if ld == 1 ? high > ext : low < ext
             ext := ld == 1 ? high : low
             rx := ext
+            r50n := 0
             if bOteSrc == 2
                 bOte := 0
                 bOteSrc := 0
@@ -1414,6 +1441,14 @@ htfCode() =>
             float n79 = rx + ld * oteMax * mr
             bool mnr = minorOk and (ld == 1 ? high >= n62 and high <= ext and close <= n79
                  : low <= n62 and low >= ext and close >= n79)
+            float m50 = ext - ld * 0.5 * r
+            if r > 0 and (ld == 1 ? close < m50 : close > m50)
+                r50n := 0
+                b50 := 0
+            else if r > 0 and (ld == 1 ? low <= m50 and low >= org : high >= m50 and high <= org)
+                r50n += 1
+                if r50n >= r50Min
+                    b50 := ld
             if maj
                 bOte := ld
                 bOteSrc := 1
@@ -1481,10 +1516,64 @@ htfCode() =>
             dnN := v
             dnC := dC.get(i)
     int bFvg = na(upN) and na(dnN) ? 0 : na(dnN) ? 1 : na(upN) ? -1 : (upN - close <= close - dnN ? 1 : -1)
-    [bOte[1], bFvg[1], bLiq[1], a62[1], a705[1], a79[1], i62[1], i705[1], i79[1], upN[1], upC[1], dnN[1], dnC[1]]
+    // --- IFVG re-leave
+    if not na(ivDnH) and bar_index > ivDnB
+        if close > ivDnH
+            ivDnH := na
+            if bIfv == -1
+                bIfv := 0
+        else
+            if high >= ivDnL
+                ivDnT := true
+            if ivDnT and close < ivDnL
+                bIfv := -1
+                ivDnT := false
+    if not na(ivUpH) and bar_index > ivUpB
+        if close < ivUpL
+            ivUpH := na
+            if bIfv == 1
+                bIfv := 0
+        else
+            if low <= ivUpH
+                ivUpT := true
+            if ivUpT and close > ivUpH
+                bIfv := 1
+                ivUpT := false
+    if fbH.size() > 0
+        for i = fbH.size() - 1 to 0
+            if close < fbL.get(i)
+                ivDnH := fbH.get(i)
+                ivDnL := fbL.get(i)
+                ivDnT := false
+                ivDnB := bar_index
+                fbH.remove(i)
+                fbL.remove(i)
+    if fsH.size() > 0
+        for i = fsH.size() - 1 to 0
+            if close > fsH.get(i)
+                ivUpH := fsH.get(i)
+                ivUpL := fsL.get(i)
+                ivUpT := false
+                ivUpB := bar_index
+                fsH.remove(i)
+                fsL.remove(i)
+    if low > high[2] and low - high[2] > minfvg and low - high[2] < maxfvg
+        fbH.push(low)
+        fbL.push(high[2])
+        if fbH.size() > 10
+            fbH.shift()
+            fbL.shift()
+    if high < low[2] and low[2] - high > minfvg and low[2] - high < maxfvg
+        fsH.push(low[2])
+        fsL.push(high)
+        if fsH.size() > 10
+            fsH.shift()
+            fsL.shift()
+    [bOte[1], bFvg[1], bLiq[1], a62[1], a705[1], a79[1], i62[1], i705[1], i79[1], upN[1], upC[1], dnN[1], dnC[1],
+         b50[1], bIfv[1]]
 
 string hRq = timeframe.in_seconds(hTf) > tfsecs ? hTf : timeframe.period
-[hbOte, hbFvg, hbLiq, hA62, hA705, hA79, hI62, hI705, hI79, hUpN, hUpC, hDnN, hDnC] = request.security(
+[hbOte, hbFvg, hbLiq, hA62, hA705, hA79, hI62, hI705, hI79, hUpN, hUpC, hDnN, hDnC, hb50, hbIfv] = request.security(
      syminfo.tickerid, hRq, htfCode(), lookahead = barmerge.lookahead_on)
 
 plot(hShow ? hA62 : na, "HTF major 0.62", color.new(color.navy, 30), 1, plot.style_linebr)
@@ -1521,16 +1610,16 @@ if barstate.isconfirmed and oRejBull
 modeOf(string s) =>
     s == MAN ? 2 : s == CON ? 1 : 0
 
-// Indications: 0..11 LTF (triggers 0..3), 12..16 HTF
-const int NIND = 17
+// Indications: 0..11 LTF (triggers 0..3), 12..18 HTF
+const int NIND = 19
 var array<string> indName = array.from("IFVG leaving", "IFVG return", "FVG return", "Sweep+OTE", "OTE", "Breaker",
      "Mit. block", "Liquidity", "HTF level", "HTF OTE line", "EQH/EQL", "Delivery", "HTF OTE rej.", "HTF FVG draw",
-     "HTF liq. draw", "Cotas triangles", "HTF blocks")
+     "HTF liq. draw", "Cotas triangles", "HTF blocks", "HTF 0.5 rej.", "HTF IFVG re-leave")
 var array<string> indShort = array.from("IFVGl", "IFVGr", "FVGr", "SwOTE", "OTE", "B", "MB", "Liq", "Lvl", "OTEl",
-     "EQ", "DLV", "hOTE", "hFVG", "hLiq", "Tri", "hBlk")
+     "EQ", "DLV", "hOTE", "hFVG", "hLiq", "Tri", "hBlk", "h50", "hIFV")
 var array<int> indMode = array.from(modeOf(emLeave), modeOf(emRet), modeOf(emFvg), modeOf(emSwp), modeOf(emOte),
      modeOf(emBrk), modeOf(emMb), modeOf(emLiq), modeOf(emLvl), modeOf(emOteL), modeOf(emEq), modeOf(emDlv),
-     modeOf(hmOte), modeOf(hmFvg), modeOf(hmLiq), modeOf(hmTri), modeOf(hmBlk))
+     modeOf(hmOte), modeOf(hmFvg), modeOf(hmLiq), modeOf(hmTri), modeOf(hmBlk), modeOf(hm50), modeOf(hmIfv))
 
 // [pass, bit mask of the true indications] for indications i0..i1 with values v (index 0 is i0) and N.
 // Indications below i0 + nTrig are triggers: they never count towards N.
@@ -2196,8 +2285,8 @@ triAgree(int dir) =>
 
 // HTF bias of direction dir: [allowed, mask]
 htfAllow(int dir) =>
-    [ok, mask] = indCheck(12, 16, 0, array.from(hbOte == dir, hbFvg == dir, hbLiq == dir,
-         triAgree(dir), hbDir == dir), hN)
+    [ok, mask] = indCheck(12, 18, 0, array.from(hbOte == dir, hbFvg == dir, hbLiq == dir,
+         triAgree(dir), hbDir == dir, hb50 == dir, hbIfv == dir), hN)
     [ok, mask]
 
 // LTF entry of direction dir with FVG / IFVG f (kind 0 IFVG, 1 FVG, 2 sweep leg); t0..t3: the triggers that
@@ -2536,22 +2625,22 @@ if showTrades and simulate and statsOn and barstate.islast
 
 // ============================================================ exploration of combinations
 // Every trigger, whatever its setting, is a virtual trade (stop / take profit / trailing of Show Trades); its
-// result counts for the trigger alone and with every one or two of the 13 confirmations that were true.
-// Combination c = trigger * 92 + k, k: 0 alone, 1..13 one confirmation, 14..91 two.
-const int EXC = 92
+// result counts for the trigger alone and with every one or two of the 15 confirmations that were true.
+// Combination c = trigger * 121 + k, k: 0 alone, 1..15 one confirmation, 16..120 two.
+const int EXC = 121
 var array<string> exTrig = array.from("IFVGl", "IFVGr", "SwOTE", "FVGr")
 var array<string> exCond = array.from("OTE", "B", "MB", "Liq", "Lvl", "OTEl", "EQ", "DLV", "hOTE", "hFVG", "hLiq",
-     "Tri", "hBlk")
+     "Tri", "hBlk", "h50", "hIFV")
 var array<int> exA = array.new<int>()
 var array<int> exB = array.new<int>()
 if barstate.isfirst
     exA.push(-1)
     exB.push(-1)
-    for a = 0 to 12
+    for a = 0 to 14
         exA.push(a)
         exB.push(-1)
-    for a = 0 to 11
-        for b = a + 1 to 12
+    for a = 0 to 13
+        for b = a + 1 to 14
             exA.push(a)
             exB.push(b)
 var array<int> exN = array.new<int>(4 * EXC, 0)
@@ -2574,7 +2663,7 @@ type VTrade
 
 var array<VTrade> vts = array.new<VTrade>()
 
-// the 13 confirmations for a trade of direction dir on f (kind 0 IFVG, 1 FVG, 2 sweep leg)
+// the 15 confirmations for a trade of direction dir on f (kind 0 IFVG, 1 FVG, 2 sweep leg)
 exConds(int dir, FVG f, int kind) =>
     bool ote = kind == 0 ? (dir == 1 ? gBull.flagged : gBear.flagged) : kind == 2 ? true : oteFvg(dir, f)
     int sw = dir == 1 ? lastSweepL : lastSweepH
@@ -2583,7 +2672,7 @@ exConds(int dir, FVG f, int kind) =>
     array.from(ote, blkHas(0, dir, f), blkHas(1, dir, f), not na(sw) and bar_index - sw < liqLook,
          not na(lr) and bar_index - lr < htfLook, not na(orj) and bar_index - orj < htfLook,
          not na(eqNext(dir, close)), dlvCur == dir, hbOte == dir, hbFvg == dir, hbLiq == dir, triAgree(dir),
-         hbDir == dir)
+         hbDir == dir, hb50 == dir, hbIfv == dir)
 
 exOpen(int dir, int trig, FVG f, int kind, int id) =>
     [stp, tp, ok] = tradeLevels(dir, f)
