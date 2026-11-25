@@ -134,9 +134,9 @@ string emBrk = input.string(CON, "Breaker", options = [OFF, CON, MAN], group = G
 string emMb = input.string(CON, "Mitigation block", options = [OFF, CON, MAN], group = G_E,
      tooltip = "The FVG / IFVG of the trigger overlaps a mitigation block of the trade direction that broke and "+
          "made a swing beyond it (Mitigation blocks settings below). " + IMODE)
-string emLiq = input.string(CON, "Took liquidity", options = [OFF, CON, MAN], group = G_E, inline = "liq",
+string emLiq = input.string(MAN, "Took liquidity", options = [OFF, CON, MAN], group = G_E, inline = "liq",
      tooltip = "Short: a candle took the last short-term high within the last N candles (the entry candle "+
-         "included). Long: a candle took the last short-term low. Short-term highs / lows are pivots with the "+
+         "included), with its wick or its body. Long: a candle took the last short-term low. Short-term highs / lows are pivots with the "+
          "left / right lengths given here (the sweep pivots of FVGs+IFVG+OTE). " + IMODE)
 int liqLook = input.int(20, "within", minval = 1, maxval = 500, group = G_E, inline = "liq")
 flL = input.int(3, "Short-term pivots L, R", minval = 1, group = G_E, inline = "stp")
