@@ -59,6 +59,16 @@ const string CON = "Consider"
 const string MAN = "Mandatory"
 const string IMODE = "Off: not used. Consider: counts towards 'at least N'. Mandatory: always required."
 
+const string G_A = "Auto"
+bool autoOn = input.bool(true, "Auto: best settings for the chart timeframe (1m, 2m, 5m)", group = G_A,
+     tooltip = "When on, these settings are picked from the backtests on MNQ1! for the chart timeframe and the "+
+         "inputs below them are ignored:\n1m: entries only after a session that consolidated, PO3 off.\n"+
+         "2m: PO3 Mandatory on the 4H candle, previous session filter off.\n"+
+         "5m: PO3 Mandatory on the 4H candle, previous session filter off.\n"+
+         "Other timeframes use the inputs as set. Turn it off to set them by hand.")
+int tfMin = timeframe.isminutes ? timeframe.multiplier : 0
+bool autoTf = autoOn and (tfMin == 1 or tfMin == 2 or tfMin == 5)
+
 const string G_H = "HTF bias"
 string hTf = input.timeframe("240", "Higher timeframe", group = G_H,
      tooltip = "Timeframe of the bias read. It has to be above the chart timeframe (else the chart timeframe "+
@@ -119,12 +129,12 @@ bool qNwog = input.bool(true, "NWOG", group = G_H, inline = "hq2")
 bool qRth = input.bool(true, "RTHOG", group = G_H, inline = "hq2")
 bool qFvg = input.bool(true, "HTF FVGs", group = G_H, inline = "hq2")
 bool qWick = input.bool(true, "HTF wicks", group = G_H, inline = "hq2")
-string hmPo3 = input.string(OFF, "PO3", options = [OFF, CON, MAN], group = G_H, inline = "po3",
+string hmPo3In = input.string(OFF, "PO3", options = [OFF, CON, MAN], group = G_H, inline = "po3",
      tooltip = "Power of three on the candle in progress of the chosen timeframe: short when it has already "+
          "traded at least 'min' points above its open (the manipulation wick) and price is now below the open "+
          "(the expansion down); long the other way around. The exploration shows each timeframe as P3D, P34, "+
          "P31 and P315. " + IMODE)
-string po3Tf = input.string("4H", "", options = ["D", "4H", "1H", "15m"], group = G_H, inline = "po3")
+string po3TfIn = input.string("4H", "", options = ["D", "4H", "1H", "15m"], group = G_H, inline = "po3")
 float po3MinIn = input.float(10.0, "min", minval = 0.0, step = 1.0, group = G_H, inline = "po3")
 int hN = input.int(1, "At least N of the considered", minval = 0, maxval = 8, group = G_H,
      tooltip = "Consider indications that have to agree with the direction, besides the Mandatory ones. "+
@@ -258,7 +268,7 @@ float sesEff = input.float(0.5, "Session trend: |close - open| / range at least"
          "is at least this part of its range, otherwise it consolidated. The exploration shows pT / pC (the "+
          "previous session trended / consolidated) and can count only trades of trending or consolidating "+
          "sessions (known only when the session ends).")
-string regMode = input.string("Off", "Entries only after a session that", options = ["Off", "Consolidated",
+string regModeIn = input.string("Off", "Entries only after a session that", options = ["Off", "Consolidated",
      "Trended", "Predict"], group = G_TM,
      tooltip = "Predict: after a session that consolidated, the setup above (trend setup); after a session that "+
          "trended, the range setup: IFVG return trigger with the HTF FVG draw in the trade direction (no other "+
@@ -268,6 +278,11 @@ string macMode = input.string("Hourly :50-:10", "Only inside ICT macros", option
          "ICT macros: 02:33-03:00, 04:03-04:30, 08:50-09:10, 09:50-10:10, 10:50-11:10, 11:50-12:10, "+
          "13:10-13:40, 15:15-15:45.\nHourly: from :50 to :10 of every hour.\n"+
          "Combined with the other time options (all have to be met). The exploration shows both as Mac / MacH.")
+
+// effective settings (Auto overrides the inputs on 1m, 2m and 5m)
+string hmPo3 = autoTf ? (tfMin == 1 ? OFF : MAN) : hmPo3In
+string po3Tf = autoTf ? "4H" : po3TfIn
+string regMode = autoTf ? (tfMin == 1 ? "Consolidated" : "Off") : regModeIn
 
 const string G_T = "Show Trades"
 bool showTrades = input.bool(false, "Show trades", group = G_T,
