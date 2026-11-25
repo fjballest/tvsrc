@@ -303,17 +303,6 @@ bool trOn = input.bool(true, "Simulate: trailing stop after points up", group = 
          "high (short) of each new closed candle, never backwards, and the take profit is no longer used: "+
          "the trade runs until it is stopped out. Points for NQ, scaled when 'Scale sizes' is on.")
 float trPtsIn = input.float(50.0, "", minval = 0.25, step = 0.25, group = G_T, inline = "tr")
-float maxStopIn = input.float(0.0, "Max stop (0 off), wait bars", minval = 0.0, step = 1.0, group = G_T, inline = "ms",
-     tooltip = "When the stop of an entry is wider than these points, do not enter at the close: wait for a "+
-         "retracement to the price that leaves exactly this stop (stop level unchanged) for up to 'wait bars' "+
-         "candles. The take profit is recomputed from the new entry for the risk ratio mode. The wait is "+
-         "dropped if the price reaches the take profit first. Points for NQ, scaled when 'Scale sizes' is on.")
-int maxWait = input.int(10, "", minval = 1, maxval = 100, group = G_T, inline = "ms")
-string maxMode = input.string("Wait for a retracement", "Max stop: when wider", options = ["Wait for a retracement",
-     "Closer stop"], group = G_T,
-     tooltip = "Wait for a retracement: as above.\nCloser stop: enter at the close with the widest of these stops "+
-         "that is within the max stop: short-term high / low, candle 2 and wicks, candle 2, FVG far edge (each "+
-         "with the stop margin); with none within it, no entry. Applies to the exploration too.")
 bool boxOn = input.bool(true, "Boxes, transparency", group = G_T, inline = "bx",
      tooltip = "Red box from the entry to the initial stop, green box from the entry to the take profit, "+
          "up to the exit candle (simulated) or the segment length.")
@@ -461,7 +450,6 @@ float maxfvg = maxfvgIn * sizeK
 float stopDelta = stopDeltaIn * sizeK
 float beMin = beMinIn * sizeK
 float trPts = trPtsIn * sizeK
-float maxStop = maxStopIn * sizeK
 float swpMin = swpMinIn * sizeK
 float eq3pts = eq3ptsIn * sizeK
 float backPts = backPtsIn * sizeK
@@ -2602,29 +2590,6 @@ openTrade(int dir, float ent, float stp, float tp, int mask, int b0) =>
         trades.shift()
     true
 
-// entries waiting for a retracement (max stop): limit price, stop, take profit, mask, expiry bar
-type Pend
-    int dir
-    float lim
-    float stp
-    float tp
-    int mask
-    int bar
-var array<Pend> pends = array.new<Pend>()
-
-// fills of the waiting entries; a fill is tested for the stop / take profit on its own candle too
-if showTrades and barstate.isconfirmed and pends.size() > 0
-    for i = pends.size() - 1 to 0
-        Pend pd = pends.get(i)
-        if bar_index > pd.bar
-            bool fill = pd.dir == 1 ? low <= pd.lim : high >= pd.lim
-            bool gone = pd.dir == 1 ? high >= pd.tp : low <= pd.tp
-            if fill
-                openTrade(pd.dir, pd.lim, pd.stp, pd.tp, pd.mask, bar_index - 1)
-                pends.remove(i)
-            else if gone or bar_index - pd.bar >= maxWait
-                pends.remove(i)
-
 // stop of an open trade after a closed candle: breakeven once a candle closes in profit by more than
 // beMin, trailing to the low (long) / high (short) of each candle once price went trPts in favour (best
 // is the best price reached so far). The stop never moves backwards.
@@ -2724,19 +2689,6 @@ tradeLevels(int dir, FVG f) =>
          : (dir == -1 ? f.hi : f.lo)
     float stp = lvl - dir * stopDelta
     float risk = (close - stp) * dir
-    bool cok = true
-    if maxStop > 0 and maxMode == "Closer stop" and risk > maxStop
-        float best = na
-        for lv in array.from(c2Wicks(dir, f), dir == -1 ? f.c2hi : f.c2lo, dir == -1 ? f.hi : f.lo)
-            float cs = lv - dir * stopDelta
-            float cr = (close - cs) * dir
-            if cr > 0 and cr <= maxStop and (na(best) or cr > (close - best) * dir)
-                best := cs
-        if na(best)
-            cok := false
-        else
-            stp := best
-            risk := (close - stp) * dir
     float tp = close + dir * rrN * risk
     // nearest short-term high (long) / low (short) not taken yet, at least 1:N away
     if tpMode == "Next short-term high / low"
@@ -2758,21 +2710,12 @@ tradeLevels(int dir, FVG f) =>
         float q = eqNext(dir, close)
         if not na(q)
             tp := q
-    [stp, tp, risk > 0 and cok]
+    [stp, tp, risk > 0]
 
 newTrade(int dir, FVG f, int mask) =>
     [stp, tp, ok] = tradeLevels(dir, f)
     if ok
-        float risk = (close - stp) * dir
-        if maxStop > 0 and maxMode == "Wait for a retracement" and risk > maxStop
-            float lim = stp + dir * maxStop
-            float ntp = tpMode == "Risk ratio 1:N" ? lim + dir * rrN * maxStop : tp
-            for i = pends.size() - 1 to 0
-                if pends.size() > 0 and pends.get(i).dir == dir
-                    pends.remove(i)
-            pends.push(Pend.new(dir, lim, stp, ntp, mask, bar_index))
-        else
-            openTrade(dir, close, stp, tp, mask, bar_index)
+        openTrade(dir, close, stp, tp, mask, bar_index)
     true
 
 if showTrades and goShort
