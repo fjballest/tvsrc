@@ -368,6 +368,18 @@ const string G_S = "Signals"
 color longCol = input.color(color.teal, "Colors: long", group = G_S, inline = "c")
 color shortCol = input.color(color.red, "short", group = G_S, inline = "c")
 bool doAlerts = input.bool(true, "Alerts", group = G_S)
+bool condOn = input.bool(true, "Conditions table", group = G_S, inline = "cnd",
+     tooltip = "Like the ICTcotas triangles: the state now of each condition of the setup, ▲ long, ▼ short, "+
+         "○ nothing. PO3: the candle in progress of each PO3 timeframe in use (Auto included). Quad: a quadrant "+
+         "reaction within the last bars. Liq: a short-term low (▲) / high (▼) taken within the last bars. Ses: "+
+         "the last session trended (T) or consolidated (C), bright when the previous session filter allows "+
+         "entries. Time: ● inside the killzones and macros in use. Armed: every HTF, time and session condition "+
+         "and took liquidity agree, only the entry trigger (FVG return) is missing.")
+string condPos = input.string("Bottom left", "", options = ["Bottom left", "Bottom center", "Middle right",
+     "Top left"], group = G_S, inline = "cnd")
+bool armOn = input.bool(true, "Armed dots on the candles (and 'armed' alerts)", group = G_S,
+     tooltip = "A small dot below (long) / above (short) each closed candle where the setup is armed: only the "+
+         "entry trigger is missing. With Alerts on, an alert when it becomes armed.")
 
 // FVGs+IFVG+OTE settings ===================================
 const string G_I = "IFVG (FVGs+IFVG+OTE settings)"
@@ -2988,6 +3000,53 @@ if explore and showTrades and simulate and barstate.islast
             resRow(exTbl, r, nm, exN.get(best), exW.get(best), exL.get(best), exWP.get(best), exLP.get(best),
                  exP.get(best))
 
+// armed: every condition but the entry trigger
+liqRecent(int dir) =>
+    int sw = dir == 1 ? lastSweepL : lastSweepH
+    not na(sw) and bar_index - sw < liqLook
+armedDir(int dir) =>
+    [hOk, hM] = htfAllow(dir)
+    timeOk and regOk and hOk and (modeOf(emLiq) < 2 or liqRecent(dir))
+bool armL = armedDir(1)
+bool armS = armedDir(-1)
+bool armLc = barstate.isconfirmed and armL
+bool armSc = barstate.isconfirmed and armS
+plotshape(armOn and armLc, "Armed long", shape.circle, location.belowbar, color.new(longCol, 30), size = size.tiny)
+plotshape(armOn and armSc, "Armed short", shape.circle, location.abovebar, color.new(shortCol, 30), size = size.tiny)
+
+// conditions table
+cndSym(bool up, bool dn) =>
+    up and dn ? "▲▼" : up ? "▲" : dn ? "▼" : "○"
+cndCol(bool up, bool dn) =>
+    up and dn ? color.orange : up ? longCol : dn ? shortCol : color.new(color.gray, 50)
+var table cndTbl = table.new(condPos == "Bottom left" ? position.bottom_left : condPos == "Bottom center" ?
+     position.bottom_center : condPos == "Middle right" ? position.middle_right : position.top_left, 7, 2)
+cndCell(int c, string sym, color col, string nm) =>
+    cndTbl.cell(c, 0, sym, text_color = col, text_size = size.normal)
+    cndTbl.cell(c, 1, nm, text_color = color.new(color.gray, 30), text_size = size.tiny)
+if condOn and barstate.islast
+    cndTbl.clear(0, 0, 6, 1)
+    int c = 0
+    cndCell(c, cndSym(p3A == 1, p3A == -1), cndCol(p3A == 1, p3A == -1), "PO3 " + po3Tf)
+    c += 1
+    if po3Tf2 != "None"
+        cndCell(c, cndSym(p3B == 1, p3B == -1), cndCol(p3B == 1, p3B == -1), "PO3 " + po3Tf2)
+        c += 1
+    bool qL = quadOk(1)
+    bool qS = quadOk(-1)
+    cndCell(c, cndSym(qL, qS), cndCol(qL, qS), "Quad")
+    c += 1
+    bool lL = liqRecent(1)
+    bool lS = liqRecent(-1)
+    cndCell(c, cndSym(lL, lS), cndCol(lL, lS), "Liq")
+    c += 1
+    cndCell(c, sesPrev == 1 ? "T" : sesPrev == 0 ? "C" : "–", regMode == "Off" ? color.gray : regOk ? color.orange :
+         color.new(color.gray, 50), "Ses")
+    c += 1
+    cndCell(c, timeOk ? "●" : "○", timeOk ? color.orange : color.new(color.gray, 50), "Time")
+    c += 1
+    cndCell(c, cndSym(armL, armS), cndCol(armL, armS), "Armed")
+
 plotshape(goShort, "Enter short", shape.triangledown, location.abovebar, shortCol, size = size.small,
      text = "SHORT", textcolor = shortCol)
 plotshape(goLong, "Enter long", shape.triangleup, location.belowbar, longCol, size = size.small,
@@ -2995,6 +3054,12 @@ plotshape(goLong, "Enter long", shape.triangleup, location.belowbar, longCol, si
 
 alertcondition(goShort, "ICTScalp short", "ICTScalp SHORT {{ticker}} {{interval}}")
 alertcondition(goLong, "ICTScalp long", "ICTScalp LONG {{ticker}} {{interval}}")
+alertcondition(armLc and not armLc[1], "ICTScalp long armed", "ICTScalp long armed {{ticker}} {{interval}}")
+alertcondition(armSc and not armSc[1], "ICTScalp short armed", "ICTScalp short armed {{ticker}} {{interval}}")
+if doAlerts and armOn and armLc and not armLc[1]
+    alert("ICTScalp long armed " + syminfo.ticker + " " + timeframe.period, alert.freq_once_per_bar_close)
+if doAlerts and armOn and armSc and not armSc[1]
+    alert("ICTScalp short armed " + syminfo.ticker + " " + timeframe.period, alert.freq_once_per_bar_close)
 if doAlerts and goShort
     alert("ICTScalp SHORT " + syminfo.ticker + " " + timeframe.period, alert.freq_once_per_bar_close)
 if doAlerts and goLong

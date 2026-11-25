@@ -76,6 +76,7 @@ bool dopremarket = input.bool(true, "PMKT range (m5 or less)", group = G_EN, inl
      tooltip = "High and low of the premarket range, with its quadrants and "
      + "stddevs. Needs a chart timeframe of 5m or lower.")
 bool domacrobg = false
+bool dokzmac = false
 
 const string G_LOCATION = "Time & Settings"
 bool visible = input.bool(false, "compute for historic data use", group = G_LOCATION,

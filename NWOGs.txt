@@ -73,6 +73,7 @@ bool dorthog = false
 bool dogaps = dondog or donwog or dorthog // some opening gap kind is on
 bool dopremarket = false
 bool domacrobg = false
+bool dokzmac = false
 
 const string G_LOCATION = "Time & Settings"
 bool visible = input.bool(false, "compute for historic data use", group = G_LOCATION,
