@@ -63,20 +63,20 @@ const string G_H = "HTF bias"
 string hTf = input.timeframe("240", "Higher timeframe", group = G_H,
      tooltip = "Timeframe of the bias read. It has to be above the chart timeframe (else the chart timeframe "+
          "is used). Only closed HTF candles are used.")
-string hmOte = input.string(CON, "OTE rejection", options = [OFF, CON, MAN], group = G_H,
+string hmOte = input.string(OFF, "OTE rejection", options = [OFF, CON, MAN], group = G_H,
      tooltip = "Major leg: from its origin to its extreme; it flips when an HTF candle closes beyond the origin. "+
          "An HTF candle that wicks into the OTE band of the leg (not beyond the origin) and closes back out of it "+
          "(not beyond the far OTE level) gives the leg direction. Minor leg: the retracement of the major leg, once "+
          "it reached the OTE band; a candle wicking into the OTE band of the minor leg and closing back gives the "+
          "minor leg direction (the retracement continues). The last rejection holds until its leg breaks. "+
          "OTE levels and match from the OTE settings. " + IMODE)
-string hmFvg = input.string(CON, "FVG draw", options = [OFF, CON, MAN], group = G_H,
+string hmFvg = input.string(OFF, "FVG draw", options = [OFF, CON, MAN], group = G_H,
      tooltip = "Towards the nearest HTF FVG price has not come back to since it formed: a bearish FVG above "+
          "gives long, a bullish FVG below gives short. Minimum size: the IFVG FVG size. " + IMODE)
 string hmLiq = input.string(OFF, "Liquidity draw", options = [OFF, CON, MAN], group = G_H,
      tooltip = "After an HTF swing low is taken, long (towards the highs); after a swing high is taken, short. "+
          "Swings: HTF pivots of the OTE settings. " + IMODE)
-string hmTri = input.string(OFF, "Cotas triangles", options = [OFF, CON, MAN], group = G_H, inline = "tri",
+string hmTri = input.string(MAN, "Cotas triangles", options = [OFF, CON, MAN], group = G_H, inline = "tri",
      tooltip = "The turtle soup / continuation triangles of ICTcotas, one per timeframe: the previous completed "+
          "candle and the forming one. Previous candle down, price took its low and is back above its close: turtle "+
          "soup up; the forming candle traded above its open and price is now below the previous close: "+
@@ -84,7 +84,7 @@ string hmTri = input.string(OFF, "Cotas triangles", options = [OFF, CON, MAN], g
          "Mirrored for an up candle. At least 'agree' of the ticked timeframes have to point in the direction "+
          "(turtle soup or continuation) and none against it. Evaluated at chart candle closes. " + IMODE)
 int triMin = input.int(2, "agree", minval = 1, maxval = 3, group = G_H, inline = "tri")
-string triPat = input.string("Agree", "pattern", options = ["Agree", "15m turtle soup", "All agree", "4H continuation"],
+string triPat = input.string("15m turtle soup", "pattern", options = ["Agree", "15m turtle soup", "All agree", "4H continuation"],
      group = G_H, tooltip = "Agree: at least 'agree' of the ticked timeframes point in the direction and none "+
          "against it. 15m turtle soup: the 15m triangle is a turtle soup in the direction. All agree: 15m, 1H and "+
          "4H all point in the direction (turtle soup or continuation). 4H continuation: the 4H triangle is a "+
@@ -92,7 +92,7 @@ string triPat = input.string("Agree", "pattern", options = ["Agree", "15m turtle
 bool tri15 = input.bool(true, "15m", group = G_H, inline = "tri2")
 bool tri1h = input.bool(true, "1H", group = G_H, inline = "tri2")
 bool tri4h = input.bool(true, "4H", group = G_H, inline = "tri2")
-string hmBlk = input.string(CON, "Respected breakers / MBs", options = [OFF, CON, MAN], group = G_H, inline = "hb",
+string hmBlk = input.string(OFF, "Respected breakers / MBs", options = [OFF, CON, MAN], group = G_H, inline = "hb",
      tooltip = "Breakers and mitigation blocks on this timeframe (zone and swings from the Breakers and Mitigation "+
          "blocks settings). A block only counts once price respected it: after it formed, a candle came back into "+
          "the zone and then a candle closed back out on its side (above a bullish block, below a bearish one) "+
@@ -103,7 +103,7 @@ string hbTf = input.timeframe("15", "", group = G_H, inline = "hb")
 int hbAge = input.int(40, "max bars", minval = 2, maxval = 500, group = G_H, inline = "hb2",
      tooltip = "Candles of the blocks timeframe since the last respect (or since it formed, while not respected "+
          "yet) after which the block is dropped.")
-string hm50 = input.string(CON, "0.5 rejections", options = [OFF, CON, MAN], group = G_H, inline = "h50",
+string hm50 = input.string(OFF, "0.5 rejections", options = [OFF, CON, MAN], group = G_H, inline = "h50",
      tooltip = "Major leg (as for the OTE rejection): at least this many HTF candles of the same pullback wick to "+
          "its 0.5 level (not beyond the origin) and close back on the leg side. Gives the leg direction (a down "+
          "leg rejected at 0.5 gives short) until the leg breaks or a candle closes beyond 0.5. " + IMODE)
@@ -119,29 +119,29 @@ bool hShow = input.bool(true, "Show the HTF OTE lines and draw targets", group =
 const string G_E = "LTF entries"
 string emLeave = input.string(OFF, "Trigger: IFVG leaving", options = [OFF, CON, MAN], group = G_E,
      tooltip = "Enter on the candle that closes through the FVG (confirms the IFVG). " + IMODE)
-string emRet = input.string(CON, "Trigger: IFVG return", options = [OFF, CON, MAN], group = G_E,
+string emRet = input.string(OFF, "Trigger: IFVG return", options = [OFF, CON, MAN], group = G_E,
      tooltip = "Enter on a later candle that comes back into the confirmed IFVG: its high reaches the IFVG "+
          "without going above its top (short), or its low reaches it without going below its bottom (long). "+
          "One entry per confirmation. " + IMODE)
-string emSwp = input.string(CON, "Trigger: sweep and OTE rejection", options = [OFF, CON, MAN], group = G_E,
+string emSwp = input.string(OFF, "Trigger: sweep and OTE rejection", options = [OFF, CON, MAN], group = G_E,
      inline = "swp", tooltip = "Long: a short-term low is taken, price goes up, and a candle comes back down with its "+
          "low inside the OTE band of that leg (from the low that took the short-term low to the highest high since; "+
          "not below the leg low), a lower wick, and its close not below the 0.79 level. Short: the mirror. The leg "+
          "has to be at least the given points (NQ, scaled). One entry per leg; a new high extends the leg, a low "+
          "below it ends it. The stop is past the leg low. Short-term pivots as for 'Took liquidity'. " + IMODE)
 float swpMinIn = input.float(10.0, "min leg", minval = 0.0, step = 0.5, group = G_E, inline = "swp")
-string emFvg = input.string(OFF, "Trigger: FVG return", options = [OFF, CON, MAN], group = G_E,
+string emFvg = input.string(CON, "Trigger: FVG return", options = [OFF, CON, MAN], group = G_E,
      tooltip = "Enter on a candle that comes back into a chart FVG of the trade direction (bullish FVG for longs) "+
          "and closes at or beyond its CE (at or above for longs). One entry per FVG; a close beyond its far side "+
          "removes it. " + IMODE)
-string emOte = input.string(CON, "OTE", options = [OFF, CON, MAN], group = G_E,
+string emOte = input.string(OFF, "OTE", options = [OFF, CON, MAN], group = G_E,
      tooltip = "IFVG triggers: the IFVG is an OTE IFVG (OTE settings below; when leaving, only the prior-leg "+
          "rejection can flag it on the confirming candle). FVG return: the FVG matches the OTE band of its leg "+
          "(from the last swing before the FVG to the extreme since the FVG). " + IMODE)
-string emBrk = input.string(CON, "Breaker", options = [OFF, CON, MAN], group = G_E,
+string emBrk = input.string(OFF, "Breaker", options = [OFF, CON, MAN], group = G_E,
      tooltip = "The FVG / IFVG of the trigger overlaps a breaker of the trade direction that broke and made a "+
          "swing beyond it (Breakers settings below). " + IMODE)
-string emMb = input.string(CON, "Mitigation block", options = [OFF, CON, MAN], group = G_E,
+string emMb = input.string(OFF, "Mitigation block", options = [OFF, CON, MAN], group = G_E,
      tooltip = "The FVG / IFVG of the trigger overlaps a mitigation block of the trade direction that broke and "+
          "made a swing beyond it (Mitigation blocks settings below). " + IMODE)
 string emLiq = input.string(MAN, "Took liquidity", options = [OFF, CON, MAN], group = G_E, inline = "liq",
@@ -276,10 +276,6 @@ bool trOn = input.bool(true, "Simulate: trailing stop after points up", group = 
          "high (short) of each new closed candle, never backwards, and the take profit is no longer used: "+
          "the trade runs until it is stopped out. Points for NQ, scaled when 'Scale sizes' is on.")
 float trPtsIn = input.float(50.0, "", minval = 0.25, step = 0.25, group = G_T, inline = "tr")
-bool stOn = input.bool(false, "Simulate: structure trailing stop", group = G_T,
-     tooltip = "From the entry on, the stop moves past each new short-term low (long) / high (short) and past "+
-         "each new FVG of the trade direction that form after the entry (by the stop margin), never backwards. "+
-         "The take profit stays (use an HTF take profit to run to the HTF target). Applies to the exploration too.")
 bool boxOn = input.bool(true, "Boxes, transparency", group = G_T, inline = "bx",
      tooltip = "Red box from the entry to the initial stop, green box from the entry to the take profit, "+
          "up to the exit candle (simulated) or the segment length.")
@@ -2389,19 +2385,9 @@ statAdd(int row, float pts) =>
 // stop of an open trade after a closed candle: breakeven once a candle closes in profit by more than
 // beMin, trailing to the low (long) / high (short) of each candle once price went trPts in favour (best
 // is the best price reached so far). The stop never moves backwards.
-manageStop(int dir, float entry, float stp, bool trail, float best, int ebar) =>
+manageStop(int dir, float entry, float stp, bool trail, float best) =>
     float st = stp
     bool tr = trail
-    if stOn
-        float sp = dir == 1 ? fPL : fPH
-        if not na(sp) and bar_index - flR > ebar and (close - sp) * dir > 0
-            float ns = sp - dir * stopDelta
-            st := dir == 1 ? math.max(st, ns) : math.min(st, ns)
-        FVG nf = dir == 1 ? lastlongfvg : lastshortfvg
-        if not na(nf) and nf.sbar > ebar
-            float ns = dir == 1 ? nf.lo - stopDelta : nf.hi + stopDelta
-            if (close - ns) * dir > 0
-                st := dir == 1 ? math.max(st, ns) : math.min(st, ns)
     if beOn and (close - entry) * dir > beMin
         st := dir == 1 ? math.max(st, entry) : math.min(st, entry)
     if trOn and (best - entry) * dir >= trPts
@@ -2445,10 +2431,10 @@ if showTrades and simulate and barstate.isconfirmed
                     label.new(bar_index, ex, res + " " + str.tostring(pts, "#.##"),
                          style = label.style_label_left, color = color.new(color.white, 100),
                          textcolor = rc, size = size.small)
-            else if beOn or trOn or stOn
+            else if beOn or trOn
                 t.best := na(t.best) ? (t.dir == 1 ? high : low)
                      : (t.dir == 1 ? math.max(t.best, high) : math.min(t.best, low))
-                [st, tr] = manageStop(t.dir, t.entry, t.stop, t.trail, t.best, t.bar)
+                [st, tr] = manageStop(t.dir, t.entry, t.stop, t.trail, t.best)
                 t.stop := st
                 t.trail := tr
                 t.sln.set_y1(st)
@@ -2689,10 +2675,10 @@ if explore and showTrades and simulate and barstate.isconfirmed
                             exLP.set(c, exLP.get(c) + pts)
                         exP.set(c, exP.get(c) + pts)
                     vts.remove(i)
-                else if beOn or trOn or stOn
+                else if beOn or trOn
                     t.best := na(t.best) ? (t.dir == 1 ? high : low)
                          : (t.dir == 1 ? math.max(t.best, high) : math.min(t.best, low))
-                    [st, tr] = manageStop(t.dir, t.entry, t.stop, t.trail, t.best, t.bar)
+                    [st, tr] = manageStop(t.dir, t.entry, t.stop, t.trail, t.best)
                     t.stop := st
                     t.trail := tr
     // new virtual trades
