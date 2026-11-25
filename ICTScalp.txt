@@ -60,14 +60,15 @@ const string MAN = "Mandatory"
 const string IMODE = "Off: not used. Consider: counts towards 'at least N'. Mandatory: always required."
 
 const string G_A = "Auto"
-bool autoOn = input.bool(true, "Auto: best settings for the chart timeframe (1m, 2m, 5m)", group = G_A,
+bool autoOn = input.bool(true, "Auto: best settings for the chart timeframe (1m, 2m, 3m, 5m)", group = G_A,
      tooltip = "When on, these settings are picked from the backtests on MNQ1! for the chart timeframe and the "+
          "inputs below them are ignored:\n1m: entries only after a session that consolidated, PO3 off.\n"+
-         "2m: PO3 Mandatory on the 4H candle, previous session filter off.\n"+
-         "5m: PO3 Mandatory on the 4H candle, previous session filter off.\n"+
+         "2m: PO3 Mandatory on the 4H and 1H candles, previous session filter off.\n"+
+         "3m: PO3 Mandatory on the 5m candle, previous session filter off.\n"+
+         "5m: PO3 Mandatory on the 4H and 1H candles, previous session filter off.\n"+
          "Other timeframes use the inputs as set. Turn it off to set them by hand.")
 int tfMin = timeframe.isminutes ? timeframe.multiplier : 0
-bool autoTf = autoOn and (tfMin == 1 or tfMin == 2 or tfMin == 5)
+bool autoTf = autoOn and (tfMin == 1 or tfMin == 2 or tfMin == 3 or tfMin == 5)
 
 const string G_H = "HTF bias"
 string hTf = input.timeframe("240", "Higher timeframe", group = G_H,
@@ -284,10 +285,10 @@ string macMode = input.string("Hourly :50-:10", "Only inside ICT macros", option
          "13:10-13:40, 15:15-15:45.\nHourly: from :50 to :10 of every hour.\n"+
          "Combined with the other time options (all have to be met). The exploration shows both as Mac / MacH.")
 
-// effective settings (Auto overrides the inputs on 1m, 2m and 5m)
+// effective settings (Auto overrides the inputs on 1m, 2m, 3m and 5m)
 string hmPo3 = autoTf ? (tfMin == 1 ? OFF : MAN) : hmPo3In
-string po3Tf = autoTf ? "4H" : po3TfIn
-string po3Tf2 = autoTf ? "None" : po3Tf2In
+string po3Tf = autoTf ? (tfMin == 3 ? "5m" : "4H") : po3TfIn
+string po3Tf2 = autoTf ? (tfMin == 3 ? "None" : "1H") : po3Tf2In
 string regMode = autoTf ? (tfMin == 1 ? "Consolidated" : "Off") : regModeIn
 
 const string G_T = "Show Trades"
