@@ -13,7 +13,7 @@
  *   BM↑/BM↓, inheritance of the tags by IFVGs) and LONG / SHORT / OTE signal markers.
  *
  *   Port of the TradingView Pine Script v6 indicator "FVGS+IFVG+OTE.txt"
- *   (md5 ed09c92cc5f32bb8d931e5c244c235ac, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
+ *   (md5 135f586b4285c99ce0e4bc5ed2f56f08, "FVGs+IFVG+OTE5"). Parameter names and defaults are the Pine
  *   input variable names (camelCase). See the design document (d.md) and user manual (m.md) for the logic.
  *
  * How to install
@@ -1212,7 +1212,7 @@ class FVGSIFVGOTE {
     newFVG(hi, lo, ce, islong, start) {
         return {
             hi, lo, ce, islong, start, end: null, rect: null, celine: null, isfp: false, iswfp: false, isffp: false, isifp: false, fptmp: false,
-            sbar: null, hiln: null, loln: null, kept: false, kdir: 0, khold: null, dup: null, cand: false, own: false,
+            sbar: null, hiln: null, loln: null, kept: false, kdir: 0, khold: null, dup: null, cand: false, own: false, ceOwn: false,
             shown: false, aplus: false, disp: false, brk: false, brkD: 0, mbD: 0,
             lblD: 0, ote: false, sb: false, oLo: null, oHi: null,
             swp: false, ext: false, dbar: null   // [REL] last FVG before a sweep, extended by a merge, bar filled
@@ -1329,7 +1329,7 @@ class FVGSIFVGOTE {
     kill(f) {
         if (!f) return;
         this.g.del(f.rect); this.g.del(f.celine); this.g.del(f.hiln); this.g.del(f.loln);
-        f.rect = null; f.celine = null; f.hiln = null; f.loln = null;
+        f.rect = null; f.celine = null; f.hiln = null; f.loln = null; f.ceOwn = false;
     }
     endsAt(f) { return f.end === null ? this.j : f.end; }
     isDone(f, o, c) { return f.islong ? (c < f.lo || o < f.lo) : (c > f.hi || o > f.hi); }
@@ -1372,9 +1372,38 @@ class FVGSIFVGOTE {
     setText(b, t) { if (b) b.text = t || ""; }
     textFmt(b) { const P = this.P; b.tsize = P.ifvgtsz; b.halign = P.ifvgha; b.valign = P.ifvgva; }
 
+    // [CE] the C.E. line of a zone shown as IFVG (candidate or kept): as configured for the FVGs (min height,
+    // style, width, attenuation), also when the FVG itself is not drawn (filtered, hidden or dropped). In the IFVG
+    // color with its border transparency t (a 1PFVG keeps its own C.E. color); it follows the IFVG box
+    ifCe(f, c, t) {
+        const P = this.P;
+        if (f.hi - f.lo <= P.mince) return;
+        if (f.celine && f.celine.dead) { f.celine = null; f.ceOwn = false; }   // removed by the object limit
+        if (!f.celine) {
+            f.celine = this.g.line({ x1: f.start, y1: f.ce, x2: this.j, y2: f.ce, color: null, style: P.cesty, width: this.attWc(P.celnwid) });
+            f.ceOwn = true;
+        }
+        f.celine.color = P.attLvl >= 4 ? col(c, 100) : this.cBc(c, t);
+        f.celine.x2 = this.j;
+        f.celine.extend = f.isfp ? "right" : "none";
+    }
+    // [CE] back to the FVG C.E. line (deleted if it was drawn only for the IFVG)
+    ceBack(f) {
+        if (!f.celine) return;
+        if (f.ceOwn) {
+            this.g.del(f.celine);
+            f.celine = null;
+            f.ceOwn = false;
+        } else {
+            f.celine.color = this.lnColor(f, true);
+            f.celine.x2 = this.endsAt(f);
+            f.celine.extend = f.isfp ? "right" : "none";
+        }
+    }
     restore(f) {
         f.kept = false;
         f.cand = false;
+        this.ceBack(f);
         if (f.rect) {
             if (f.own || this.stySeg) {
                 this.g.del(f.rect);
@@ -1417,6 +1446,10 @@ class FVGSIFVGOTE {
         f.rect.text = f.brk || f.mbD !== 0 ? this.fvgLbl(f) : "";
         f.rect.textCol = this.ifvgTxtCol;
         this.textFmt(f.rect);
+        if (f.isfp || f.isifp) // [CE]
+            this.ifCe(f, f.isifp ? P.ilnfpcol : (f.iswfp ? P.lnwfpcol : f.isffp ? P.lnffpcol : P.lnfpcol), 20);
+        else
+            this.ifCe(f, cc, P.borderTrans);
         if (!f.kept) this.keptIf.push(f);
         f.kept = true;
         f.cand = true;
@@ -1468,6 +1501,7 @@ class FVGSIFVGOTE {
                 this.keptIf.splice(k, 1);
             } else {
                 f.rect.right = this.j;
+                if (f.celine) f.celine.x2 = this.j; // [CE]
             }
         }
     }
@@ -1666,7 +1700,7 @@ class FVGSIFVGOTE {
                 }
                 if (f.rect && !f.kept) f.rect.right = et;
                 if (f.hiln) { f.hiln.x2 = et; f.loln.x2 = et; }
-                if (f.celine) f.celine.x2 = et;
+                if (f.celine && !f.kept) f.celine.x2 = et; // [CE] a kept IFVG C.E. follows its box
                 if (P.dofvgalert && f.end === null) {
                     if (this.bounces(f.hi) || this.bounces(f.lo) || this.bounces(f.ce)) this.bounceNow = 1;
                 }
@@ -1734,6 +1768,10 @@ class FVGSIFVGOTE {
                 f.rect.right = this.j;
                 f.rect.frozen = true;
             }
+            if (f.celine) { // [CE]
+                f.celine.color = this.cF(this.P.deDeadCol, 85);
+                f.celine.x2 = this.j;
+            }
         }
     }
     // 1PFVG (or inverse 1PFVG) zone, or a duplicate merged into one: it keeps its own look
@@ -1747,6 +1785,8 @@ class FVGSIFVGOTE {
             const cc = d < 0 ? this.P.bearIFVGColor : this.P.bullIFVGColor;
             b.bg = this.cF(cc, this.P.ifvgTrans);
             b.border = this.cBx(cc, this.P.borderTrans);
+            const f = fv && fv.dup ? fv.dup : fv;
+            if (f && f.celine) this.ifCe(f, cc, this.P.borderTrans); // [CE]
         }
     }
 

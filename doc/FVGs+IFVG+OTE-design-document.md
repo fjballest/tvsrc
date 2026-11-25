@@ -153,9 +153,11 @@ Pine requires every function to return a value, so functions that only mutate st
 
 | Function | Role |
 | --- | --- |
-| `adopt(FVG, dir)` | Turns the FVG's box (or its duplicate's) into the IFVG box; creates one if the FVG has none. Returns the box. |
+| `adopt(FVG, dir)` | Turns the FVG's box (or its duplicate's) into the IFVG box; creates one if the FVG has none. Calls `ifCe()`. Returns the box. |
+| `ifCe(FVG, c, fp)` | \[CE\] The C.E. line of a candidate / IFVG, if the zone is taller than `mince`: creates it (flagged `ceOwn`) when the FVG has none, colors it `c` with the IFVG border transparency `borderTransIn` attenuated one level less (`fp`: a 1PFVG, its own C.E. color through `attCE`; none at level 4), and moves it to the current bar. `updKept()` keeps it at the current bar, `deKill()` fades it, `deRecolor()` recolors it. |
+| `ceBack(FVG)` | \[CE\] Called by `restore()`: deletes a `ceOwn` C.E. line, or gives the FVG C.E. line back its `lnColor(f, true)` color and end. |
 | `release(FVG, confirmed, ctime)` | Candidate replaced: keep the box as IFVG if confirmed and `keepIFVG`, otherwise restore it. |
-| `restore(FVG)` | Back to a plain FVG: deletes an own box, or restores colors, width, text and extension. |
+| `restore(FVG)` | Back to a plain FVG: deletes an own box, or restores colors, width, text and extension; `ceBack()` for the C.E. line. |
 | `updKept()` | Extends kept boxes to now; restores those the price closed back through; drops dead entries. |
 | `findFVG(time, array)` | Swing mode: last FVG starting before a swing time. |
 

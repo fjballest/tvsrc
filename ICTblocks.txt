@@ -195,7 +195,8 @@ minATR = float(4.0)
 bullIFVGColor = attB(color.orange)
 bearIFVGColor = attB(color.aqua)
 ifvgTrans = attT(80)
-borderTrans = attTB(20)
+borderTransIn = 20
+borderTrans = attTB(borderTransIn)
 ifvgtsz = getsize("small")
 ifvgha = gethalign("right")
 ifvgva = getvalign("center")
@@ -486,6 +487,7 @@ type FVG
     FVG dup = na // older almost identical FVG that absorbed this one
     bool cand = false // current IFVG candidate (its box is shown as IFVG)
     bool own = false // the box exists only because of the IFVG (the FVG itself is not drawn)
+    bool ceOwn = false // [CE] the C.E. line exists only because of the IFVG (the FVG one is not drawn)
     bool shown = false // FVG is in the drawn arrays
     bool aplus = false // [DE] A+ FVG (born from an A+ MSS)
     bool disp = false // [DE] middle candle is a displacement candle
@@ -555,6 +557,7 @@ method kill(FVG f) =>
             f.loln.delete()
         f.rect := na
         f.celine := na
+        f.ceOwn := false
         f.hiln := na
         f.loln := na
 method alerts(FVG f) =>
@@ -714,10 +717,38 @@ method lnColor(FVG f) =>
 // IFVG boxes: the FVG box itself is turned into the IFVG box (no second box on the same place) ====
 var array<FVG> keptIf = array.new<FVG>()   // FVGs whose box is currently shown as IFVG
 
+// [CE] the C.E. line of a zone shown as IFVG (candidate or kept): as configured for the FVGs (min height,
+// style, width, attenuation), also when the FVG itself is not drawn (filtered, hidden or dropped). In the IFVG
+// color (fp: a 1PFVG, which keeps its own C.E. color c); it follows the IFVG box
+method ifCe(FVG f, color c, bool fp) =>
+    if f.hi - f.lo > mince
+        if na(f.celine)
+            f.celine := line.new(f.start, f.ce, time, f.ce, xloc = xloc.bar_time, style = cesty, width = attWc(celnwid))
+            f.ceOwn := true
+        color cc = fp ? attCE(c) : color.new(c, int(math.round(borderTransIn + (100 - borderTransIn) * attEc * 0.18)))
+        f.celine.set_color(attLvl >= 4 ? color.new(c, 100) : cc)
+        f.celine.set_x2(time)
+        f.celine.set_extend(f.isfp ? extend.right : extend.none)
+    true
+
+// [CE] back to the FVG C.E. line (deleted if it was drawn only for the IFVG)
+method ceBack(FVG f) =>
+    if not na(f.celine)
+        if f.ceOwn
+            f.celine.delete()
+            f.celine := na
+            f.ceOwn := false
+        else
+            f.celine.set_color(f.lnColor(true))
+            f.celine.set_x2(f.endsAt())
+            f.celine.set_extend(f.isfp ? extend.right : extend.none)
+    true
+
 // back to the plain FVG, as it was before becoming an IFVG
 method restore(FVG f) =>
     f.kept := false
     f.cand := false
+    f.ceBack()
     if not na(f.rect)
         if f.own or stySeg
             f.rect.delete()
@@ -802,6 +833,8 @@ updKept() =>
                 keptIf.remove(i)
             else
                 f.rect.set_right(time)
+                if not na(f.celine) // [CE]
+                    f.celine.set_x2(time)
     true
 
 // widen g (older FVG) with f (new almost identical one): max hi / min lo, for both, and extend g
@@ -1754,6 +1787,9 @@ deKill(FVG fv) =>
             f.rect.set_border_width(1)
             f.rect.set_text("")
             f.rect.set_right(time)
+        if not na(f.celine) // [CE]
+            f.celine.set_color(deDeadCol)
+            f.celine.set_x2(time)
     true
 
 // [DE] the box of an inverted zone in direction d
@@ -1762,6 +1798,9 @@ deRecolor(box b, int d, FVG fv) =>
         color c = d < 0 ? bearIFVGColor : bullIFVGColor
         b.set_bgcolor(color.new(c, ifvgTrans))
         b.set_border_color(color.new(c, borderTrans))
+        FVG f = na(fv) ? na : (na(fv.dup) ? fv : fv.dup)
+        if not na(f) and not na(f.celine) // [CE]
+            f.ifCe(c, false)
     true
 
 if doifvg and not ifvgswings and not deInv

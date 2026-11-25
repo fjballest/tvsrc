@@ -2,7 +2,7 @@
 // FVGSIFVGOTE - Fair value gaps, 1st presented FVGs, inverse FVGs (IFVG) and ICT OTE, for NinjaTrader 8
 // ---------------------------------------------------------------------------------------------------------------------
 // Port of the TradingView Pine Script v6 indicator "FVGs+IFVG+OTE5" by franjballest
-// (source file FVGS+IFVG+OTE.txt, md5 ed09c92cc5f32bb8d931e5c244c235ac). Mozilla Public License 2.0, as the original.
+// (source file FVGS+IFVG+OTE.txt, md5 135f586b4285c99ce0e4bc5ed2f56f08). Mozilla Public License 2.0, as the original.
 //
 // What it draws: FVG boxes (or no-fill boxes, or hi / lo / C.E. segments) with C.E. lines, the 1st presented FVG of the
 // session open (New York 09:30, or Madrid 09:00 for DAX) and its optional inverse, wick C.E. segments, IFVG candidates
@@ -138,6 +138,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             public int khold = -1; // [HOLD] kept IFVG: bar of the first close back through
             public Fvg dup;
             public bool cand, own, shown, aplus, disp, brk;
+            public bool ceOwn; // [CE] the C.E. line exists only because of the IFVG (the FVG one is not drawn)
             public int brkD, mbD;
             public int lblD;                       // direction of the B / M / BM label
             public bool ote;                       // [OTEF] OTE FVG
@@ -1392,6 +1393,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             Del(f.loln);
             f.rect = null;
             f.celine = null;
+            f.ceOwn = false;
             f.hiln = null;
             f.loln = null;
         }
@@ -1477,11 +1479,50 @@ namespace NinjaTrader.NinjaScript.Indicators
         // [REL] "relevant" filter: a plain FVG too small to draw its C.E.
         private bool RelSmall(Fvg f) { return fltRel && !f.isfp && !f.isifp && f.hi - f.lo <= CeMinHeight * sizeK; }
 
+        // [CE] the C.E. line of a zone shown as IFVG (candidate or kept): as configured for the FVGs (min height,
+        // style, width, attenuation), also when the FVG itself is not drawn (filtered, hidden or dropped). In the IFVG
+        // color (fp: a 1PFVG, which keeps its own C.E. color c); it follows the IFVG box
+        private void IfCe(Fvg f, Color c, bool fp)
+        {
+            if (f.hi - f.lo <= CeMinHeight * sizeK) return;
+            if (f.celine == null)
+            {
+                f.celine = NewLine(f.start, f.ce, curTime, f.ce, c, CeStyle, AttWc(CeWidth));
+                f.ceOwn = true;
+            }
+            int bt = IfvgBorderTransparency;
+            Color cc = fp ? AttCE(c) : Tr(c, (int)Math.Round(bt + (100 - bt) * AttEc * 0.18));
+            f.celine.Col = Attenuation >= 4 ? Tr(c, 100) : cc;
+            f.celine.T2 = curTime;
+            SetExt(f.celine, f.isfp);
+            Touch(f.celine);
+        }
+
+        // [CE] back to the FVG C.E. line (deleted if it was drawn only for the IFVG)
+        private void CeBack(Fvg f)
+        {
+            if (f.celine == null) return;
+            if (f.ceOwn)
+            {
+                Del(f.celine);
+                f.celine = null;
+                f.ceOwn = false;
+            }
+            else
+            {
+                f.celine.Col = LnColor(f, true);
+                f.celine.T2 = EndsAt(f);
+                SetExt(f.celine, f.isfp);
+                Touch(f.celine);
+            }
+        }
+
         // back to the plain FVG, as it was before becoming an IFVG
         private void Restore(Fvg f)
         {
             f.kept = false;
             f.cand = false;
+            CeBack(f);
             if (f.rect != null)
             {
                 if (f.own || stySeg)
@@ -1539,6 +1580,8 @@ namespace NinjaTrader.NinjaScript.Indicators
             r.Ha = ifvgHa;
             r.Va = ifvgVa;
             Touch(r);
+            Color cl = f.isifp ? cIfpn : (f.iswfp ? cWfpn : f.isffp ? cFfpn : cFpn);
+            IfCe(f, f.isfp || f.isifp ? cl : c, f.isfp || f.isifp); // [CE]
             if (!f.kept) keptIf.Add(f);
             f.kept = true;
             f.cand = true;
@@ -1609,7 +1652,10 @@ namespace NinjaTrader.NinjaScript.Indicators
                     keptIf.RemoveAt(i);
                 }
                 else
+                {
                     BRight(f.rect, curTime);
+                    LRight(f.celine, curTime); // [CE]
+                }
             }
         }
 
@@ -1977,7 +2023,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                     LRight(f.hiln, et);
                     LRight(f.loln, et);
                 }
-                if (f.celine != null) LRight(f.celine, et);
+                if (f.celine != null && !f.kept) LRight(f.celine, et); // [CE] a kept IFVG C.E. follows its box
                 if (FvgBounceAlerts && !f.end.HasValue) FvgAlerts(f);
             }
             if (fvgs.Count >= FvgsKept && fvgs.Count > 0)
@@ -2028,6 +2074,12 @@ namespace NinjaTrader.NinjaScript.Indicators
                     f.rect.T2 = curTime;
                     Touch(f.rect);
                 }
+                if (f.celine != null) // [CE]
+                {
+                    f.celine.Col = cDead;
+                    f.celine.T2 = curTime;
+                    Touch(f.celine);
+                }
             }
         }
 
@@ -2039,6 +2091,8 @@ namespace NinjaTrader.NinjaScript.Indicators
             b.Bg = Tr(c, AttT(IfvgFillTransparency));
             b.Bd = Tr(c, AttTB(IfvgBorderTransparency));
             Touch(b);
+            Fvg f = fv == null ? null : fv.dup ?? fv;
+            if (f != null && f.celine != null) IfCe(f, c, false); // [CE]
         }
         #endregion
 

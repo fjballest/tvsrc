@@ -201,7 +201,7 @@ The C.E. of a long wick is where price often reacts when it returns into the wic
 
 An IFVG (inversion FVG) is an FVG that price closes through. A bullish FVG closed through to the downside becomes a bearish IFVG, expected to act as resistance on a retest; a bearish FVG closed through to the upside becomes a bullish IFVG, expected to act as support.
 
-The IFVG never gets a second box: the FVG's own box is restyled. If the FVG is not drawn (hidden by the draw mode or the filter, or merged), a box is created for it.
+The IFVG never gets a second box: the FVG's own box is restyled. If the FVG is not drawn (hidden by the draw mode or the filter, or merged), a box is created for it. Candidates and IFVGs always get their C.E. line as set for the FVGs (**C.E.: min height**, width, style and attenuation), in the IFVG color (a 1PFVG keeps its own), also when the FVG itself is not drawn, and it follows the IFVG box; back to a plain FVG, the line is again the FVG's (or removed if the FVG is not drawn).
 
 ### Close mode (default)
 
