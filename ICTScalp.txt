@@ -108,7 +108,18 @@ string hm50 = input.string(OFF, "0.5 rejections", options = [OFF, CON, MAN], gro
          "its 0.5 level (not beyond the origin) and close back on the leg side. Gives the leg direction (a down "+
          "leg rejected at 0.5 gives short) until the leg breaks or a candle closes beyond 0.5. " + IMODE)
 int r50Min = input.int(2, "at least", minval = 1, maxval = 5, group = G_H, inline = "h50")
-int hN = input.int(1, "At least N of the considered", minval = 0, maxval = 6, group = G_H,
+string hmQuad = input.string(OFF, "Quadrant reactions", options = [OFF, CON, MAN], group = G_H, inline = "hq",
+     tooltip = "A closed candle wicks to the 0, 25, 50, 75 or 100% level of a zone and closes back on the trade side "+
+         "(a low tags the level and the close is above it: long; a high tags it and the close is below: short), "+
+         "within the last 'bars' candles. Zones: the last NWOG, the last RTHOG (16:00 close to 09:30 open, New York), "+
+         "the last bull and bear FVG of 1H and of the higher timeframe, and the upper and lower wicks of the last "+
+         "closed 1H and higher-timeframe candles. Zones smaller than 4 points (NQ) are ignored. " + IMODE)
+int qLook = input.int(10, "bars", minval = 1, maxval = 200, group = G_H, inline = "hq")
+bool qNwog = input.bool(true, "NWOG", group = G_H, inline = "hq2")
+bool qRth = input.bool(true, "RTHOG", group = G_H, inline = "hq2")
+bool qFvg = input.bool(true, "HTF FVGs", group = G_H, inline = "hq2")
+bool qWick = input.bool(true, "HTF wicks", group = G_H, inline = "hq2")
+int hN = input.int(1, "At least N of the considered", minval = 0, maxval = 7, group = G_H,
      tooltip = "Consider indications that have to agree with the direction, besides the Mandatory ones. "+
          "Capped at the number of Consider indications. With every indication Off both directions are allowed.")
 bool hShow = input.bool(true, "Show the HTF OTE lines and draw targets", group = G_H,
@@ -1554,16 +1565,112 @@ if barstate.isconfirmed and oRejBull
 modeOf(string s) =>
     s == MAN ? 2 : s == CON ? 1 : 0
 
-// Indications: 0..11 LTF (triggers 0..3), 12..17 HTF
-const int NIND = 18
+// quadrant reactions (0 / 25 / 50 / 75 / 100%) at the last NWOG, RTHOG, HTF FVGs and HTF candle wicks
+qHtf() =>
+    var float bH = na
+    var float bL = na
+    var float sH = na
+    var float sL = na
+    if low > high[2]
+        bH := low
+        bL := high[2]
+    if high < low[2]
+        sH := low[2]
+        sL := high
+    [bH[1], bL[1], sH[1], sL[1], high[1], math.max(open[1], close[1]), math.min(open[1], close[1]), low[1]]
+[q1bH, q1bL, q1sH, q1sL, q1uH, q1uL, q1lH, q1lL] = request.security(syminfo.tickerid, "60", qHtf(),
+     lookahead = barmerge.lookahead_on)
+[q4bH, q4bL, q4sH, q4sL, q4uH, q4uL, q4lH, q4lL] = request.security(syminfo.tickerid, hTf, qHtf(),
+     lookahead = barmerge.lookahead_on)
+int qDow = dayofweek(time, "America/New_York")
+bool qNewWeek = (qDow == dayofweek.sunday and qDow[1] != dayofweek.sunday)
+     or (qDow == dayofweek.monday and qDow[1] == dayofweek.friday)
+var float nwH = na
+var float nwL = na
+if qNewWeek and not na(close[1])
+    nwH := math.max(close[1], open)
+    nwL := math.min(close[1], open)
+bool qInRth = not na(time(timeframe.period, "0930-1600", "America/New_York"))
+var float rthC = na
+var float rgH = na
+var float rgL = na
+if qInRth[1] and not qInRth
+    rthC := close[1]
+if qInRth and not qInRth[1] and not na(rthC)
+    rgH := math.max(rthC, open)
+    rgL := math.min(rthC, open)
+float qTol = 2.0 * sizeK
+float qMinSz = 4.0 * sizeK
+// 1: a long reaction, -1: a short reaction, 0: none, at one of the five levels of the zone hi..lo
+qReact(float hi, float lo) =>
+    int res = 0
+    if not na(hi) and not na(lo) and hi - lo >= qMinSz
+        for k = 0 to 4
+            float lv = lo + k * (hi - lo) / 4
+            if low <= lv + qTol and low >= lv - qTol and close > lv
+                res := 1
+            if high >= lv - qTol and high <= lv + qTol and close < lv
+                res := res == 1 ? 0 : -1
+    res
+qAny(array<int> a, int dir) =>
+    bool f = false
+    for v in a
+        if v == dir
+            f := true
+    f
+var int lqBNw = na
+var int lqSNw = na
+var int lqBRth = na
+var int lqSRth = na
+var int lqBFvg = na
+var int lqSFvg = na
+var int lqBWk = na
+var int lqSWk = na
+if barstate.isconfirmed
+    int rNw = qReact(nwH, nwL)
+    int rRth = qReact(rgH, rgL)
+    array<int> rF = array.from(qReact(q1bH, q1bL), qReact(q1sH, q1sL), qReact(q4bH, q4bL), qReact(q4sH, q4sL))
+    array<int> rW = array.from(qReact(q1uH, q1uL), qReact(q1lH, q1lL), qReact(q4uH, q4uL), qReact(q4lH, q4lL))
+    if rNw == 1
+        lqBNw := bar_index
+    if rNw == -1
+        lqSNw := bar_index
+    if rRth == 1
+        lqBRth := bar_index
+    if rRth == -1
+        lqSRth := bar_index
+    if qAny(rF, 1)
+        lqBFvg := bar_index
+    if qAny(rF, -1)
+        lqSFvg := bar_index
+    if qAny(rW, 1)
+        lqBWk := bar_index
+    if qAny(rW, -1)
+        lqSWk := bar_index
+qRecent(int b) =>
+    not na(b) and bar_index - b < qLook
+bool qNwB = qRecent(lqBNw)
+bool qNwS = qRecent(lqSNw)
+bool qRthB = qRecent(lqBRth)
+bool qRthS = qRecent(lqSRth)
+bool qFvgB = qRecent(lqBFvg)
+bool qFvgS = qRecent(lqSFvg)
+bool qWkB = qRecent(lqBWk)
+bool qWkS = qRecent(lqSWk)
+quadOk(int dir) =>
+    dir == 1 ? (qNwog and qNwB) or (qRth and qRthB) or (qFvg and qFvgB) or (qWick and qWkB)
+         : (qNwog and qNwS) or (qRth and qRthS) or (qFvg and qFvgS) or (qWick and qWkS)
+
+// Indications: 0..11 LTF (triggers 0..3), 12..18 HTF
+const int NIND = 19
 var array<string> indName = array.from("IFVG leaving", "IFVG return", "FVG return", "Sweep+OTE", "OTE", "Breaker",
      "Mit. block", "Liquidity", "HTF level", "HTF OTE line", "EQH/EQL", "Delivery", "HTF OTE rej.", "HTF FVG draw",
-     "HTF liq. draw", "Cotas triangles", "HTF blocks", "HTF 0.5 rej.")
+     "HTF liq. draw", "Cotas triangles", "HTF blocks", "HTF 0.5 rej.", "Quadrants")
 var array<string> indShort = array.from("IFVGl", "IFVGr", "FVGr", "SwOTE", "OTE", "B", "MB", "Liq", "Lvl", "OTEl",
-     "EQ", "DLV", "hOTE", "hFVG", "hLiq", "Tri", "hBlk", "h50")
+     "EQ", "DLV", "hOTE", "hFVG", "hLiq", "Tri", "hBlk", "h50", "Quad")
 var array<int> indMode = array.from(modeOf(emLeave), modeOf(emRet), modeOf(emFvg), modeOf(emSwp), modeOf(emOte),
      modeOf(emBrk), modeOf(emMb), modeOf(emLiq), modeOf(emLvl), modeOf(emOteL), modeOf(emEq), modeOf(emDlv),
-     modeOf(hmOte), modeOf(hmFvg), modeOf(hmLiq), modeOf(hmTri), modeOf(hmBlk), modeOf(hm50))
+     modeOf(hmOte), modeOf(hmFvg), modeOf(hmLiq), modeOf(hmTri), modeOf(hmBlk), modeOf(hm50), modeOf(hmQuad))
 
 // [pass, bit mask of the true indications] for indications i0..i1 with values v (index 0 is i0) and N.
 // Indications below i0 + nTrig are triggers: they never count towards N.
@@ -2247,8 +2354,8 @@ triAgree(int dir) =>
 
 // HTF bias of direction dir: [allowed, mask]
 htfAllow(int dir) =>
-    [ok, mask] = indCheck(12, 17, 0, array.from(hbOte == dir, hbFvg == dir, hbLiq == dir,
-         triAgree(dir), hbDir == dir, hb50 == dir), hN)
+    [ok, mask] = indCheck(12, 18, 0, array.from(hbOte == dir, hbFvg == dir, hbLiq == dir,
+         triAgree(dir), hbDir == dir, hb50 == dir, quadOk(dir)), hN)
     [ok, mask]
 
 // LTF entry of direction dir with FVG / IFVG f (kind 0 IFVG, 1 FVG, 2 sweep leg); t0..t3: the triggers that
@@ -2598,24 +2705,24 @@ if showTrades and simulate and statsOn and barstate.islast
 
 // ============================================================ exploration of combinations
 // Every trigger, whatever its setting, is a virtual trade (stop / take profit / trailing of Show Trades); its
-// result counts for the trigger alone and with every one or two of the 24 confirmations that were true.
-// Combination c = trigger * 301 + k, k: 0 alone, 1..24 one confirmation, 25..300 two.
-// Confirmations 14..21 are triangle patterns and 22..23 macro times (exploration only).
-const int EXC = 301
+// result counts for the trigger alone and with every one or two of the 28 confirmations that were true.
+// Combination c = trigger * 407 + k, k: 0 alone, 1..28 one confirmation, 29..406 two.
+// Confirmations 14..21 are triangle patterns, 22..23 macro times, 24..27 quadrant reactions per zone kind.
+const int EXC = 407
 const int EXTRI = 14
 var array<string> exTrig = array.from("IFVGl", "IFVGr", "SwOTE", "FVGr")
 var array<string> exCond = array.from("OTE", "B", "MB", "Liq", "Lvl", "OTEl", "EQ", "DLV", "hOTE", "hFVG", "hLiq",
-     "Tri", "hBlk", "h50", "T4s", "T4c", "T1s", "T1c", "T15s", "T15c", "Tall", "T4s+LC", "Mac", "MacH")
+     "Tri", "hBlk", "h50", "T4s", "T4c", "T1s", "T1c", "T15s", "T15c", "Tall", "T4s+LC", "Mac", "MacH", "qNW", "qRTH", "qFVG", "qWk")
 var array<int> exA = array.new<int>()
 var array<int> exB = array.new<int>()
 if barstate.isfirst
     exA.push(-1)
     exB.push(-1)
-    for a = 0 to 23
+    for a = 0 to 27
         exA.push(a)
         exB.push(-1)
-    for a = 0 to 22
-        for b = a + 1 to 23
+    for a = 0 to 26
+        for b = a + 1 to 27
             exA.push(a)
             exB.push(b)
 var array<int> exN = array.new<int>(4 * EXC, 0)
@@ -2638,7 +2745,7 @@ type VTrade
 
 var array<VTrade> vts = array.new<VTrade>()
 
-// the 24 confirmations for a trade of direction dir on f (kind 0 IFVG, 1 FVG, 2 sweep leg)
+// the 28 confirmations for a trade of direction dir on f (kind 0 IFVG, 1 FVG, 2 sweep leg)
 exConds(int dir, FVG f, int kind) =>
     bool ote = kind == 0 ? (dir == 1 ? gBull.flagged : gBear.flagged) : kind == 2 ? true : oteFvg(dir, f)
     int sw = dir == 1 ? lastSweepL : lastSweepH
@@ -2650,7 +2757,8 @@ exConds(int dir, FVG f, int kind) =>
          hbDir == dir, hb50 == dir, triCode(2, dir) == 1, triCode(2, dir) == 2, triCode(1, dir) == 1,
          triCode(1, dir) == 2, triCode(0, dir) == 1, triCode(0, dir) == 2,
          triCode(0, dir) > 0 and triCode(1, dir) > 0 and triCode(2, dir) > 0,
-         triCode(2, dir) == 1 and triCode(1, dir) == 2 and triCode(0, dir) == 2, inMac, inMacH)
+         triCode(2, dir) == 1 and triCode(1, dir) == 2 and triCode(0, dir) == 2, inMac, inMacH,
+         dir == 1 ? qNwB : qNwS, dir == 1 ? qRthB : qRthS, dir == 1 ? qFvgB : qFvgS, dir == 1 ? qWkB : qWkS)
 
 exOpen(int dir, int trig, FVG f, int kind, int id) =>
     [stp, tp, ok] = tradeLevels(dir, f)
