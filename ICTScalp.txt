@@ -2374,12 +2374,6 @@ if barstate.isconfirmed and timeOk
                                 lg.used := true
                             else if k == 2
                                 cf.used := true
-        if go and coolOn
-            [cs, ct, cok] = tradeLevels(dir, ent)
-            int ci = dir == 1 ? 1 : 0
-            ckStp.set(ci, cs)
-            ckTp.set(ci, ct)
-            ckBar.set(ci, bar_index)
         if dir == 1
             goLong := go
             entL := ent
@@ -2588,6 +2582,15 @@ if showTrades and goShort
     newTrade(-1, entS, maskS)
 if showTrades and goLong
     newTrade(1, entL, maskL)
+// initial stop and take profit of the entries, for the wait after a stopped entry
+if coolOn
+    for dir in array.from(-1, 1)
+        if dir == 1 ? goLong : goShort
+            [cs, ct, cok] = tradeLevels(dir, dir == 1 ? entL : entS)
+            int ci = dir == 1 ? 1 : 0
+            ckStp.set(ci, cs)
+            ckTp.set(ci, ct)
+            ckBar.set(ci, bar_index)
 
 // results table of the simulated trades: all, then each indication in use
 // text of a percentage / an average, "-" when there is nothing to divide by
