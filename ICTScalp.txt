@@ -292,6 +292,12 @@ bool trOn = input.bool(true, "Simulate: trailing stop after points up", group = 
          "high (short) of each new closed candle, never backwards, and the take profit is no longer used: "+
          "the trade runs until it is stopped out. Points for NQ, scaled when 'Scale sizes' is on.")
 float trPtsIn = input.float(50.0, "", minval = 0.25, step = 0.25, group = G_T, inline = "tr")
+float maxStopIn = input.float(0.0, "Max stop (0 off), wait bars", minval = 0.0, step = 1.0, group = G_T, inline = "ms",
+     tooltip = "When the stop of an entry is wider than these points, do not enter at the close: wait for a "+
+         "retracement to the price that leaves exactly this stop (stop level unchanged) for up to 'wait bars' "+
+         "candles. The take profit is recomputed from the new entry for the risk ratio mode. The wait is "+
+         "dropped if the price reaches the take profit first. Points for NQ, scaled when 'Scale sizes' is on.")
+int maxWait = input.int(10, "", minval = 1, maxval = 100, group = G_T, inline = "ms")
 bool boxOn = input.bool(true, "Boxes, transparency", group = G_T, inline = "bx",
      tooltip = "Red box from the entry to the initial stop, green box from the entry to the take profit, "+
          "up to the exit candle (simulated) or the segment length.")
@@ -435,6 +441,7 @@ float maxfvg = maxfvgIn * sizeK
 float stopDelta = stopDeltaIn * sizeK
 float beMin = beMinIn * sizeK
 float trPts = trPtsIn * sizeK
+float maxStop = maxStopIn * sizeK
 float swpMin = swpMinIn * sizeK
 float eq3pts = eq3ptsIn * sizeK
 float backPts = backPtsIn * sizeK
@@ -2505,6 +2512,60 @@ statAdd(int row, float pts) =>
     rsP.set(row, rsP.get(row) + pts)
     true
 
+maskText(int mask) =>
+    string s = ""
+    for i = 0 to NIND - 1
+        if bitOn(mask, i)
+            s += (s == "" ? "" : " ") + indShort.get(i)
+    s
+
+openTrade(int dir, float ent, float stp, float tp, int mask, int b0) =>
+    int x2 = simulate ? bar_index : bar_index + segLen
+    line e = line.new(bar_index, ent, x2, ent, color = entryCol, width = 2)
+    line sl = line.new(bar_index, stp, x2, stp, color = stopCol, width = 2)
+    line tl = line.new(bar_index, tp, x2, tp, color = tpCol, width = 2)
+    box rb = na
+    box gb = na
+    if boxOn
+        rb := box.new(bar_index, math.max(ent, stp), x2, math.min(ent, stp), border_width = 0,
+             bgcolor = color.new(stopCol, boxTr))
+        gb := box.new(bar_index, math.max(ent, tp), x2, math.min(ent, tp), border_width = 0,
+             bgcolor = color.new(tpCol, boxTr))
+    label lb = na
+    string lt = "SL " + str.tostring(math.abs(ent - stp), "#.##") + "   TP "
+         + str.tostring(math.abs(tp - ent), "#.##") + "\n" + maskText(mask)
+    if lblOn
+        lb := label.new(bar_index, math.max(ent, stp, tp), lt, style = label.style_label_down,
+             color = color.new(entryCol, 10), textcolor = color.white, size = size.normal)
+    trades.push(Trade.new(dir, ent, stp, tp, b0, e, sl, tl, not simulate, rb, gb, na, false, lb, lt, mask))
+    // keep the list short; old lines are removed by the 500 line limit
+    if trades.size() > 160
+        trades.shift()
+    true
+
+// entries waiting for a retracement (max stop): limit price, stop, take profit, mask, expiry bar
+type Pend
+    int dir
+    float lim
+    float stp
+    float tp
+    int mask
+    int bar
+var array<Pend> pends = array.new<Pend>()
+
+// fills of the waiting entries; a fill is tested for the stop / take profit on its own candle too
+if showTrades and barstate.isconfirmed and pends.size() > 0
+    for i = pends.size() - 1 to 0
+        Pend pd = pends.get(i)
+        if bar_index > pd.bar
+            bool fill = pd.dir == 1 ? low <= pd.lim : high >= pd.lim
+            bool gone = pd.dir == 1 ? high >= pd.tp : low <= pd.tp
+            if fill
+                openTrade(pd.dir, pd.lim, pd.stp, pd.tp, pd.mask, bar_index - 1)
+                pends.remove(i)
+            else if gone or bar_index - pd.bar >= maxWait
+                pends.remove(i)
+
 // stop of an open trade after a closed candle: breakeven once a candle closes in profit by more than
 // beMin, trailing to the low (long) / high (short) of each candle once price went trPts in favour (best
 // is the best price reached so far). The stop never moves backwards.
@@ -2627,37 +2688,19 @@ tradeLevels(int dir, FVG f) =>
             tp := q
     [stp, tp, risk > 0]
 
-maskText(int mask) =>
-    string s = ""
-    for i = 0 to NIND - 1
-        if bitOn(mask, i)
-            s += (s == "" ? "" : " ") + indShort.get(i)
-    s
-
 newTrade(int dir, FVG f, int mask) =>
     [stp, tp, ok] = tradeLevels(dir, f)
     if ok
-        int x2 = simulate ? bar_index : bar_index + segLen
-        line e = line.new(bar_index, close, x2, close, color = entryCol, width = 2)
-        line sl = line.new(bar_index, stp, x2, stp, color = stopCol, width = 2)
-        line tl = line.new(bar_index, tp, x2, tp, color = tpCol, width = 2)
-        box rb = na
-        box gb = na
-        if boxOn
-            rb := box.new(bar_index, math.max(close, stp), x2, math.min(close, stp), border_width = 0,
-                 bgcolor = color.new(stopCol, boxTr))
-            gb := box.new(bar_index, math.max(close, tp), x2, math.min(close, tp), border_width = 0,
-                 bgcolor = color.new(tpCol, boxTr))
-        label lb = na
-        string lt = "SL " + str.tostring(math.abs(close - stp), "#.##") + "   TP "
-             + str.tostring(math.abs(tp - close), "#.##") + "\n" + maskText(mask)
-        if lblOn
-            lb := label.new(bar_index, math.max(close, stp, tp), lt, style = label.style_label_down,
-                 color = color.new(entryCol, 10), textcolor = color.white, size = size.normal)
-        trades.push(Trade.new(dir, close, stp, tp, bar_index, e, sl, tl, not simulate, rb, gb, na, false, lb, lt, mask))
-        // keep the list short; old lines are removed by the 500 line limit
-        if trades.size() > 160
-            trades.shift()
+        float risk = (close - stp) * dir
+        if maxStop > 0 and risk > maxStop
+            float lim = stp + dir * maxStop
+            float ntp = tpMode == "Risk ratio 1:N" ? lim + dir * rrN * maxStop : tp
+            for i = pends.size() - 1 to 0
+                if pends.size() > 0 and pends.get(i).dir == dir
+                    pends.remove(i)
+            pends.push(Pend.new(dir, lim, stp, ntp, mask, bar_index))
+        else
+            openTrade(dir, close, stp, tp, mask, bar_index)
     true
 
 if showTrades and goShort
