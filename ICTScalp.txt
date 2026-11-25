@@ -291,6 +291,10 @@ bool explore = input.bool(false, "Explore combinations, min trades", group = G_T
          "combination. The table lists the 15 combinations with the most points among those with at least the "+
          "given trades. Needs Show trades and Simulate trades.")
 int exMin = input.int(20, "", minval = 1, group = G_T, inline = "ex")
+string exOnly = input.string("All", "Exploration table: combinations", options = ["All", "With a triangle pattern"],
+     group = G_T, tooltip = "With a triangle pattern: only the combinations that include one of the ICTcotas "+
+         "triangle patterns (T4s / T4c / T1s / T1c / T15s / T15c: 4H / 1H / 15m turtle soup or continuation in the "+
+         "trade direction; Tall: the three point that way; T4s+LC: 4H turtle soup with 1H and 15m continuation).")
 color entryCol = input.color(color.gray, "Colors: entry", group = G_T, inline = "tc")
 color stopCol = input.color(color.red, "stop", group = G_T, inline = "tc")
 color tpCol = input.color(color.green, "take profit", group = G_T, inline = "tc")
@@ -2213,6 +2217,12 @@ triAgree(int dir) =>
                 con += 1
     pro >= triMin and con == 0
 
+// triangle of timeframe i (0 15m, 1 1H, 2 4H) for direction dir: 1 turtle soup, 2 continuation, -1 against, 0 none
+triCode(int i, int dir) =>
+    int sg = tst.get(i).tsSig()
+    int d = sg > 0 ? 1 : sg < 0 ? -1 : 0
+    d == dir ? math.abs(sg) : d == -dir ? -1 : 0
+
 // HTF bias of direction dir: [allowed, mask]
 htfAllow(int dir) =>
     [ok, mask] = indCheck(12, 17, 0, array.from(hbOte == dir, hbFvg == dir, hbLiq == dir,
@@ -2555,22 +2565,24 @@ if showTrades and simulate and statsOn and barstate.islast
 
 // ============================================================ exploration of combinations
 // Every trigger, whatever its setting, is a virtual trade (stop / take profit / trailing of Show Trades); its
-// result counts for the trigger alone and with every one or two of the 14 confirmations that were true.
-// Combination c = trigger * 106 + k, k: 0 alone, 1..14 one confirmation, 15..105 two.
-const int EXC = 106
+// result counts for the trigger alone and with every one or two of the 22 confirmations that were true.
+// Combination c = trigger * 254 + k, k: 0 alone, 1..22 one confirmation, 23..253 two.
+// Confirmations 14..21 are triangle patterns (exploration only).
+const int EXC = 254
+const int EXTRI = 14
 var array<string> exTrig = array.from("IFVGl", "IFVGr", "SwOTE", "FVGr")
 var array<string> exCond = array.from("OTE", "B", "MB", "Liq", "Lvl", "OTEl", "EQ", "DLV", "hOTE", "hFVG", "hLiq",
-     "Tri", "hBlk", "h50")
+     "Tri", "hBlk", "h50", "T4s", "T4c", "T1s", "T1c", "T15s", "T15c", "Tall", "T4s+LC")
 var array<int> exA = array.new<int>()
 var array<int> exB = array.new<int>()
 if barstate.isfirst
     exA.push(-1)
     exB.push(-1)
-    for a = 0 to 13
+    for a = 0 to 21
         exA.push(a)
         exB.push(-1)
-    for a = 0 to 12
-        for b = a + 1 to 13
+    for a = 0 to 20
+        for b = a + 1 to 21
             exA.push(a)
             exB.push(b)
 var array<int> exN = array.new<int>(4 * EXC, 0)
@@ -2593,7 +2605,7 @@ type VTrade
 
 var array<VTrade> vts = array.new<VTrade>()
 
-// the 14 confirmations for a trade of direction dir on f (kind 0 IFVG, 1 FVG, 2 sweep leg)
+// the 22 confirmations for a trade of direction dir on f (kind 0 IFVG, 1 FVG, 2 sweep leg)
 exConds(int dir, FVG f, int kind) =>
     bool ote = kind == 0 ? (dir == 1 ? gBull.flagged : gBear.flagged) : kind == 2 ? true : oteFvg(dir, f)
     int sw = dir == 1 ? lastSweepL : lastSweepH
@@ -2602,7 +2614,10 @@ exConds(int dir, FVG f, int kind) =>
     array.from(ote, blkHas(0, dir, f), blkHas(1, dir, f), not na(sw) and bar_index - sw < liqLook,
          not na(lr) and bar_index - lr < htfLook, not na(orj) and bar_index - orj < htfLook,
          not na(eqNext(dir, close)), dlvCur == dir, hbOte == dir, hbFvg == dir, hbLiq == dir, triAgree(dir),
-         hbDir == dir, hb50 == dir)
+         hbDir == dir, hb50 == dir, triCode(2, dir) == 1, triCode(2, dir) == 2, triCode(1, dir) == 1,
+         triCode(1, dir) == 2, triCode(0, dir) == 1, triCode(0, dir) == 2,
+         triCode(0, dir) > 0 and triCode(1, dir) > 0 and triCode(2, dir) > 0,
+         triCode(2, dir) == 1 and triCode(1, dir) == 2 and triCode(0, dir) == 2)
 
 exOpen(int dir, int trig, FVG f, int kind, int id) =>
     [stp, tp, ok] = tradeLevels(dir, f)
@@ -2680,7 +2695,9 @@ if explore and showTrades and simulate and barstate.islast
     for r = 1 to 16
         int best = -1
         for c = 0 to 4 * EXC - 1
-            if not done.get(c) and exN.get(c) >= exMin and (best < 0 or exP.get(c) > exP.get(best))
+            int kk = c % EXC
+            bool tOk = exOnly == "All" or exA.get(kk) >= EXTRI or exB.get(kk) >= EXTRI
+            if tOk and not done.get(c) and exN.get(c) >= exMin and (best < 0 or exP.get(c) > exP.get(best))
                 best := c
         if best >= 0
             done.set(best, true)
