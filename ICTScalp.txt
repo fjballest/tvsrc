@@ -19,10 +19,12 @@
 //  - Bias table: agreement of the rightmost columns of the IFVGCISDbias table.
 //
 // LTF entry indications. Triggers decide when to enter and which FVG sets the stop; at least one trigger has
-// to fire on the entry candle:
+// to fire on the entry candle (triggers do not count towards N):
 //  - IFVG leaving: the candle that confirms the IFVG (close mode of FVGs+IFVG+OTE).
 //  - IFVG return: a later candle wicks back into the confirmed IFVG without passing its far edge.
 //  - FVG return: a candle comes back into a chart FVG of the trade direction and closes at or beyond its CE.
+//  - Sweep and OTE rejection: a short-term low is taken (long), price goes up, and a candle wicks back into the
+//    OTE band of that leg and closes back; the stop goes past the leg low. Short: the mirror.
 //  One entry per IFVG confirmation and per FVG.
 // Confirmations, checked for the FVG / IFVG of the trigger or within the last candles:
 //  - OTE: the IFVG is an OTE IFVG (OTE logic of FVGs+IFVG+OTE), or the FVG matches the OTE band of its leg.
@@ -31,12 +33,13 @@
 //  - Took liquidity: a short-term high (short) / low (long) was taken shortly before.
 //  - HTF level rejection: an ICTcotas level was rejected shortly before (wick through, body on the trade side).
 //  - HTF OTE line rejection: same, with the 0.62 / 0.705 / 0.79 lines of the HTF legs above.
+//  - EQH / EQL to target: an EQH not taken yet above (long) / EQL below (short), as in ICTlevels.
 //  - Delivery: the delivery of the chart timeframe (IFVGCISDbias) matches the trade.
 // Time filter: only inside a time interval and / or the ICT killzones (ICTlevels sessions).
 // Everything is evaluated on closed candles only.
 //
 // Show trades: entry at the close of the signal candle, stop past the FVG / IFVG, its candle 2 or the
-// short-term swing, take profit at 1:N, at the next short-term high / low, or at the HTF FVG of the draw
+// short-term swing, take profit at 1:N, at the next short-term high / low, at the next EQH / EQL, or at the HTF FVG of the draw
 // (the near candle of its three or its near edge). Simulate trades follows each trade until the stop or the
 // take profit (a candle reaching both counts as the stop), with optional breakeven and trailing stop. The
 // results table has a row per indication in use: the trades where it was true, so the indications can be
@@ -91,10 +94,17 @@ bool hShow = input.bool(true, "Show the HTF OTE lines and draw targets", group =
 const string G_E = "LTF entries"
 string emLeave = input.string(OFF, "Trigger: IFVG leaving", options = [OFF, CON, MAN], group = G_E,
      tooltip = "Enter on the candle that closes through the FVG (confirms the IFVG). " + IMODE)
-string emRet = input.string(MAN, "Trigger: IFVG return", options = [OFF, CON, MAN], group = G_E,
+string emRet = input.string(CON, "Trigger: IFVG return", options = [OFF, CON, MAN], group = G_E,
      tooltip = "Enter on a later candle that comes back into the confirmed IFVG: its high reaches the IFVG "+
          "without going above its top (short), or its low reaches it without going below its bottom (long). "+
          "One entry per confirmation. " + IMODE)
+string emSwp = input.string(CON, "Trigger: sweep and OTE rejection", options = [OFF, CON, MAN], group = G_E,
+     inline = "swp", tooltip = "Long: a short-term low is taken, price goes up, and a candle comes back down with its "+
+         "low inside the OTE band of that leg (from the low that took the short-term low to the highest high since; "+
+         "not below the leg low), a lower wick, and its close not below the 0.79 level. Short: the mirror. The leg "+
+         "has to be at least the given points (NQ, scaled). One entry per leg; a new high extends the leg, a low "+
+         "below it ends it. The stop is past the leg low. Short-term pivots as for 'Took liquidity'. " + IMODE)
+float swpMinIn = input.float(10.0, "min leg", minval = 0.0, step = 0.5, group = G_E, inline = "swp")
 string emFvg = input.string(OFF, "Trigger: FVG return", options = [OFF, CON, MAN], group = G_E,
      tooltip = "Enter on a candle that comes back into a chart FVG of the trade direction (bullish FVG for longs) "+
          "and closes at or beyond its CE (at or above for longs). One entry per FVG; a close beyond its far side "+
@@ -125,12 +135,28 @@ int htfLook = input.int(3, "within", minval = 1, maxval = 50, group = G_E, inlin
 string emOteL = input.string(CON, "HTF OTE line rejection", options = [OFF, CON, MAN], group = G_E,
      tooltip = "As the HTF level rejection, with the 0.62 / 0.705 / 0.79 lines of the HTF major and minor legs "+
          "(HTF bias, OTE rejection). " + IMODE)
+string emEq = input.string(OFF, "EQH / EQL to target", options = [OFF, CON, MAN], group = G_E,
+     tooltip = "Long: there is an EQH not taken yet above the entry; short: an EQL below it (EQH / EQL settings). "
+         + IMODE)
 string emDlv = input.string(OFF, "Delivery", options = [OFF, CON, MAN], group = G_E,
      tooltip = "The delivery of the chart timeframe (the DLV logic of IFVGCISDbias, settings below) matches the "+
          "direction of the trade on the entry candle. " + IMODE)
-int eN = input.int(1, "At least N of the considered", minval = 0, maxval = 10, group = G_E,
-     tooltip = "Consider indications (triggers included) that have to be true, besides the Mandatory ones. "+
-         "Capped at the number of Consider indications.")
+int eN = input.int(1, "At least N of the considered confirmations", minval = 0, maxval = 10, group = G_E,
+     tooltip = "Consider confirmations (not triggers) that have to be true, besides the Mandatory ones. Capped at "+
+         "the number of Consider confirmations. Triggers: at least one Consider or Mandatory trigger has to fire, "+
+         "and every Mandatory one.")
+
+const string G_EQ = "EQH / EQL (ICTlevels settings)"
+int eqlen = input.int(3, "pivot", minval = 1, group = G_EQ, inline = "eq2",
+     tooltip = "Bars on each side of a swing on the chart timeframe.")
+float eqtol = input.float(0.10, "tolerance x ATR", minval = 0.0, step = 0.01, group = G_EQ, inline = "eq3",
+     tooltip = "Max distance between two pivots, as a fraction of ATR(14). Equal highs (lows) form an EQH (EQL), "+
+         "removed once price trades through it.")
+int eqkeep = input.int(5, "keep per side", minval = 1, maxval = 20, group = G_EQ, inline = "eq3")
+bool doeq3 = input.bool(true, "also with 3-candle swings, max points beyond", group = G_EQ, inline = "eq3b",
+     tooltip = "A new pivot also forms an EQH (EQL) with an earlier, unswept 3-candle swing high (low) that has "+
+         "exactly its price or is at most this many points above it (below it, for lows).")
+float eq3ptsIn = input.float(3.0, "", minval = 0.0, step = 0.25, group = G_EQ, inline = "eq3b")
 
 const string G_BRK = "Breakers (FVGs+IFVG+OTE settings)"
 string brkMode = input.string("Last candle", "Zone", options = ["Last candle", "Whole sequence"], group = G_BRK,
@@ -191,14 +217,15 @@ string stopMode = input.string("Short-term high / low", "Stop past", options = [
 float stopDeltaIn = input.float(2.0, "Stop: points past that level", minval = 0.0, step = 0.25, group = G_T,
      tooltip = "Points for NQ, scaled for other instruments when 'Scale sizes' is on (IFVG settings).")
 string tpMode = input.string("Risk ratio 1:N", "Take profit", options = ["Risk ratio 1:N",
-     "Next short-term high / low", "HTF FVG: near candle", "HTF FVG: near edge"], group = G_T,
+     "Next short-term high / low", "HTF FVG: near candle", "HTF FVG: near edge", "EQH / EQL"], group = G_T,
      tooltip = "Risk ratio 1:N: at N times the risk.\n"+
          "Next short-term high / low: at the nearest short-term high (long) / low (short) not taken yet that "+
          "is at least N times the risk away; with none, at 1:N.\n"+
          "HTF FVG: the nearest HTF FVG price has not come back to, in the trade direction (the FVG draw of the "+
          "HTF bias). Near candle: the low (long, bearish FVG above) / high (short) of the newest of its three "+
          "candles, the one next to the price side; when price is already past it, the near edge. Near edge: the "+
-         "bottom (long) / top (short) of the FVG. With no such FVG, at 1:N.")
+         "bottom (long) / top (short) of the FVG. With no such FVG, at 1:N.\n"+
+         "EQH / EQL: the nearest EQH not taken yet above the entry (long) / EQL below it (short); with none, at 1:N.")
 float rrN = input.float(2.0, "Risk ratio 1:N (minimum for short-term high / low), N", minval = 1.0, step = 0.5,
      group = G_T)
 int segLen = input.int(20, "Segment length (bars)", minval = 1, maxval = 500, group = G_T,
@@ -346,6 +373,8 @@ float maxfvg = maxfvgIn * sizeK
 float stopDelta = stopDeltaIn * sizeK
 float beMin = beMinIn * sizeK
 float trPts = trPtsIn * sizeK
+float swpMin = swpMinIn * sizeK
+float eq3pts = eq3ptsIn * sizeK
 
 int tfsecs = timeframe.in_seconds()
 
@@ -1501,18 +1530,20 @@ if barstate.isconfirmed and oRejBull
 modeOf(string s) =>
     s == MAN ? 2 : s == CON ? 1 : 0
 
-// Indications: 0..9 LTF (triggers 0..2), 10..13 HTF
-var array<string> indName = array.from("IFVG leaving", "IFVG return", "FVG return", "OTE", "Breaker",
-     "Mit. block", "Liquidity", "HTF level", "HTF OTE line", "Delivery", "HTF OTE rej.", "HTF FVG draw",
+// Indications: 0..11 LTF (triggers 0..3), 12..15 HTF
+const int NIND = 16
+var array<string> indName = array.from("IFVG leaving", "IFVG return", "FVG return", "Sweep+OTE", "OTE", "Breaker",
+     "Mit. block", "Liquidity", "HTF level", "HTF OTE line", "EQH/EQL", "Delivery", "HTF OTE rej.", "HTF FVG draw",
      "HTF liq. draw", "Bias table")
-var array<string> indShort = array.from("IFVGl", "IFVGr", "FVGr", "OTE", "B", "MB", "Liq", "Lvl", "OTEl", "DLV",
-     "hOTE", "hFVG", "hLiq", "Tbl")
-var array<int> indMode = array.from(modeOf(emLeave), modeOf(emRet), modeOf(emFvg), modeOf(emOte), modeOf(emBrk),
-     modeOf(emMb), modeOf(emLiq), modeOf(emLvl), modeOf(emOteL), modeOf(emDlv), modeOf(hmOte), modeOf(hmFvg),
-     modeOf(hmLiq), modeOf(hmTbl))
+var array<string> indShort = array.from("IFVGl", "IFVGr", "FVGr", "SwOTE", "OTE", "B", "MB", "Liq", "Lvl", "OTEl",
+     "EQ", "DLV", "hOTE", "hFVG", "hLiq", "Tbl")
+var array<int> indMode = array.from(modeOf(emLeave), modeOf(emRet), modeOf(emFvg), modeOf(emSwp), modeOf(emOte),
+     modeOf(emBrk), modeOf(emMb), modeOf(emLiq), modeOf(emLvl), modeOf(emOteL), modeOf(emEq), modeOf(emDlv),
+     modeOf(hmOte), modeOf(hmFvg), modeOf(hmLiq), modeOf(hmTbl))
 
-// [pass, bit mask of the true indications] for indications i0..i1 with values v (index 0 is i0) and N
-indCheck(int i0, int i1, array<bool> v, int n) =>
+// [pass, bit mask of the true indications] for indications i0..i1 with values v (index 0 is i0) and N.
+// Indications below i0 + nTrig are triggers: they never count towards N.
+indCheck(int i0, int i1, int nTrig, array<bool> v, int n) =>
     bool ok = true
     int cons = 0
     int cnt = 0
@@ -1524,7 +1555,7 @@ indCheck(int i0, int i1, array<bool> v, int n) =>
             mask += int(math.pow(2, i))
         if m == 2 and not t
             ok := false
-        if m == 1
+        if m == 1 and i >= i0 + nTrig
             cons += 1
             if t
                 cnt += 1
@@ -1837,21 +1868,171 @@ oteFvg(int dir, FVG f) =>
 // delivery of the chart timeframe: 1 bullish, -1 bearish, 0 undefined
 int dlvCur = nz(dCur, 1) % 3 - 1
 
+// EQH / EQL (chart timeframe part of ICTlevels): equal pivot highs / lows within an ATR tolerance, or a pivot
+// with an earlier unswept 3-candle swing at most eq3pts beyond it; removed when price trades through
+type EqPiv
+    float p
+    int b
+    bool eq = false
+
+var array<EqPiv> eqHs = array.new<EqPiv>()
+var array<EqPiv> eqLs = array.new<EqPiv>()
+var array<float> sh3p = array.new<float>()
+var array<int> sh3b = array.new<int>()
+var array<float> sl3p = array.new<float>()
+var array<int> sl3b = array.new<int>()
+float eqAtr = ta.atr(14)
+float eph = ta.pivothigh(high, eqlen, eqlen)
+float epl = ta.pivotlow(low, eqlen, eqlen)
+float eph3 = ta.pivothigh(high, 1, 1)
+float epl3 = ta.pivotlow(low, 1, 1)
+
+if barstate.isconfirmed and (emEq != OFF or tpMode == "EQH / EQL")
+    float tol = eqtol * nz(eqAtr, 0.0)
+    for side = 0 to 1
+        bool isHigh = side == 0
+        array<EqPiv> arr = isHigh ? eqHs : eqLs
+        array<float> ps = isHigh ? sh3p : sl3p
+        array<int> bs = isHigh ? sh3b : sl3b
+        if arr.size() > 0
+            for i = arr.size() - 1 to 0
+                EqPiv v = arr.get(i)
+                float slack = v.eq ? 0.0 : tol
+                if isHigh ? high > v.p + slack : low < v.p - slack
+                    arr.remove(i)
+        if ps.size() > 0
+            for i = ps.size() - 1 to 0
+                if isHigh ? high > ps.get(i) : low < ps.get(i)
+                    ps.remove(i)
+                    bs.remove(i)
+        float pp = isHigh ? eph : epl
+        if not na(pp)
+            int pb = bar_index - eqlen
+            EqPiv m = na
+            for v in arr
+                if na(m) and math.abs(v.p - pp) <= tol
+                    m := v
+            if not na(m)
+                m.eq := true
+                if isHigh ? pp > m.p : pp < m.p
+                    m.p := pp
+            else
+                EqPiv nv = EqPiv.new(pp, pb)
+                arr.push(nv)
+                if doeq3 and ps.size() > 0
+                    for i = ps.size() - 1 to 0
+                        float q = ps.get(i)
+                        float d = isHigh ? q - pp : pp - q
+                        if bs.get(i) < pb and d >= 0 and d <= eq3pts
+                            nv.eq := true
+                            nv.p := q
+                            nv.b := bs.get(i)
+                            break
+            // keep eqkeep EQHs / EQLs and 30 plain pivots
+            int ne = 0
+            for v in arr
+                if v.eq
+                    ne += 1
+            while ne > eqkeep
+                for i = 0 to arr.size() - 1
+                    if arr.get(i).eq
+                        arr.remove(i)
+                        break
+                ne -= 1
+            while arr.size() - ne > 30
+                for i = 0 to arr.size() - 1
+                    if not arr.get(i).eq
+                        arr.remove(i)
+                        break
+        float p3 = isHigh ? eph3 : epl3
+        if not na(p3)
+            ps.push(p3)
+            bs.push(bar_index - 1)
+            if ps.size() > 60
+                ps.shift()
+                bs.shift()
+
+// nearest EQH above (dir 1) / EQL below (dir -1) price p, na if none
+eqNext(int dir, float p) =>
+    float r = na
+    array<EqPiv> arr = dir == 1 ? eqHs : eqLs
+    for v in arr
+        if v.eq and (v.p - p) * dir > 0
+            r := na(r) ? v.p : (dir == 1 ? math.min(r, v.p) : math.max(r, v.p))
+    r
+
+// sweep legs: long after a short-term low is taken (leg from that low up to the highest high since), short after
+// a short-term high is taken; a candle wicking into the OTE band of the leg and closing back is the trigger
+type SwLeg
+    int dir = 0
+    float org = na      // the low (long) / high (short) that took the short-term level
+    float ext = na      // highest high (long) / lowest low (short) since
+    int sb = na         // bar of the sweep
+    bool used = false
+
+var SwLeg lgL = SwLeg.new(1)
+var SwLeg lgS = SwLeg.new(-1)
+
+// [fired, synthetic FVG for the stop and the confirmations: from the leg origin to the 0.62 level]
+swStep(SwLeg g, bool swept) =>
+    bool fire = false
+    FVG f = na
+    int d = g.dir
+    if swept
+        g.org := d == 1 ? low : high
+        g.ext := d == 1 ? high : low
+        g.sb := bar_index
+        g.used := false
+    else if not na(g.org)
+        if d == 1 ? low < g.org : high > g.org
+            g.org := na
+        else if d == 1 ? high > g.ext : low < g.ext
+            g.ext := d == 1 ? high : low
+            g.used := false
+        else
+            float r = math.abs(g.ext - g.org)
+            float p62 = g.ext - d * oteMin * r
+            float p79 = g.ext - d * oteMax * r
+            bool hit = r >= swpMin and not g.used and (d == 1
+                 ? low <= p62 and close >= p79 and math.min(open, close) > low
+                 : high >= p62 and close <= p79 and math.max(open, close) < high)
+            if hit
+                fire := true
+                float zlo = d == 1 ? g.org : p62
+                float zhi = d == 1 ? p62 : g.org
+                f := FVG.new(zhi, zlo, (zhi + zlo) / 2, d == 1, time[bar_index - g.sb], g.sb,
+                     d == 1 ? g.ext : g.org, d == 1 ? g.org : g.ext)
+    [fire, f]
+
+bool tSwpL = false
+bool tSwpS = false
+FVG fSwpL = na
+FVG fSwpS = na
+if barstate.isconfirmed
+    [fl, ffl] = swStep(lgL, lastSweepL == bar_index)
+    [fs, ffs] = swStep(lgS, lastSweepH == bar_index)
+    tSwpL := modeOf(emSwp) > 0 and fl
+    tSwpS := modeOf(emSwp) > 0 and fs
+    fSwpL := ffl
+    fSwpS := ffs
+
 // HTF bias of direction dir: [allowed, mask]
 htfAllow(int dir) =>
-    [ok, mask] = indCheck(10, 13, array.from(hbOte == dir, hbFvg == dir, hbLiq == dir,
+    [ok, mask] = indCheck(12, 15, 0, array.from(hbOte == dir, hbFvg == dir, hbLiq == dir,
          modeOf(hmTbl) > 0 and biasAgree(dir)), hN)
     [ok, mask]
 
-// LTF entry of direction dir with FVG / IFVG f; t0..t2: the triggers that fired. [ok, mask]
-ltfCheck(int dir, FVG f, bool isIfvg, bool t0, bool t1, bool t2) =>
-    bool ote = isIfvg ? (dir == 1 ? gBull.flagged : gBear.flagged) : (modeOf(emOte) > 0 and oteFvg(dir, f))
+// LTF entry of direction dir with FVG / IFVG f (kind 0 IFVG, 1 FVG, 2 sweep leg); t0..t3: the triggers that
+// fired. [ok, mask]
+ltfCheck(int dir, FVG f, int kind, bool t0, bool t1, bool t2, bool t3) =>
+    bool ote = kind == 0 ? (dir == 1 ? gBull.flagged : gBear.flagged) : kind == 2 ? true
+         : (modeOf(emOte) > 0 and oteFvg(dir, f))
     int sw = dir == 1 ? lastSweepL : lastSweepH
     int lr = dir == 1 ? lastRejBull : lastRejBear
     int orj = dir == 1 ? lastORejBull : lastORejBear
-    [ok, mask] = indCheck(0, 9, array.from(t0, t1, t2, ote, blkHas(0, dir, f), blkHas(1, dir, f),
+    [ok, mask] = indCheck(0, 11, 4, array.from(t0, t1, t2, t3, ote, blkHas(0, dir, f), blkHas(1, dir, f),
          not na(sw) and bar_index - sw < liqLook, not na(lr) and bar_index - lr < htfLook,
-         not na(orj) and bar_index - orj < htfLook, dlvCur == dir), eN)
+         not na(orj) and bar_index - orj < htfLook, not na(eqNext(dir, close)), dlvCur == dir), eN)
     [ok, mask]
 
 // time filters (session definitions and time zone rule of ICTlevels)
@@ -1889,40 +2070,48 @@ FVG entL = na
 int maskS = 0
 int maskL = 0
 if barstate.isconfirmed and timeOk
-    if tLeaveS or tRetS or tFvgS
-        [hOk, hMask] = htfAllow(-1)
-        if hOk
-            if tLeaveS or tRetS
-                [ok, m] = ltfCheck(-1, bearifvg, true, tLeaveS, tRetS, tFvgS)
-                if ok
-                    goShort := true
-                    entS := bearifvg
-                    maskS := m + hMask
-                    bearUsed := true
-            if not goShort and tFvgS
-                [ok, m] = ltfCheck(-1, fRetS, false, tLeaveS, tRetS, tFvgS)
-                if ok
-                    goShort := true
-                    entS := fRetS
-                    maskS := m + hMask
-                    fRetS.used := true
-    if tLeaveL or tRetL or tFvgL
-        [hOk, hMask] = htfAllow(1)
-        if hOk
-            if tLeaveL or tRetL
-                [ok, m] = ltfCheck(1, bullifvg, true, tLeaveL, tRetL, tFvgL)
-                if ok
-                    goLong := true
-                    entL := bullifvg
-                    maskL := m + hMask
-                    bullUsed := true
-            if not goLong and tFvgL
-                [ok, m] = ltfCheck(1, fRetL, false, tLeaveL, tRetL, tFvgL)
-                if ok
-                    goLong := true
-                    entL := fRetL
-                    maskL := m + hMask
-                    fRetL.used := true
+    for dir in array.from(-1, 1)
+        bool tLv = dir == 1 ? tLeaveL : tLeaveS
+        bool tRt = dir == 1 ? tRetL : tRetS
+        bool tFv = dir == 1 ? tFvgL : tFvgS
+        bool tSw = dir == 1 ? tSwpL : tSwpS
+        FVG iv = dir == 1 ? bullifvg : bearifvg
+        FVG fv = dir == 1 ? fRetL : fRetS
+        FVG sv = dir == 1 ? fSwpL : fSwpS
+        bool go = false
+        FVG ent = na
+        int msk = 0
+        if tLv or tRt or tFv or tSw
+            [hOk, hMask] = htfAllow(dir)
+            if hOk
+                // candidates in order: IFVG, sweep leg, FVG
+                for k = 0 to 2
+                    bool fired = k == 0 ? (tLv or tRt) : k == 1 ? tSw : tFv
+                    if not go and fired
+                        FVG cf = k == 0 ? iv : k == 1 ? sv : fv
+                        [ok, m] = ltfCheck(dir, cf, k == 0 ? 0 : k == 1 ? 2 : 1, tLv, tRt, tFv, tSw)
+                        if ok
+                            go := true
+                            ent := cf
+                            msk := m + hMask
+                            if k == 0
+                                if dir == 1
+                                    bullUsed := true
+                                else
+                                    bearUsed := true
+                            else if k == 1
+                                SwLeg lg = dir == 1 ? lgL : lgS
+                                lg.used := true
+                            else
+                                cf.used := true
+        if dir == 1
+            goLong := go
+            entL := ent
+            maskL := msk
+        else
+            goShort := go
+            entS := ent
+            maskS := msk
 
 // ============================================================ trades
 type Trade
@@ -1944,10 +2133,10 @@ type Trade
     int mask = 0    // indications that were true
 
 // totals of the simulated trades: row 0 all, row 1 + i indication i
-var array<int> rsN = array.new<int>(15, 0)
-var array<int> rsW = array.new<int>(15, 0)
-var array<int> rsL = array.new<int>(15, 0)
-var array<float> rsP = array.new<float>(15, 0.0)
+var array<int> rsN = array.new<int>(NIND + 1, 0)
+var array<int> rsW = array.new<int>(NIND + 1, 0)
+var array<int> rsL = array.new<int>(NIND + 1, 0)
+var array<float> rsP = array.new<float>(NIND + 1, 0.0)
 
 var array<Trade> trades = array.new<Trade>()
 
@@ -1998,7 +2187,7 @@ if showTrades and simulate and barstate.isconfirmed
                     else
                         t.gbx.set_bottom(ex)
                 statAdd(0, pts)
-                for i = 0 to 13
+                for i = 0 to NIND - 1
                     if bitOn(t.mask, i)
                         statAdd(1 + i, pts)
                 color rc = pts > 0 ? tpCol : pts < 0 ? stopCol : entryCol
@@ -2076,11 +2265,15 @@ tradeLevels(int dir, FVG f) =>
         float h = tpMode == "HTF FVG: near candle" and not na(cnd) and (cnd - close) * dir > 0 ? cnd : edge
         if not na(h) and (h - close) * dir > 0
             tp := h
+    else if tpMode == "EQH / EQL"
+        float q = eqNext(dir, close)
+        if not na(q)
+            tp := q
     [stp, tp, risk > 0]
 
 maskText(int mask) =>
     string s = ""
-    for i = 0 to 13
+    for i = 0 to NIND - 1
         if bitOn(mask, i)
             s += (s == "" ? "" : " ") + indShort.get(i)
     s
@@ -2118,7 +2311,7 @@ if showTrades and goLong
 
 // results table of the simulated trades: all, then each indication in use
 var table stats = table.new(statsPos == "Top right" ? position.top_right : statsPos == "Bottom right" ?
-     position.bottom_right : statsPos == "Top left" ? position.top_left : position.bottom_left, 5, 16,
+     position.bottom_right : statsPos == "Top left" ? position.top_left : position.bottom_left, 5, NIND + 2,
      bgcolor = color.white, border_width = 1, border_color = color.new(color.gray, 50))
 statRow(int r, int row, string name) =>
     float p = rsP.get(row)
@@ -2137,7 +2330,7 @@ if showTrades and simulate and statsOn and barstate.islast
     stats.cell(4, 0, "Points", text_color = color.black, text_size = size.small)
     statRow(1, 0, "All")
     int r = 2
-    for i = 0 to 13
+    for i = 0 to NIND - 1
         if indMode.get(i) > 0
             statRow(r, 1 + i, indName.get(i) + (indMode.get(i) == 2 ? " (M)" : ""))
             r += 1
