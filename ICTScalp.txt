@@ -370,16 +370,21 @@ color shortCol = input.color(color.red, "short", group = G_S, inline = "c")
 bool doAlerts = input.bool(true, "Alerts", group = G_S)
 bool condOn = input.bool(true, "Conditions table", group = G_S, inline = "cnd",
      tooltip = "Like the ICTcotas triangles: the state now of each condition of the setup, ▲ long, ▼ short, "+
-         "○ nothing; yellow background while armed. P3H4, P3H1...: PO3, the candle in progress of each PO3 timeframe in use (Auto included). Quad: a quadrant "+
+         "○ nothing; yellow background while armed, with the armed report (see below). P3H4, P3H1...: PO3, the candle in progress of each PO3 timeframe in use (Auto included). Quad: a quadrant "+
          "reaction within the last bars. Liq: a short-term low (▲) / high (▼) taken within the last bars. Ses: "+
          "the last session trended (T) or consolidated (C), bright when the previous session filter allows "+
          "entries. Time: ● inside the killzones and macros in use. Armed: every HTF, time and session condition "+
          "and took liquidity agree, only the entry trigger (FVG return) is missing.")
 string condPos = input.string("Bottom center", "", options = ["Top left", "Top center", "Top right", "Middle left",
      "Middle center", "Middle right", "Bottom left", "Bottom center", "Bottom right"], group = G_S, inline = "cnd")
-bool armOn = input.bool(true, "Armed dots on the candles (and 'armed' alerts)", group = G_S,
-     tooltip = "A small dot below (long) / above (short) each closed candle where the setup is armed: only the "+
-         "entry trigger is missing. With Alerts on, an alert when it becomes armed.")
+bool armOn = input.bool(true, "Armed diamonds on the candles (and 'armed' alerts)", group = G_S,
+     tooltip = "A small diamond below (long) / above (short) each closed candle where the setup is armed: only "+
+         "the entry trigger is missing. With Alerts on, an alert when it becomes armed.")
+bool armTxt = input.bool(true, "Armed report in the conditions table", group = G_S,
+     tooltip = "While armed, a cell next to the conditions table (left of it when the table is on the right) "+
+         "with what armed it: L / S, the HTF indications that agree (Tri, P3H4, P3H1, Q: the quadrant zones "+
+         "with a reaction, ...), the liquidity taken (SSL / BSL), the previous session (pC / pT) when that "+
+         "filter is on, and the killzone and macro.")
 
 // FVGs+IFVG+OTE settings ===================================
 const string G_I = "IFVG (FVGs+IFVG+OTE settings)"
@@ -3011,8 +3016,42 @@ bool armL = armedDir(1)
 bool armS = armedDir(-1)
 bool armLc = barstate.isconfirmed and armL
 bool armSc = barstate.isconfirmed and armS
-plotshape(armOn and armLc, "Armed long", shape.circle, location.belowbar, color.new(longCol, 30), size = size.tiny)
-plotshape(armOn and armSc, "Armed short", shape.circle, location.abovebar, color.new(shortCol, 30), size = size.tiny)
+plotshape(armOn and armLc, "Armed long", shape.diamond, location.belowbar, color.new(longCol, 30), size = size.tiny)
+plotshape(armOn and armSc, "Armed short", shape.diamond, location.abovebar, color.new(shortCol, 30), size = size.tiny)
+
+// compact report of what armed direction dir
+kzName() =>
+    not na(time(timeframe.period, londonstr, tz)) ? "LDN" : not na(time(timeframe.period, nyamstr, tz)) ? "NYAM"
+         : not na(time(timeframe.period, nypmstr, tz)) ? "NYPM" : not na(time(timeframe.period, asiastr, tz)) ?
+         "Asia" : ""
+armReport(int dir) =>
+    [hOk, hM] = htfAllow(dir)
+    string r = dir == 1 ? "L" : "S"
+    for i = 12 to 19
+        if bitOn(hM, i)
+            if i == 18
+                string q = ""
+                bool nw = dir == 1 ? qNwB : qNwS
+                bool rt = dir == 1 ? qRthB : qRthS
+                bool fv = dir == 1 ? qFvgB : qFvgS
+                bool wk = dir == 1 ? qWkB : qWkS
+                q += qNwog and nw ? (q == "" ? "" : ",") + "NW" : ""
+                q += qRth and rt ? (q == "" ? "" : ",") + "RTH" : ""
+                q += qFvg and fv ? (q == "" ? "" : ",") + "FVG" : ""
+                q += qWick and wk ? (q == "" ? "" : ",") + "Wk" : ""
+                r += " Q:" + q
+            else if i == 19
+                r += " " + p3Lbl(po3Tf) + (po3Tf2 != "None" ? " " + p3Lbl(po3Tf2) : "")
+            else
+                r += " " + indShort.get(i)
+    if modeOf(emLiq) > 0 and liqRecent(dir)
+        r += " " + (dir == 1 ? "SSL" : "BSL")
+    if regMode != "Off"
+        r += sesPrev == 1 ? " pT" : sesPrev == 0 ? " pC" : ""
+    string k = kzName()
+    r += k != "" ? " " + k : ""
+    r += macMode == "Hourly :50-:10" ? " :50" : macMode == "ICT macros" ? " mac" : ""
+    r
 
 // conditions table
 cndSym(bool up, bool dn) =>
@@ -3033,14 +3072,15 @@ cndPosOf(string p) =>
 // PO3 timeframe label: P3H4, P3H1, P3m15...
 p3Lbl(string t) =>
     t == "D" ? "P3D" : str.endswith(t, "H") ? "P3H" + str.replace(t, "H", "") : "P3m" + str.replace(t, "m", "")
-var table cndTbl = table.new(cndPosOf(condPos), 7, 2)
+var table cndTbl = table.new(cndPosOf(condPos), 8, 2)
+bool cndRight = str.endswith(condPos, "right")
 cndCell(int c, string sym, color col, string nm) =>
     cndTbl.cell(c, 0, sym, text_color = col, text_size = size.normal)
     cndTbl.cell(c, 1, nm, text_color = color.new(color.gray, 30), text_size = size.tiny)
 if condOn and barstate.islast
-    cndTbl.clear(0, 0, 6, 1)
+    cndTbl.clear(0, 0, 7, 1)
     cndTbl.set_bgcolor(armL or armS ? color.new(color.yellow, 40) : na)
-    int c = 0
+    int c = cndRight and armTxt ? 1 : 0
     cndCell(c, cndSym(p3A == 1, p3A == -1), cndCol(p3A == 1, p3A == -1), p3Lbl(po3Tf))
     c += 1
     if po3Tf2 != "None"
@@ -3060,6 +3100,12 @@ if condOn and barstate.islast
     cndCell(c, timeOk ? "●" : "○", timeOk ? color.orange : color.new(color.gray, 50), "Time")
     c += 1
     cndCell(c, cndSym(armL, armS), cndCol(armL, armS), "Armed")
+    if armTxt and (armL or armS)
+        string rp = (armL ? armReport(1) : "") + (armL and armS ? "\n" : "") + (armS ? armReport(-1) : "")
+        int rc = cndRight ? 0 : c + 1
+        cndTbl.cell(rc, 0, rp, text_color = armL and armS ? color.orange : armL ? longCol : shortCol,
+             text_size = size.tiny, text_halign = cndRight ? text.align_right : text.align_left)
+        cndTbl.merge_cells(rc, 0, rc, 1)
 
 plotshape(goShort, "Enter short", shape.triangledown, location.abovebar, shortCol, size = size.small,
      text = "SHORT", textcolor = shortCol)
