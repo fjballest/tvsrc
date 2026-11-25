@@ -245,6 +245,14 @@ bool kzAsia = input.bool(false, "Asia", group = G_TM, inline = "kz")
 bool kzLondon = input.bool(true, "London", group = G_TM, inline = "kz")
 bool kzNyam = input.bool(true, "NY AM", group = G_TM, inline = "kz")
 bool kzNypm = input.bool(true, "NY PM", group = G_TM, inline = "kz")
+float sesEff = input.float(0.5, "Session trend: |close - open| / range at least", minval = 0.05, maxval = 1.0,
+     step = 0.05, group = G_TM,
+     tooltip = "Sessions are Asia, London, NY AM and NY PM (as the killzones). A session trended when its net move "+
+         "is at least this part of its range, otherwise it consolidated. The exploration shows pT / pC (the "+
+         "previous session trended / consolidated) and can count only trades of trending or consolidating "+
+         "sessions (known only when the session ends).")
+string regMode = input.string("Off", "Entries only after a session that", options = ["Off", "Consolidated",
+     "Trended"], group = G_TM)
 string macMode = input.string("Hourly :50-:10", "Only inside ICT macros", options = ["Off", "ICT macros", "Hourly :50-:10"],
      group = G_TM, tooltip = "Entries only on candles that open inside a macro, always in New York time.\n"+
          "ICT macros: 02:33-03:00, 04:03-04:30, 08:50-09:10, 09:50-10:10, 10:50-11:10, 11:50-12:10, "+
@@ -298,6 +306,11 @@ float maxStopIn = input.float(0.0, "Max stop (0 off), wait bars", minval = 0.0, 
          "candles. The take profit is recomputed from the new entry for the risk ratio mode. The wait is "+
          "dropped if the price reaches the take profit first. Points for NQ, scaled when 'Scale sizes' is on.")
 int maxWait = input.int(10, "", minval = 1, maxval = 100, group = G_T, inline = "ms")
+string maxMode = input.string("Wait for a retracement", "Max stop: when wider", options = ["Wait for a retracement",
+     "Closer stop"], group = G_T,
+     tooltip = "Wait for a retracement: as above.\nCloser stop: enter at the close with the widest of these stops "+
+         "that is within the max stop: short-term high / low, candle 2 and wicks, candle 2, FVG far edge (each "+
+         "with the stop margin); with none within it, no entry. Applies to the exploration too.")
 bool boxOn = input.bool(true, "Boxes, transparency", group = G_T, inline = "bx",
      tooltip = "Red box from the entry to the initial stop, green box from the entry to the take profit, "+
          "up to the exit candle (simulated) or the segment length.")
@@ -318,6 +331,10 @@ bool explore = input.bool(false, "Explore combinations, min trades", group = G_T
          "combination. The table lists the 15 combinations with the most points among those with at least the "+
          "given trades. Needs Show trades and Simulate trades.")
 int exMin = input.int(20, "", minval = 1, group = G_T, inline = "ex")
+string exSess = input.string("All sessions", "Exploration: trades of", options = ["All sessions",
+     "Trending sessions", "Consolidating sessions"], group = G_T,
+     tooltip = "Count only the virtual trades entered in sessions that, once over, trended / consolidated "+
+         "(Time settings). This looks ahead: it is for finding what works in each kind of session, not for live use.")
 string exOnly = input.string("All", "Exploration table: combinations", options = ["All", "With a triangle pattern"],
      group = G_T, tooltip = "With a triangle pattern: only the combinations that include one of the ICTcotas "+
          "triangle patterns (T4s / T4c / T1s / T1c / T15s / T15c: 4H / 1H / 15m turtle soup or continuation in the "+
@@ -2407,6 +2424,34 @@ bool inMacH = not na(time(timeframe.period, MACH, "America/New_York"))
 bool macOk = macMode == "Off" or (macMode == "ICT macros" ? inMac : inMacH)
 bool timeOk = (not useWin or inWin) and (not useKz or inKz) and macOk
 
+// sessions (Asia, London, NY AM, NY PM): trended or consolidated, known when the session ends
+int sesNow = not na(time(timeframe.period, asiastr, tz)) ? 0 : not na(time(timeframe.period, londonstr, tz)) ? 1
+     : not na(time(timeframe.period, nyamstr, tz)) ? 2 : not na(time(timeframe.period, nypmstr, tz)) ? 3 : -1
+var array<int> sesCls = array.new<int>()   // class of each ended session (1 trend, 0 consolidation), by id
+var int sesId = -1
+var int sesPrev = -1                       // class of the last ended session
+var float sO = na
+var float sH = na
+var float sL = na
+var float sC = na
+if sesNow != sesNow[1]
+    if nz(sesNow[1], -1) >= 0 and not na(sO)
+        float rg = sH - sL
+        int cls = rg > 0 and math.abs(sC - sO) / rg >= sesEff ? 1 : 0
+        sesCls.push(cls)
+        sesPrev := cls
+    if sesNow >= 0
+        sesId := sesCls.size()
+        sO := open
+        sH := high
+        sL := low
+if sesNow >= 0
+    sH := math.max(sH, high)
+    sL := math.min(sL, low)
+    sC := close
+int curSes = sesNow >= 0 ? sesId : -1
+bool regOk = regMode == "Off" or (regMode == "Consolidated" ? sesPrev == 0 : sesPrev == 1)
+
 // triggers of this candle; a trigger that is Off never fires
 bool tLeaveS = modeOf(emLeave) > 0 and bearLeave
 bool tLeaveL = modeOf(emLeave) > 0 and bullLeave
@@ -2428,7 +2473,7 @@ FVG entS = na
 FVG entL = na
 int maskS = 0
 int maskL = 0
-if barstate.isconfirmed and timeOk
+if barstate.isconfirmed and timeOk and regOk
     for dir in array.from(-1, 1)
         bool tLv = dir == 1 ? tLeaveL : tLeaveS
         bool tRt = dir == 1 ? tRetL : tRetS
@@ -2665,6 +2710,19 @@ tradeLevels(int dir, FVG f) =>
          : (dir == -1 ? f.hi : f.lo)
     float stp = lvl - dir * stopDelta
     float risk = (close - stp) * dir
+    bool cok = true
+    if maxStop > 0 and maxMode == "Closer stop" and risk > maxStop
+        float best = na
+        for lv in array.from(c2Wicks(dir, f), dir == -1 ? f.c2hi : f.c2lo, dir == -1 ? f.hi : f.lo)
+            float cs = lv - dir * stopDelta
+            float cr = (close - cs) * dir
+            if cr > 0 and cr <= maxStop and (na(best) or cr > (close - best) * dir)
+                best := cs
+        if na(best)
+            cok := false
+        else
+            stp := best
+            risk := (close - stp) * dir
     float tp = close + dir * rrN * risk
     // nearest short-term high (long) / low (short) not taken yet, at least 1:N away
     if tpMode == "Next short-term high / low"
@@ -2686,13 +2744,13 @@ tradeLevels(int dir, FVG f) =>
         float q = eqNext(dir, close)
         if not na(q)
             tp := q
-    [stp, tp, risk > 0]
+    [stp, tp, risk > 0 and cok]
 
 newTrade(int dir, FVG f, int mask) =>
     [stp, tp, ok] = tradeLevels(dir, f)
     if ok
         float risk = (close - stp) * dir
-        if maxStop > 0 and risk > maxStop
+        if maxStop > 0 and maxMode == "Wait for a retracement" and risk > maxStop
             float lim = stp + dir * maxStop
             float ntp = tpMode == "Risk ratio 1:N" ? lim + dir * rrN * maxStop : tp
             for i = pends.size() - 1 to 0
@@ -2748,24 +2806,25 @@ if showTrades and simulate and statsOn and barstate.islast
 
 // ============================================================ exploration of combinations
 // Every trigger, whatever its setting, is a virtual trade (stop / take profit / trailing of Show Trades); its
-// result counts for the trigger alone and with every one or two of the 28 confirmations that were true.
-// Combination c = trigger * 407 + k, k: 0 alone, 1..28 one confirmation, 29..406 two.
-// Confirmations 14..21 are triangle patterns, 22..23 macro times, 24..27 quadrant reactions per zone kind.
-const int EXC = 407
+// result counts for the trigger alone and with every one or two of the 30 confirmations that were true.
+// Combination c = trigger * 466 + k, k: 0 alone, 1..30 one confirmation, 31..465 two.
+// Confirmations 14..21 are triangle patterns, 22..23 macro times, 24..27 quadrant reactions per zone kind,
+// 28..29 previous session trended / consolidated.
+const int EXC = 466
 const int EXTRI = 14
 var array<string> exTrig = array.from("IFVGl", "IFVGr", "SwOTE", "FVGr")
 var array<string> exCond = array.from("OTE", "B", "MB", "Liq", "Lvl", "OTEl", "EQ", "DLV", "hOTE", "hFVG", "hLiq",
-     "Tri", "hBlk", "h50", "T4s", "T4c", "T1s", "T1c", "T15s", "T15c", "Tall", "T4s+LC", "Mac", "MacH", "qNW", "qRTH", "qFVG", "qWk")
+     "Tri", "hBlk", "h50", "T4s", "T4c", "T1s", "T1c", "T15s", "T15c", "Tall", "T4s+LC", "Mac", "MacH", "qNW", "qRTH", "qFVG", "qWk", "pT", "pC")
 var array<int> exA = array.new<int>()
 var array<int> exB = array.new<int>()
 if barstate.isfirst
     exA.push(-1)
     exB.push(-1)
-    for a = 0 to 27
+    for a = 0 to 29
         exA.push(a)
         exB.push(-1)
-    for a = 0 to 26
-        for b = a + 1 to 27
+    for a = 0 to 28
+        for b = a + 1 to 29
             exA.push(a)
             exB.push(b)
 var array<int> exN = array.new<int>(4 * EXC, 0)
@@ -2785,10 +2844,30 @@ type VTrade
     float best = na
     bool trail = false
     array<int> cs
+    int ses = -1
+
+// closed virtual trades waiting for the class of their session (exploration session filter)
+type VRes
+    int ses
+    float pts
+    array<int> cs
+var array<VRes> vres = array.new<VRes>()
+
+exAdd(array<int> cs, float pts) =>
+    for c in cs
+        exN.set(c, exN.get(c) + 1)
+        if pts > 0
+            exW.set(c, exW.get(c) + 1)
+            exWP.set(c, exWP.get(c) + pts)
+        else if pts < 0
+            exL.set(c, exL.get(c) + 1)
+            exLP.set(c, exLP.get(c) + pts)
+        exP.set(c, exP.get(c) + pts)
+    true
 
 var array<VTrade> vts = array.new<VTrade>()
 
-// the 28 confirmations for a trade of direction dir on f (kind 0 IFVG, 1 FVG, 2 sweep leg)
+// the 30 confirmations for a trade of direction dir on f (kind 0 IFVG, 1 FVG, 2 sweep leg)
 exConds(int dir, FVG f, int kind) =>
     bool ote = kind == 0 ? (dir == 1 ? gBull.flagged : gBear.flagged) : kind == 2 ? true : oteFvg(dir, f)
     int sw = dir == 1 ? lastSweepL : lastSweepH
@@ -2801,7 +2880,7 @@ exConds(int dir, FVG f, int kind) =>
          triCode(1, dir) == 2, triCode(0, dir) == 1, triCode(0, dir) == 2,
          triCode(0, dir) > 0 and triCode(1, dir) > 0 and triCode(2, dir) > 0,
          triCode(2, dir) == 1 and triCode(1, dir) == 2 and triCode(0, dir) == 2, inMac, inMacH,
-         dir == 1 ? qNwB : qNwS, dir == 1 ? qRthB : qRthS, dir == 1 ? qFvgB : qFvgS, dir == 1 ? qWkB : qWkS)
+         dir == 1 ? qNwB : qNwS, dir == 1 ? qRthB : qRthS, dir == 1 ? qFvgB : qFvgS, dir == 1 ? qWkB : qWkS, sesPrev == 1, sesPrev == 0)
 
 exOpen(int dir, int trig, FVG f, int kind, int id) =>
     [stp, tp, ok] = tradeLevels(dir, f)
@@ -2819,7 +2898,7 @@ exOpen(int dir, int trig, FVG f, int kind, int id) =>
                     exLast.set(li, id)
                     cs.push(c)
         if cs.size() > 0
-            vts.push(VTrade.new(dir, close, stp, tp, bar_index, na, false, cs))
+            vts.push(VTrade.new(dir, close, stp, tp, bar_index, na, false, cs, curSes))
     true
 
 if explore and showTrades and simulate and barstate.isconfirmed
@@ -2832,15 +2911,10 @@ if explore and showTrades and simulate and barstate.isconfirmed
                 bool hitT = not t.trail and (t.dir == -1 ? low <= t.tp : high >= t.tp)
                 if hitS or hitT
                     float pts = ((hitS ? t.stop : t.tp) - t.entry) * t.dir
-                    for c in t.cs
-                        exN.set(c, exN.get(c) + 1)
-                        if pts > 0
-                            exW.set(c, exW.get(c) + 1)
-                            exWP.set(c, exWP.get(c) + pts)
-                        else if pts < 0
-                            exL.set(c, exL.get(c) + 1)
-                            exLP.set(c, exLP.get(c) + pts)
-                        exP.set(c, exP.get(c) + pts)
+                    if exSess == "All sessions"
+                        exAdd(t.cs, pts)
+                    else if t.ses >= 0
+                        vres.push(VRes.new(t.ses, pts, t.cs))
                     vts.remove(i)
                 else if beOn or trOn
                     t.best := na(t.best) ? (t.dir == 1 ? high : low)
@@ -2848,6 +2922,14 @@ if explore and showTrades and simulate and barstate.isconfirmed
                     [st, tr] = manageStop(t.dir, t.entry, t.stop, t.trail, t.best)
                     t.stop := st
                     t.trail := tr
+    // closed trades of sessions that ended: counted when the session class matches the filter
+    if vres.size() > 0
+        for i = vres.size() - 1 to 0
+            VRes v = vres.get(i)
+            if v.ses < sesCls.size()
+                if sesCls.get(v.ses) == (exSess == "Trending sessions" ? 1 : 0)
+                    exAdd(v.cs, v.pts)
+                vres.remove(i)
     // new virtual trades
     if timeOk
         for dir in array.from(-1, 1)
