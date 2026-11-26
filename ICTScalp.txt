@@ -945,9 +945,12 @@ bool bullRet = not na(bullifvg) and not na(bullconfirm) and time != bullconfirm 
 
 // ============================================================ HTF levels (from ICTcotas, no drawing)
 // D, W and M levels only on lower chart timeframes, never the chart's own
-bool dayOk = dodaily and tfsecs < 86400
-bool wkOk = doweekly and tfsecs < 604800
-bool monOk = domonthly and tfsecs < 2592000
+// the ICTcotas levels are only used by the HTF level rejection confirmation (and the exploration): off, none
+// of them is computed (they were most of the run time)
+bool lvlOn = emLvl != OFF or explore
+bool dayOk = lvlOn and dodaily and tfsecs < 86400
+bool wkOk = lvlOn and doweekly and tfsecs < 604800
+bool monOk = lvlOn and domonthly and tfsecs < 2592000
 int mmode = mitig == "CE touched" ? 1 : mitig == "Fully filled (wick)" ? 2
      : mitig == "Fully filled (close)" ? 3 : 0
 var int tfirst = time
@@ -1184,8 +1187,8 @@ if newM
     tfClose.set(2, mC1)
     processTf(2, mO1, mH1, mL1, mC1, mT1, mO2, mH2, mL2, mC2, mT2, mH3, mL3, mO3, mC3)
 for i = 0 to 5
-    bool fvgOn = mfEnabled(i)
-    bool wkOn = wkEnabled(i)
+    bool fvgOn = lvlOn and mfEnabled(i)
+    bool wkOn = lvlOn and wkEnabled(i)
     if fvgOn or wkOn
         [t0, p1, q1, r1, u1, t1, p2, q2, r2, u2, t2, h3, l3, p3, u3] = htf(mfTfs.get(i))
         if not na(t0)
@@ -1208,7 +1211,7 @@ rejCheck() =>
     float bTop = math.max(open, close)
     float bBot = math.min(open, close)
     for l in lvls
-        if not l.dead
+        if lvlOn and not l.dead
             for k = 0 to 2
                 if l.kind != 2 or k == 2
                     float p = k == 0 ? l.hi : k == 1 ? l.lo : l.ce
@@ -1225,7 +1228,8 @@ if barstate.isconfirmed and rejBear
     lastRejBear := bar_index
 if barstate.isconfirmed and rejBull
     lastRejBull := bar_index
-runMit()
+if lvlOn
+    runMit()
 
 // ============================================================ delivery (from IFVGCISDbias)
 // Returns 0 = none confirmed, 1 = IFVG+ only, 2 = IFVG- only, 3 = both.
@@ -1673,12 +1677,6 @@ qReact(float hi, float lo) =>
             if high >= lv - qTol and high <= lv + qTol and close < lv
                 res := res == 1 ? 0 : -1
     res
-qAny(array<int> a, int dir) =>
-    bool f = false
-    for v in a
-        if v == dir
-            f := true
-    f
 var int lqBNw = na
 var int lqSNw = na
 var int lqBRth = na
@@ -1690,8 +1688,14 @@ var int lqSWk = na
 if barstate.isconfirmed
     int rNw = qReact(nwH, nwL)
     int rRth = qReact(rgH, rgL)
-    array<int> rF = array.from(qReact(q1bH, q1bL), qReact(q1sH, q1sL), qReact(q4bH, q4bL), qReact(q4sH, q4sL))
-    array<int> rW = array.from(qReact(q1uH, q1uL), qReact(q1lH, q1lL), qReact(q4uH, q4uL), qReact(q4lH, q4lL))
+    int f1 = qReact(q1bH, q1bL)
+    int f2 = qReact(q1sH, q1sL)
+    int f3 = qReact(q4bH, q4bL)
+    int f4 = qReact(q4sH, q4sL)
+    int w1 = qReact(q1uH, q1uL)
+    int w2 = qReact(q1lH, q1lL)
+    int w3 = qReact(q4uH, q4uL)
+    int w4 = qReact(q4lH, q4lL)
     if rNw == 1
         lqBNw := bar_index
     if rNw == -1
@@ -1700,13 +1704,13 @@ if barstate.isconfirmed
         lqBRth := bar_index
     if rRth == -1
         lqSRth := bar_index
-    if qAny(rF, 1)
+    if f1 == 1 or f2 == 1 or f3 == 1 or f4 == 1
         lqBFvg := bar_index
-    if qAny(rF, -1)
+    if f1 == -1 or f2 == -1 or f3 == -1 or f4 == -1
         lqSFvg := bar_index
-    if qAny(rW, 1)
+    if w1 == 1 or w2 == 1 or w3 == 1 or w4 == 1
         lqBWk := bar_index
-    if qAny(rW, -1)
+    if w1 == -1 or w2 == -1 or w3 == -1 or w4 == -1
         lqSWk := bar_index
 qRecent(int b) =>
     not na(b) and bar_index - b < qLook
@@ -3009,11 +3013,16 @@ if explore and showTrades and simulate and barstate.islast
 liqRecent(int dir) =>
     int sw = dir == 1 ? lastSweepL : lastSweepH
     not na(sw) and bar_index - sw < liqLook
+// the HTF check only when the cheap conditions hold (most candles are outside the time windows)
 armedDir(int dir) =>
-    [hOk, hM] = htfAllow(dir)
-    timeOk and regOk and hOk and (modeOf(emLiq) < 2 or liqRecent(dir))
-bool armL = armedDir(1)
-bool armS = armedDir(-1)
+    bool r = false
+    if timeOk and regOk and (modeOf(emLiq) < 2 or liqRecent(dir))
+        [hOk, hM] = htfAllow(dir)
+        r := hOk
+    r
+bool armOn2 = armOn or condOn
+bool armL = armOn2 ? armedDir(1) : false
+bool armS = armOn2 ? armedDir(-1) : false
 bool armLc = barstate.isconfirmed and armL
 bool armSc = barstate.isconfirmed and armS
 plotshape(armOn and armLc, "Armed long", shape.diamond, location.belowbar, color.new(longCol, 30), size = size.tiny)
