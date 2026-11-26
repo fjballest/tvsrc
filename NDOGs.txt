@@ -76,10 +76,6 @@ bool domacrobg = false
 bool dokzmac = false
 
 const string G_LOCATION = "Time & Settings"
-bool visible = input.bool(false, "compute for historic data use", group = G_LOCATION,
-     tooltip = "When disabled, objects are computed up to the last bar "
-     + "for real-time use. When enabled, objects are computed "
-     + "up to the rightmost visible bar (recomputes when you scroll).")
 string TZ = input.string("Auto", "Zone: US / EU / Auto", options = ["Auto", "US", "EU"],
      group = G_LOCATION,
      tooltip = "US = NQ (New York times), EU = DAX (Madrid times), Auto "
@@ -329,9 +325,11 @@ bool capped = (ndaysEff < ndays and tfsecs > 300) or nses > nsesEff or ngaps > n
 // ============================================================ processing window (history is
 // limited for speed)
 int spanMs = int((math.max(ndaysEff, ngapsEff) + 5) * 1.5 * 86400000)
-int winEnd = visible ? chart.right_visible_bar_time : timenow
+// [SCROLL] no "compute for historic data use" (up to the rightmost visible bar): reading the chart's visible
+// range makes TradingView rerun the whole script on every scroll or zoom
+int winEnd = timenow
 bool inWin = time <= winEnd and time >= winEnd - spanMs
-bool finalBar = inWin and (barstate.islast or (visible and time_close > winEnd))
+bool finalBar = inWin and barstate.islast
 
 // ============================================================ types
 type ZoneInfo

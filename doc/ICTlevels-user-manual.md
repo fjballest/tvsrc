@@ -356,7 +356,6 @@ Attenuation dims the drawings without changing their settings. Drawings have thr
 
 | Label in dialog | Default | What it does |
 | --- | --- | --- |
-| compute for historic data use | off | Off: levels are computed up to the last bar, for live trading. On: levels are computed up to the rightmost visible bar, so you can scroll back and see the levels as they were at that point. The script recomputes every time you scroll. |
 | Zone: US / EU / Auto | Auto | US uses New York times (NQ), EU uses Madrid times (DAX). Auto picks EU when the symbol looks like DAX (see Quick start), otherwise US. Changes every time window in section 3. |
 | offset for margin labels | 2 (min 1) | Number of bars to the right of the last bar where margin labels and line ends are placed: gaps, RTHOG, premarket quadrants and deviations, TGIF, EQH/EQL and month labels. Day, session and premarket high/low labels and the eq and M.O. labels are always 2 bars to the right. |
 | show object cap warning | on | Shows "object cap: N days" in the table when the day, session or gap counts were reduced to fit the 500-object limits. The day cap on 5m and lower charts is not warned about. |
@@ -533,7 +532,7 @@ With the default settings, 5m and lower charts are capped at **46 days** (the pr
 
 ### History window
 
-To stay fast, the script processes only a window of recent history: about 1.5 times the number of days kept (the larger of days and gap "keep", plus 5), counted back from now, or from the rightmost visible bar when "compute for historic data use" is on. Bars before the window are ignored, so no levels are drawn there. RTHOG is also limited to the last 5000 bars. On 1m charts the history TradingView loads is usually shorter than the window anyway.
+To stay fast, the script processes only a window of recent history: about 1.5 times the number of days kept (the larger of days and gap "keep", plus 5), counted back from now. Bars before the window are ignored, so no levels are drawn there. RTHOG is also limited to the last 5000 bars. On 1m charts the history TradingView loads is usually shorter than the window anyway.
 
 ### Repainting and confirmation
 
@@ -542,7 +541,7 @@ To stay fast, the script processes only a window of recent history: about 1.5 ti
 - Friday TGIF levels follow the week's extreme until the 20% level is reached; after that, and on Monday, they are fixed. Whether they appear at all is decided at the start of Friday (or of the week) and does not change.
 - EQH / EQL appear only after the swing is confirmed ("pivot" bars later). Daily EQH / EQL and month levels use completed bars only and do not repaint.
 - Swept equal levels are deleted; swept day and session levels keep their line up to the bar that took them, but lose their label.
-- Most drawing happens on the last bar. With "compute for historic data use" on, everything is recomputed for the rightmost visible bar each time you scroll, which can be slow on 1m charts.
+- Most drawing happens on the last bar. Scrolling does not recompute the script.
 
 ## 8. Troubleshooting and FAQ
 
@@ -558,7 +557,7 @@ To stay fast, the script processes only a window of recent history: about 1.5 ti
 
 **The table says "object cap: N days".** A day count was reduced on a chart above 5m, or the session or gap counts were reduced. Turn off unused modules, lower "keep" counts or the number of deviations, or turn off "show object cap warning" to hide the note.
 
-**Levels disappear when I scroll back.** Old bars are outside the history window. Turn on "compute for historic data use" to compute the levels for the rightmost visible bar.
+**Levels disappear when I scroll back.** Old bars are outside the history window; levels are computed for the recent past only.
 
 **Some labels are invisible on a dark chart.** The month close, the Day Open and their labels are black by default; change their colors. The text of the old RTHOG ticks ("rthog.cl", "rthog.ce", "rthog.op") is always black and cannot be changed.
 

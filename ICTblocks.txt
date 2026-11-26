@@ -109,7 +109,6 @@ int flWin = 25   // "near the middle of the arm" = % of the arm length on each s
 // FVG Settings ==============================================
 GRP_MAIN = "FVG Settings"
 
-var visible = false
 var dofvgalert = false
 var sbCol = #AB47BC
 var sbWid = 2
@@ -1379,15 +1378,11 @@ if fltRel and barstate.islast
                      border_style = line.style_solid, text = fvgLbl(f), text_size = ifvgtsz,
                      text_halign = ifvgha, text_valign = ifvgva))
 
-if not visible and barstate.isnew
-    updfvgs(lfvgs, wl, 1)
-    updfvgs(sfvgs, ws, 1)
-    updfvgs(fpfvgs, wf, 2)
-else if true
-    if time < chart.right_visible_bar_time + (chart.right_visible_bar_time-chart.left_visible_bar_time)
-        updfvgs(lfvgs, wl, 1)
-        updfvgs(sfvgs, ws, 1)
-        updfvgs(fpfvgs, wf, 2)
+// [SCROLL] every bar, and every tick in real time. No "Historic compute" (FVGs up to the rightmost visible bar):
+// reading the chart's visible range makes TradingView rerun the whole script on every scroll or zoom.
+updfvgs(lfvgs, wl, 1)
+updfvgs(sfvgs, ws, 1)
+updfvgs(fpfvgs, wf, 2)
 
 // [OTE] prior leg detection =====================================
 // Pivot sets: one for the chart timeframe and one for each of the next two higher timeframes.
