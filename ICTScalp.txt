@@ -3116,6 +3116,9 @@ if condOn and barstate.islast
              text_size = size.tiny, text_halign = cndRight ? text.align_right : text.align_left)
         cndTbl.merge_cells(rc, 0, rc, 1)
 
+// ============================================================ strategy orders
+// (orders of ICTScalpStrategy.txt go here, see tools/mkstrategy.py; keep this mark)
+
 plotshape(goShort, "Enter short", shape.triangledown, location.abovebar, shortCol, size = size.small,
      text = "SHORT", textcolor = shortCol)
 plotshape(goLong, "Enter long", shape.triangleup, location.belowbar, longCol, size = size.small,

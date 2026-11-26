@@ -74,6 +74,9 @@ plus ICTScalp). To update it:
    template (templates menu, "Save indicator template...", replace).
 4. Select the m5 pane and then the m3 pane and load the ICTmanyscalp template
    on each. Then save the layout.
+5. Keep the strategy in sync: run `python3 tools/mkstrategy.py ICTScalp.txt
+   ICTScalpStrategy.txt`, commit, and save ICTScalpStrategy.txt as the
+   "ICTScalp strategy" script (Open script..., paste, save, check the console).
 
 The "ICTScalp test" layout (one 1m chart) only needs the saved script; reset
 its inputs to the defaults and turn on Show trades, Simulate trades, Results

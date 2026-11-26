@@ -51,11 +51,18 @@ Levels (source ICTlevels.txt):
 
 ICTScalp (ICTScalp.txt, an indicator, TradingView name ICTScalp):
 
-	Edited by hand; nothing is generated from it any more. Since the
-	HTF bias / LTF entry rework (25 Nov 2026) ICTScalp15.txt,
-	ICTscalpHTFFVGs.txt, ICTScalpSes.txt and ICTScalpStrategy.txt (and
-	tools/mk15.py, mkhtf.py, mkses.py, mkstrategy.py) are no longer
-	maintained and do not match it.
+	Edited by hand. ICTScalpStrategy.txt (TradingView name "ICTScalp
+	strategy") is generated from it and must be kept in sync: after
+	changing ICTScalp.txt run
+
+		python3 tools/mkstrategy.py ICTScalp.txt ICTScalpStrategy.txt
+
+	and save both on TradingView. The strategy has the same code, a
+	strategy() declaration, and the orders at the "strategy orders"
+	mark of ICTScalp.txt (keep it). Since the HTF bias / LTF entry
+	rework (25 Nov 2026) ICTScalp15.txt, ICTscalpHTFFVGs.txt and
+	ICTScalpSes.txt (and tools/mk15.py, mkhtf.py, mkses.py) are no
+	longer maintained and do not match it.
 
 Ports (ICTlevels, ICTcotas and FVGS+IFVG+OTE):
 

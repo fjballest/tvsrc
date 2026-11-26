@@ -24,6 +24,7 @@ rep('// ICTScalp: enter-long / enter-short signals only, to experiment with scal
     '// exit order after each closed candle. alertcondition() lines are left out (not allowed in strategies).')
 
 rep('''// ============================================================ strategy orders
+// (orders of ICTScalpStrategy.txt go here, see tools/mkstrategy.py; keep this mark)
 ''', '''// ============================================================ strategy orders
 // stop and take profit of the open position; with breakeven / trailing on, the stop is managed after
 // each closed candle like the simulated trades (manageStop) and the exit order is updated
@@ -64,6 +65,8 @@ if goLong
 # alertcondition() is not allowed in strategies; alert() calls stay
 rep('''alertcondition(goShort, "ICTScalp short", "ICTScalp SHORT {{ticker}} {{interval}}")
 alertcondition(goLong, "ICTScalp long", "ICTScalp LONG {{ticker}} {{interval}}")
+alertcondition(armLc and not armLc[1], "ICTScalp long armed", "ICTScalp long armed {{ticker}} {{interval}}")
+alertcondition(armSc and not armSc[1], "ICTScalp short armed", "ICTScalp short armed {{ticker}} {{interval}}")
 ''', "")
 
 open(dst, 'w').write(s)
