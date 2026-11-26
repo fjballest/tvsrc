@@ -8,11 +8,6 @@ indicator("OTEFibWick", overlay=true, max_boxes_count=500, max_lines_count=500)
 
 GW = "Wicks"
 GS = "Settings / Enable"
-var visible = input.bool(false, "compute for historic data use", group=GS,
-    tooltip="When disabled computes and keeps always the last objects for use in real time. " +
-         " This permits scrolling back/forward and keeps them always as they are, but discards very old ones. "+
-         "When enabled computes them up to the rightmost visible time. " +
-         "Good for use in historic data but worse when scrolling forward as it takes time to recompute and redraw.")
 var dowick = input.bool(true, "draw wick CE", group=GS, inline="en")
 var dofib = input.bool(true, "mark fib retracements for OTE", group=GS, inline="en")
 var dohtf = input.bool(false, "HTF OTEs", group=GS, inline="en")
@@ -218,9 +213,9 @@ type Fib
     label lbl = na
 
 
+// [SCROLL] no "compute for historic data use" (only the visible range): reading the chart's visible range makes
+// TradingView rerun the whole script on every scroll or zoom
 var compute = true
-if visible
-    compute := time >= chart.left_visible_bar_time and time <= chart.right_visible_bar_time
 
 var lookival = fiblen
 if usetime and not autofib

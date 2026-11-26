@@ -433,7 +433,6 @@ Inputs on one line in the settings dialog are listed together; a field without i
 
 | Label | Default | What it does |
 | --- | --- | --- |
-| Historic compute | Off | Off: keeps the last FVGs for real-time use; scroll-safe, older FVGs are discarded. On: computes FVGs up to the right edge of the visible chart; good for studying history, slower when scrolling. |
 | FVG bounce alerts | Off | Alerts when price touches the high, low or C.E. of an open FVG and closes away from it. |
 | SB border, width (same line) | purple #AB47BC, 2 | Border color and width of the silver bullet FVGs |
 | Size: min | 3 (1 - 1000) | Minimum FVG height (wick gap) to be valid. |
@@ -612,7 +611,7 @@ A prior-leg OTE rejection fires on the confirming candle, so `LONG IFVG` and `LO
 
 ### History window
 
-- With **Historic compute** off, the chart keeps the last **keep** FVGs of each bias; when you scroll far back, older FVGs are gone. Turn it on to study history: the script then computes FVGs up to the visible right edge and recalculates when you scroll.
+- The chart keeps the last **keep** FVGs of each bias; when you scroll far back, older FVGs are gone. Scrolling never recomputes the script (there is no longer a Historic compute option: it made TradingView rerun the script on every scroll).
 - A kept IFVG disappears when its FVG drops out of the **keep** window.
 - The OTE leg search looks back at most about 4,000 candles and the script references up to 5,000 bars back.
 
@@ -626,7 +625,7 @@ A prior-leg OTE rejection fires on the confirming candle, so `LONG IFVG` and `LO
 
 ### Performance
 
-The script makes three `request.security` calls (two OTE ladder timeframes and the HTF structure). Mapping a higher-timeframe swing to the chart and measuring the prior leg can scan thousands of candles, which may slow loading on long histories with many FVGs. If the indicator is slow, turn off **Historic compute**, reduce **keep**, or switch off the higher-timeframe trackers.
+The script makes three `request.security` calls (two OTE ladder timeframes and the HTF structure). Mapping a higher-timeframe swing to the chart and measuring the prior leg can scan thousands of candles, which may slow loading on long histories with many FVGs. If the indicator is slow, reduce **keep**, or switch off the higher-timeframe trackers.
 
 ## 15. Troubleshooting and FAQ
 

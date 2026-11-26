@@ -62,7 +62,7 @@ Inputs are grouped by module, and related controls share a row with `inline`. Co
 | Group | Inputs and effect |
 | --- | --- |
 | Enable / Filter | The feature switches, first in the dialog: months (`domonth`), TGIF (`dotgif`), sessions (`doses`) and EQH / EQL (`doeqhl`) on one row; NDOG / NWOG / RTHOG (`dondog` / `donwog` / `dorthog`) on another; premarket range (`dopremarket`) and flag macros (`domacrobg`, on, color `macrobgcolor` in Macros and Events) on another; attenuation (`attLvl`, 0 to 4, default 2, first). `dogaps` is no longer an input: it is `dondog or donwog or dorthog` (NinjaTrader `DoGaps` getter, Tradovate the same expression). Their groups below keep the other settings of each feature |
-| Time & Settings | Compute for historic data use (`visible`); zone (Auto, US, EU); offset for margin labels (`xoff`, bars between the last bar and the labels); show object cap warning (`showcap`) |
+| Time & Settings | Zone (Auto, US, EU); offset for margin labels (`xoff`, bars between the last bar and the labels); show object cap warning (`showcap`) |
 | Month Settings | Colors for max, min and close; line style and width |
 | Day Settings | Number of days (`ndays`, capped by the object budget); day and week vertical lines; day max/min colors, style and width; label unbroken day max/min and its size; REH/REL labels with a tolerance in daily ATR; equilibrium line; day open (midnight open) line |
 | TGIF | The two retracement fractions (`tgp1` / `tgp2`, 0.2 / 0.3); how near price must be to the week high / low for a displacement (`tgnear`, 0.4 of the range); up / down colors, style and width; text size (`tglblsize`, normal) |
@@ -72,7 +72,7 @@ Inputs are grouped by module, and related controls share a row with `inline`. Co
 | Equal Highs / Lows | Also from the daily chart; pivot lengths for the chart and daily; tolerance in ATR; levels kept per side; colors (green EQH, red EQL), line style and width; label size |
 | Macros and Events | Show the current session, macro and silver bullet names in the top-right table; optional background color during macros |
 
-Two inputs change how the script computes rather than how it looks. `visible` switches the processing window from the last bar to the rightmost visible bar, which recomputes when you scroll. `ndays`, `nses` and `ngaps` are upper bounds: the object budget can reduce them, and the table says so.
+`ndays`, `nses` and `ngaps` are upper bounds: the object budget can reduce them, and the table says so.
 
 ## Data structures
 
@@ -111,7 +111,7 @@ Pine runs the whole script once per historical bar and once per realtime tick, s
 
 &#91;embedded content: execution pipeline · per bar versus last bar\]
 
-**Processing window.** `winEnd` is `timenow`, or the time of the rightmost visible bar when `visible` is on. `spanMs` is 1.5 times the number of days covered by the larger of `ndaysEff` and `ngapsEff`, plus a margin. `inWin` is true for bars between the two, and `finalBar` is true on the last of them (`barstate.islast`, or the first bar that closes past the visible edge). Bars outside the window cost almost nothing.
+**Processing window.** `winEnd` is `timenow`. (The former "compute for historic data use" option read the visible range, which makes TradingView rerun the script on every scroll or zoom; it was removed.) `spanMs` is 1.5 times the number of days covered by the larger of `ndaysEff` and `ngapsEff`, plus a margin. `inWin` is true for bars between the two, and `finalBar` is true on the last of them (`barstate.islast`). Bars outside the window cost almost nothing.
 
 **Gates.** `tfok` (chart timeframe of 1h or lower) guards almost everything. `preOn` also requires 5m or lower and `rthOk` 15m or lower, so a module silently stops at coarser timeframes.
 
