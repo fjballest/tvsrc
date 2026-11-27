@@ -524,7 +524,27 @@ else if compute and dofib and barstate.isnew and bar_index > lookival
     li = math.abs(ta.lowestbars(fL, lookival))
     ll = fL[li]
     updatefibs(hh, ll, bar_index[hi], bar_index[li])
- 
+
+// [MARGIN] the fib segments and labels stay at the right margin: moved there on the last bar (and every live tick),
+// not only when the fib changes. With swings the fib is updated only on a new swing or a new extreme, so in real
+// time its segments were left where the last bar was then, in the middle of the candles
+method place(Fib f) =>
+    if not na(f)
+        if not na(f.seg)
+            f.seg.set_x1(last_bar_index + fiboff)
+            f.seg.set_x2(last_bar_index + fiboff + fibwid)
+        if not na(f.lbl)
+            f.lbl.set_x(last_bar_index + fiboff + fibwid)
+    true
+
+if barstate.islast and dofib
+    f0.place()
+    f100.place()
+    f1.place()
+    f2.place()
+    f3.place()
+    f4.place()
+
 type OTE
     string tf // timeframe
     box otebox = na
@@ -588,7 +608,8 @@ method updatemargin(OTE ote) =>
             ote.oterect.set_bgcolor(hotecold)
         else
             ote.oterect.set_bgcolor(hotecolu)
-    else if barstate.isnew and not na(ote.oterect)
+    // [MARGIN] also on the HTF change bar (the branch above): every new bar, at the right margin
+    if barstate.isnew and not na(ote.oterect)
         ote.oterect.set_left(last_bar_index+moteoff)
         ote.oterect.set_right(last_bar_index+moteoff+motewid)
 method updateote(OTE ote) =>
