@@ -1,8 +1,41 @@
 # ICTScalp: Results So Far
 
-Summary of the ICTScalp backtests on TradingView, kept up to date as the script changes. All figures are on MNQ1! (points per trade, NQ points) over the chart history TradingView loads for each timeframe, from the simulated trades table of the script. They come from one history window on one instrument, so they show which way to go, not a proven edge. The 1m history moves as new candles come in (1m went from +10.1 with 60 trades to +8.6 with 62 during the day).
+Summary of the ICTScalp backtests, kept up to date as the script changes. Figures are NQ points per trade on MNQ, before costs (a round trip of commission and 1 tick of slippage each way is about 1 point).
 
-Last update: 2026-11-25, script commit 38db50b (TradingView version 39).
+Last update: 2026-11-27. Section 0 is the five-year backtest that set the current Auto. Sections 1 to 5 are the earlier TradingView figures (script commit 38db50b): they cover only the few weeks or months of history the chart loads, which turned out to be the best stretch of the five years, so their averages are much higher than the long-run ones.
+
+## 0. Five years of 1m data (2022-01 to 2026-11)
+
+Data: the day journal's MNQ 1m candles (back-adjusted, 2022-01-02 to 2026-11-24); 2m, 3m and 5m are made from them. The real ICTScalpStrategy.txt was run on them by the day journal's Pine strategy tester (pyjou, `python3 backtest.py`), with TradingView's order fills (strategy orders, one position at a time).
+
+Auto before and after this update:
+
+| Chart | Old Auto | Trades | Pts/trade | PF | New Auto | Trades | Pts/trade | PF |
+| ----- | -------- | ------ | --------- | -- | -------- | ------ | --------- | -- |
+| 1m | after a consolidated session | 1044 | +0.95 | 1.06 | NY PM only | 591 | +2.42 | 1.15 |
+| 2m | PO3 4H + 1H | 399 | +2.18 | 1.12 | PO3 1H | 684 | +3.18 | 1.18 |
+| 3m | PO3 5m | 516 | -0.21 | 0.99 | took liquidity off | 1768 | +2.16 | 1.13 |
+| 5m | PO3 4H + 1H | 378 | +6.37 | 1.27 | PO3 4H + 1H, NY AM only | 204 | +15.66 | 1.65 |
+
+New Auto by year (net points):
+
+| Chart | 2022 | 2023 | 2024 | 2025 | 2026 |
+| ----- | ---- | ---- | ---- | ---- | ---- |
+| 1m | +830 | +3 | -93 | -57 | +750 |
+| 2m | +432 | +203 | +428 | -633 | +1744 |
+| 3m | +1791 | +318 | +377 | +247 | +1077 |
+| 5m | +87 | -368 | +463 | -6 | +3019 |
+
+The new choices were picked on 2022-2024 (with a Python port of the script that gives the same trades) and checked on 2025-2026. With the old Auto, 5m made all its profit in 2026 and lost about 220 points from 2022 to 2025.
+
+What the five years say about the parts of the setup (Auto off, points per trade):
+
+- The 15m turtle-soup triangles are the edge. Without them every timeframe loses (about -0.1 to -0.6 a trade, with 5 to 8 times more trades).
+- The trailing stop after 50 points matters on 2m and 5m. Without it they lose about 1.7 a trade.
+- The previous-session filter and the 4H + 1H PO3 pair, which looked best on the TradingView window, do not hold up on 1m, 2m and 3m.
+- On 5m, London and NY PM lose (-2.4 and -2.3 a trade) while NY AM makes +5.6.
+- Quadrant reactions and took liquidity add little; took liquidity is in the way on 3m.
+- After about 1 point of costs, only 5m makes clearly more than costs. 1m to 3m make 1 to 2 points a trade net, and some years are negative.
 
 ## 1. Current default setup
 
@@ -10,10 +43,10 @@ With **Auto** on (the default), the script picks the best settings found for the
 
 | Chart | Auto settings |
 | ----- | ------------- |
-| 1m | Entries only after a session that consolidated; PO3 off |
-| 2m | PO3 Mandatory on the 4H and 1H candles |
-| 3m | PO3 Mandatory on the 5m candle |
-| 5m | PO3 Mandatory on the 4H and 1H candles |
+| 1m | NY PM killzone only; PO3 off; previous session filter off |
+| 2m | PO3 Mandatory on the 1H candle |
+| 3m | Took liquidity off; PO3 off |
+| 5m | NY AM killzone only; PO3 Mandatory on the 4H and 1H candles |
 | Other | The inputs as set |
 
 | Part | Setting |
@@ -25,10 +58,10 @@ With **Auto** on (the default), the script picks the best settings found for the
 | Time | ICT killzones (London, NY AM, NY PM) and hourly macro :50 to :10, New York time |
 | Stop | Past the short-term high / low since the FVG, 2 points margin |
 | Take profit | Risk ratio 1:2; candle trailing stop once 50 points in favour (the TP is then dropped) |
-| Previous session filter | Set by Auto on 1m to 5m, else the input (Off by default; see section 4, Sessions) |
+| Previous session filter | Off with Auto on 1m to 5m, else the input (Off by default; see section 4, Sessions) |
 | PO3 | Set by Auto on 1m to 5m, else the input (Off by default; see section 4, PO3) |
 
-## 2. Results of the default setup (Auto on)
+## 2. Results of the old Auto on TradingView (before 27 Nov)
 
 | LTF | Trades | Win | Avg win | Avg loss | Points | Avg per trade |
 | --- | ------ | --- | ------- | -------- | ------ | ------------- |

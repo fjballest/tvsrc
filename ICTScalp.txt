@@ -62,10 +62,11 @@ const string IMODE = "Off: not used. Consider: counts towards 'at least N'. Mand
 const string G_A = "Auto"
 bool autoOn = input.bool(true, "Auto: best settings for the chart timeframe (1m, 2m, 3m, 5m)", group = G_A,
      tooltip = "When on, these settings are picked from the backtests on MNQ1! for the chart timeframe and the "+
-         "inputs below them are ignored:\n1m: entries only after a session that consolidated, PO3 off.\n"+
-         "2m: PO3 Mandatory on the 4H and 1H candles, previous session filter off.\n"+
-         "3m: PO3 Mandatory on the 5m candle, previous session filter off.\n"+
-         "5m: PO3 Mandatory on the 4H and 1H candles, previous session filter off.\n"+
+         "inputs below them are ignored (checked on MNQ 1m data from 2022 to 2026):\n"+
+         "1m: NY PM killzone only, PO3 off, previous session filter off.\n"+
+         "2m: PO3 Mandatory on the 1H candle, previous session filter off.\n"+
+         "3m: PO3 off, took liquidity off, previous session filter off.\n"+
+         "5m: NY AM killzone only, PO3 Mandatory on the 4H and 1H candles, previous session filter off.\n"+
          "Other timeframes use the inputs as set. Turn it off to set them by hand.")
 int tfMin = timeframe.isminutes ? timeframe.multiplier : 0
 bool autoTf = autoOn and (tfMin == 1 or tfMin == 2 or tfMin == 3 or tfMin == 5)
@@ -178,7 +179,7 @@ string emBrk = input.string(OFF, "Breaker", options = [OFF, CON, MAN], group = G
 string emMb = input.string(OFF, "Mitigation block", options = [OFF, CON, MAN], group = G_E,
      tooltip = "The FVG / IFVG of the trigger overlaps a mitigation block of the trade direction that broke and "+
          "made a swing beyond it (Mitigation blocks settings below). " + IMODE)
-string emLiq = input.string(MAN, "Took liquidity", options = [OFF, CON, MAN], group = G_E, inline = "liq",
+string emLiqIn = input.string(MAN, "Took liquidity", options = [OFF, CON, MAN], group = G_E, inline = "liq",
      tooltip = "Short: a candle took the last short-term high within the last N candles (the entry candle "+
          "included), with its wick or its body. Long: a candle took the last short-term low. Short-term highs / lows are pivots with the "+
          "left / right lengths given here (the sweep pivots of FVGs+IFVG+OTE). " + IMODE)
@@ -265,9 +266,9 @@ bool useKz = input.bool(true, "Only inside ICT killzones", group = G_TM,
          "EU: Asia 23:00-06:00, London 08:00-13:00, NY AM 13:30-18:00, NY PM 19:00-22:00 (Madrid).\n"+
          "When both time options are on, both have to be met.")
 bool kzAsia = input.bool(false, "Asia", group = G_TM, inline = "kz")
-bool kzLondon = input.bool(true, "London", group = G_TM, inline = "kz")
-bool kzNyam = input.bool(true, "NY AM", group = G_TM, inline = "kz")
-bool kzNypm = input.bool(true, "NY PM", group = G_TM, inline = "kz")
+bool kzLondonIn = input.bool(true, "London", group = G_TM, inline = "kz")
+bool kzNyamIn = input.bool(true, "NY AM", group = G_TM, inline = "kz")
+bool kzNypmIn = input.bool(true, "NY PM", group = G_TM, inline = "kz")
 float sesEff = input.float(0.5, "Session trend: |close - open| / range at least", minval = 0.05, maxval = 1.0,
      step = 0.05, group = G_TM,
      tooltip = "Sessions are Asia, London, NY AM and NY PM (as the killzones). A session trended when its net move "+
@@ -286,10 +287,14 @@ string macMode = input.string("Hourly :50-:10", "Only inside ICT macros", option
          "Combined with the other time options (all have to be met). The exploration shows both as Mac / MacH.")
 
 // effective settings (Auto overrides the inputs on 1m, 2m, 3m and 5m)
-string hmPo3 = autoTf ? (tfMin == 1 ? OFF : MAN) : hmPo3In
-string po3Tf = autoTf ? (tfMin == 3 ? "5m" : "4H") : po3TfIn
-string po3Tf2 = autoTf ? (tfMin == 3 ? "None" : "1H") : po3Tf2In
-string regMode = autoTf ? (tfMin == 1 ? "Consolidated" : "Off") : regModeIn
+string hmPo3 = autoTf ? (tfMin == 2 or tfMin == 5 ? MAN : OFF) : hmPo3In
+string po3Tf = autoTf ? (tfMin == 2 ? "1H" : "4H") : po3TfIn
+string po3Tf2 = autoTf ? (tfMin == 5 ? "1H" : "None") : po3Tf2In
+string regMode = autoTf ? "Off" : regModeIn
+string emLiq = autoTf and tfMin == 3 ? OFF : emLiqIn
+bool kzLondon = autoTf and (tfMin == 1 or tfMin == 5) ? false : kzLondonIn
+bool kzNyam = autoTf and tfMin == 1 ? false : kzNyamIn
+bool kzNypm = autoTf and tfMin == 5 ? false : kzNypmIn
 
 const string G_T = "Show Trades"
 bool showTrades = input.bool(false, "Show trades", group = G_T,

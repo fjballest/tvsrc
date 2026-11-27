@@ -38,7 +38,7 @@ Everything is evaluated on **closed candles**: a signal appears when its candle 
 
 1. Add ICTScalp to the chart (Indicators, then search for ICTScalp in your scripts).
 2. Use a 1m, 2m, 3m or 5m chart of NQ / MNQ (ES, YM, RTY and DAX also work; sizes are scaled, section 8).
-3. Leave **Auto** on (the default). It sets the PO3 and previous-session options found best for 1m, 2m, 3m and 5m (section 4).
+3. Leave **Auto** on (the default). It sets the PO3, killzone and took-liquidity options that held up best for 1m, 2m, 3m and 5m on five years of data (section 4).
 4. Watch the **conditions table** (bottom center). When its background turns yellow the setup is **armed**: everything agrees and only the entry trigger is missing. A diamond marks those candles.
 5. A **LONG** / **SHORT** triangle is the entry: at the close of that candle. To see where the stop and target would be, turn on **Show trades** (Show Trades settings).
 6. To check how the settings did on the loaded history, turn on **Show trades** and **Simulate trades**: the results table (top right) gives trades, win rate and points.
@@ -48,9 +48,10 @@ Everything is evaluated on **closed candles**: a signal appears when its candle 
 
 | Chart | Notes |
 | ----- | ----- |
-| 1m | Auto: entries only after a session that consolidated. Fewest points per trade, tightest stops |
-| 2m, 5m | Auto: PO3 Mandatory on the 4H and 1H candles in progress |
-| 3m | Auto: PO3 Mandatory on the 5m candle in progress |
+| 1m | Auto: NY PM killzone only. Fewest points per trade, tightest stops |
+| 2m | Auto: PO3 Mandatory on the 1H candle in progress |
+| 3m | Auto: took liquidity off |
+| 5m | Auto: NY AM killzone only, PO3 Mandatory on the 4H and 1H candles in progress. The best over 2022-2026 |
 | 15m and above | Auto does nothing; the inputs apply as set. Not the intended use |
 
 The default setup on any of them:
@@ -117,17 +118,17 @@ With "Show the HTF OTE lines and draw targets" on, the 0.62 / 0.705 / 0.79 level
 
 ## 4. Auto
 
-**Auto** (on by default) sets a few options from the backtests on MNQ1!, by chart timeframe; the inputs for those options are then ignored:
+**Auto** (on by default) sets a few options by chart timeframe; the inputs for those options are then ignored. They are the choices that held up on MNQ 1m data from January 2022 to November 2026, picked on 2022-2024 and checked on 2025-2026 (see ICTScalp-results.md):
 
-| Chart | PO3 | PO3 timeframe(s) | Entries only after a session that |
-| ----- | --- | ---------------- | --------------------------------- |
-| 1m | Off | (none) | Consolidated |
-| 2m | Mandatory | 4H and 1H | Off |
-| 3m | Mandatory | 5m | Off |
-| 5m | Mandatory | 4H and 1H | Off |
-| Other | The inputs | The inputs | The input |
+| Chart | PO3 | PO3 timeframe(s) | Killzones | Took liquidity | Entries only after a session that |
+| ----- | --- | ---------------- | --------- | -------------- | --------------------------------- |
+| 1m | Off | (none) | NY PM | The input | Off |
+| 2m | Mandatory | 1H | The inputs | The input | Off |
+| 3m | Off | (none) | The inputs | Off | Off |
+| 5m | Mandatory | 4H and 1H | NY AM | The input | Off |
+| Other | The inputs | The inputs | The inputs | The input | The input |
 
-Everything else (triggers, other indications, stops, time) uses the inputs in every case. Turn Auto off to set PO3 and the session filter by hand.
+"The inputs" for the killzones means the ticked ones (London, NY AM and NY PM by default; Auto on 1m and 5m only turns some off). Everything else (triggers, other indications, stops, macros) uses the inputs in every case. Turn Auto off to set these by hand.
 
 ## 5. How a signal is built
 
@@ -189,7 +190,7 @@ All the ones in use have to be met:
 | Only inside this time interval | Off (09:30-11:30) |
 | Only inside ICT killzones | On: London, NY AM, NY PM (Asia off) |
 | Only inside ICT macros | Hourly :50 to :10 (New York time); or the ICT macros list; or Off |
-| Entries only after a session that | Off, Consolidated, Trended or Predict (Auto sets it on 1m to 5m) |
+| Entries only after a session that | Off, Consolidated, Trended or Predict (Auto turns it off on 1m to 5m) |
 
 Killzones as in ICTlevels. US (New York time): Asia 20:00-00:00, London 02:00-05:00, NY AM 07:00-11:30, NY PM 13:30-16:00. EU (Madrid time, DAX): Asia 23:00-06:00, London 08:00-13:00, NY AM 13:30-18:00, NY PM 19:00-22:00.
 
@@ -295,7 +296,7 @@ ICTScalp contains copies of parts of FVGs+IFVG+OTE (FVGs, IFVGs, OTE, breakers, 
 
 | Problem | Answer |
 | ------- | ------ |
-| No signals at all | Check the conditions table: HTF cells ○ or Time ○ mean nothing can fire. On 1m with Auto, entries also need a previous session that consolidated |
+| No signals at all | Check the conditions table: HTF cells ○ or Time ○ mean nothing can fire. With Auto, 1m only enters in NY PM and 5m only in NY AM |
 | Too few signals | Set Cotas triangles to Consider, or the pattern to "Agree"; turn off the macro filter; turn off Auto's PO3 by turning Auto off |
 | The table never turns yellow | Took liquidity is Mandatory: a short-term low / high has to be taken within the last 20 candles |
 | "Calculation timed out" | See section 10, Performance |
